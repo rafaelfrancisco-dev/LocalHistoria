@@ -188,7 +188,11 @@ int main(int argc, char **argv) {
             page["html"]=html;return page;
         });
         auto recentText = recent["history_excerpt"].asString();
-        check(recent["history_scope"] == "recent" && recentText.size() <= 3000 + 3 && recentText.rfind("…", 0) == 0 &&
+        auto sourceText = recent["history_source"].asString();
+        check(sourceText.size() <= 12000 + 3 && sourceText.size() > recentText.size() &&
+                  sourceText.substr(sourceText.size() - 40) == recentText.substr(recentText.size() - 40),
+              "Chronicle source is a longer tail of the same history");
+        check(recent["history_scope"] == "recent_source" && recentText.size() <= 3000 + 3 && recentText.rfind("…", 0) == 0 &&
                   recentText.find("In 2024 a new government took office.") != std::string::npos && recentText.find("[") == std::string::npos &&
                   recentText.find("Mountains") == std::string::npos && recentText.find("paragraph 0.") == std::string::npos,
               "History excerpt keeps the most recent part of the section");
@@ -198,6 +202,29 @@ int main(int argc, char **argv) {
               "Brief references cut at words");
         check(briefReference(parse(R"({"history_excerpt":"Founded long ago, then reformed in 2024"})"), 10, 20)["history_excerpt"] == "…reformed in 2024",
               "Brief history keeps its most recent end");
+        auto chronicled = briefReference(parse(R"({"excerpt":"Intro","history_excerpt":"Raw tail","history_source":"Long tail","chronicle":"Founded long ago, then reformed in 2024"})"), 12, 20);
+        check(!chronicled.isMember("history_excerpt") && !chronicled.isMember("history_source") &&
+                  chronicled["chronicle"] == "Founded long ago,…" &&
+                  !briefReference(chronicled, 12, 0).isMember("chronicle"),
+              "Chronicle replaces the history excerpt and keeps its start");
+        {
+            Store chronicles(":memory:");
+            WorldState cw;cw.campaignId="c";cw.player="PT";cw.actors["PT"]["name"]="Portugal";
+            chronicles.create(cw, false);
+            chronicles.saveChronicle("PT", parse(R"({"summary":"S","through_turn":0})"));
+            check(chronicles.chronicle("PT")["summary"] == "S" && chronicles.chronicle("ES").isNull(), "Chronicle save and load");
+            for (int n = 1; n <= 3; ++n) {
+                std::string id = "e" + std::to_string(n), actor = n == 2 ? "ES" : "PT";
+                chronicles.execute("INSERT INTO events VALUES(?,?,?)", {id, std::to_string(n), R"({"actor":")" + actor + R"(","description":"D)" + std::to_string(n) + R"(","effects":[],"operations":[1]})"});
+                chronicles.execute("INSERT INTO event_links VALUES(?,'actors',?)", {id, actor});
+            }
+            auto since = chronicles.chronicleEvents("PT", 1);
+            check(since.size() == 1 && since[0]["description"] == "D3" && since[0]["turn"] == 3 && !since[0].isMember("operations"),
+                  "Chronicle events filter by actor and turn");
+            check(chronicles.chronicleEvents("PT", 0).size() == 2 && chronicles.chronicleEvents("PT", 0)[0]["description"] == "D1", "Chronicle events are oldest first");
+            chronicles.create(cw, true);
+            check(chronicles.chronicle("PT").isNull(), "New campaign clears chronicles");
+        }
         check(recorded["history_excerpt"].asString().find("History") != std::string::npos,
               "Separate history extraction");
         std::cout << checks << " checks passed\n";

@@ -36,6 +36,8 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);
+    // Condenses a nation's real and campaign history into a short chronicle; input holds facts, previous_chronicle, campaign_events and reference_only.
+    std::string chronicle(const Json::Value &input, const std::string &actor);
     WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &);
     Json::Value takeAudit();
     void setEndpoint(const std::string &);

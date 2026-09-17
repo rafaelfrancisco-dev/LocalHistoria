@@ -25,6 +25,10 @@ class Store {
     void recordInference(const std::string &, const Json::Value &);
     Json::Value background(const std::string &);
     void cache(const std::string &, const Json::Value &);
+    Json::Value chronicle(const std::string &actor);
+    void saveChronicle(const std::string &actor, const Json::Value &);
+    // Events an actor took part in after a turn, oldest first, reduced to what a chronicle needs.
+    Json::Value chronicleEvents(const std::string &actor, int afterTurn);
     std::string setting(const std::string &key, const std::string &fallbackDefault);
     void setSetting(const std::string &key, const std::string &value);
 };

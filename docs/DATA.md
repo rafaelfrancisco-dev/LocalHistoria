@@ -16,6 +16,7 @@ The imported database and normalized map are reproducible from project-owned inp
 | JsonCpp 1.9.8 | Installed library, upstream MIT/public-domain notice retained. |
 | SQLite | Linked system/development library; [public domain](https://sqlite.org/copyright.html). |
 | Cached Wikipedia excerpts | Wikipedia contributors, CC BY-SA 4.0. Article/revision/retrieval/language metadata preserved alongside plain-text excerpts. Cache and saves are ignored. |
+| Chronicles | Model-written summaries (at most 2,400 bytes) derived from cached Wikipedia history (`history_source`, the last 12,000 characters of the History section) and campaign events; Wikipedia contributors, CC BY-SA 4.0, for the derived material. Stored per nation in the save's `chronicles` table and cleared with a new campaign. The long source never enters turn records. |
 | Country Wikidata identifiers | Resolved by P297 country code or explicit overrides, CC0. Separate from city identifiers. |
 
 Confirm exact source provenance before redistributing the supplied geography or presenting the database as a verified upstream snapshot. This is not required for local play.

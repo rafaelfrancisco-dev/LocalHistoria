@@ -154,8 +154,10 @@ Json::Value fetchHistory(const std::string &code, Transport get) {
         out["revision"] = article["latest"]["id"];
         out["excerpt"] = introduction(html);
         out["history_excerpt"] = recentHistory(html, 3000);
-        // Marks caches that hold the end of the history section rather than its opening.
-        out["history_scope"] = "recent";
+        // A longer tail that the model condenses into a nation's chronicle; never sent to prompts directly.
+        out["history_source"] = recentHistory(html, 12000);
+        // Marks caches that hold the end of the history section and the longer chronicle source.
+        out["history_scope"] = "recent_source";
         out["kind"] = "Bounded article introduction and the most recent part of its history section; formatting removed";
     } catch (const std::exception &e) {
         out["available"] = false;

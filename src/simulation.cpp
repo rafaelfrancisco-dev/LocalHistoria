@@ -31,6 +31,15 @@ Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t 
         brief[key] = text.substr(0, end) + "…";
     };
     cut("excerpt", excerpt);
+    // The long source only feeds chronicle summaries.
+    brief.removeMember("history_source");
+    // A chronicle already covers the history and the campaign so far, oldest first.
+    if (brief["chronicle"].isString()) {
+        brief.removeMember("history_excerpt");
+        if (history == 0) brief.removeMember("chronicle");
+        else cut("chronicle", history);
+        return brief;
+    }
     // The history excerpt ends with the most recent period, so keep its end.
     if (history == 0) brief.removeMember("history_excerpt");
     else if (brief["history_excerpt"].isString() && brief["history_excerpt"].asString().size() > history) {

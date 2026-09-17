@@ -13,6 +13,8 @@ Store::Store(const std::string &p, bool readOnly) {
     if (readOnly)
         return;
     sqlite3_busy_timeout(db, 3000);
+    // Model-written national histories, rewritten at most yearly; a cache outside turn transactions.
+    sql("CREATE TABLE IF NOT EXISTS chronicles(actor TEXT PRIMARY KEY,document TEXT);");
     sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots TEXT,PRIMARY KEY(campaign,month));");
     sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
@@ -80,7 +82,7 @@ void Store::create(const WorldState &w, bool replace) {
     sql("BEGIN IMMEDIATE");
     try {
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
-            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference;");
+            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
         execute("INSERT INTO campaign VALUES(1,?)", {dump(encode(w))});
         execute("INSERT INTO initial_world VALUES(1,?)", {dump(encode(w))});
         sql("COMMIT");
@@ -179,6 +181,28 @@ void Store::recordInference(const std::string &job,const Json::Value &records) {
 Json::Value Store::background(const std::string &c) {
     auto j = query("SELECT document FROM background WHERE code=?", {c});
     return j.empty() ? Json::Value() : parse(j[0]["document"].asString());
+}
+Json::Value Store::chronicle(const std::string &actor) {
+    auto j = query("SELECT document FROM chronicles WHERE actor=?", {actor});
+    return j.empty() ? Json::Value() : parse(j[0]["document"].asString());
+}
+void Store::saveChronicle(const std::string &actor, const Json::Value &document) {
+    execute("INSERT OR REPLACE INTO chronicles VALUES(?,?)", {actor, dump(document)});
+}
+Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
+    Json::Value out(Json::arrayValue);
+    // The latest 40, returned oldest first.
+    for (auto &row : query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e JOIN event_links l ON l.event=e.id "
+                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
+                           {actor, std::to_string(afterTurn)})) {
+        auto document = parse(row["document"].asString());
+        Json::Value event;
+        event["turn"] = row["turn"];
+        for (auto k : {"actor", "description", "effects"})
+            if (document.isMember(k)) event[k] = document[k];
+        out.append(event);
+    }
+    return out;
 }
 void Store::cache(const std::string &c, const Json::Value &j) {
     execute("INSERT OR REPLACE INTO background VALUES(?,?)", {c, dump(j)});

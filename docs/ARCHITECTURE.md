@@ -16,6 +16,8 @@ Contexts contain the actor's regions (compactly), occupations, entities, open co
 
 Reference refresh uses fixed Wikimedia hosts, 12-second request timeouts, code validation and country-level ISO property P297. France, Norway, Kosovo and Taiwan use explicit entity overrides. English article titles come from entity sitelinks, never city IDs. Missing/ambiguous entities stay unavailable. Current references are not historically date constrained. The full document used by a turn is persisted before future refreshes can affect it.
 
+Chronicles replace the raw history excerpt for nations. Before a month's decisions, the turn worker asks the model (no thinking, kind `chronicle`) to write a history of at most 250 words for each acting nation (player, reactive AI nations, independent national slots) whose chronicle is missing or at least 12 months old, at most three per month. A first chronicle condenses the cached `history_source`; later ones rewrite the previous chronicle with the nation's campaign events since, so the campaign's history builds up. Chronicles are saved outside the turn transaction as a cache, so a failed turn keeps them. A failed chronicle call never fails the turn: the nation keeps its earlier chronicle or the excerpt. Chronicles are untrusted reference material like excerpts, and the turn record freezes the chronicle each prompt used. Regional actors keep their excerpts.
+
 ## Extension points
 
 - Deeper warfare: army strength, supply or casualties can extend the entity model and the reach rules in `compileOperations`; keep them start-of-month and deterministic so replay stays exact.

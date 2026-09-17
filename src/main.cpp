@@ -66,6 +66,14 @@ class Worker {
     }
 };
 const size_t maxAiActors = 4;
+// Chronicles are rewritten at most once a year per nation, and only a few per month to bound turn time.
+const int chronicleInterval = 12;
+const unsigned maxChroniclesPerTurn = 3;
+static std::string campaignDate(int turn) {
+    static const char *months[] = {"January", "February", "March", "April", "May", "June",
+                                   "July", "August", "September", "October", "November", "December"};
+    return std::string(months[turn % 12]) + " " + std::to_string(2026 + turn / 12);
+}
 struct Mentions {
     std::set<std::string> actors, regions;
 };
@@ -163,7 +171,8 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
         for (auto &id : w.conflicts.getMemberNames())
             if (w.conflicts[id]["status"] == "open")
                 for (auto &party : w.conflicts[id]["actors"]) fighting = fighting || party == a;
-        input["reference_only"][a] = briefReference(c.reference, 600, grounded.contains(a) || fighting ? 600 : 0);
+        auto history = c.reference["chronicle"].isString() ? 1200 : 600;
+        input["reference_only"][a] = briefReference(c.reference, 600, grounded.contains(a) || fighting ? history : 0);
         for (auto k : {"occupied_by_others", "occupying"})
             for (auto &id : c.facts[k].getMemberNames()) relevant.insert(id);
     }
@@ -299,8 +308,8 @@ int main(int argc, char **argv) {
             for(auto &n:reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player}))wanted.push_back(n["b"].asString());
             for(auto &key:wanted) {
                 if(preparing.size()>=8)break;
-                // References cached before the history excerpt held recent history are fetched once more.
-                auto ready=[&](const Json::Value &r){return r.get("available",false).asBool()&&r.get("history_scope","")=="recent";};
+                // References cached before they held recent history and a chronicle source are fetched once more.
+                auto ready=[&](const Json::Value &r){return r.get("available",false).asBool()&&r.get("history_scope","")=="recent_source";};
                 if(key.empty()||preparing.contains(key)||ready(store.background(key))||retryAfter[key]>std::time(nullptr))continue;
                 auto cached=store.background(key);
                 if(cached["retrieved_at"].isIntegral()&&cached["retrieved_at"].asInt64()+3600>std::time(nullptr))continue;
@@ -554,14 +563,65 @@ int main(int argc, char **argv) {
                       }
                       refs[a]=store.background(a);independentContexts.push_back(c);
                   }
+                  // The long history source feeds chronicles only; frozen turns keep the bounded excerpts.
+                  for(auto &k:refs.getMemberNames())if(refs[k].isObject())refs[k].removeMember("history_source");
                   prepareReferences(w);
                   try {
                       worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts] {
                           bool committed = false;
                           try {
+                              auto turnContexts=contexts;auto turnIndependent=independentContexts;auto turnRefs=refs;
+                              // Acting nations ground their choices in a chronicle, written when missing or a year old.
+                              std::vector<std::string> nations{w.player};
+                              nations.insert(nations.end(),actors.begin(),actors.end());
+                              for(auto &slot:allocations)if(slot["region"]=="")nations.push_back(slot["actor"].asString());
+                              std::set<std::string> chronicled;unsigned written=0;
+                              for(auto &a:nations) {
+                                  if(!chronicled.insert(a).second)continue;
+                                  Json::Value current,input;
+                                  {
+                                      std::lock_guard l(mutex);
+                                      current=store.chronicle(a);
+                                      bool due=!current["summary"].isString()||w.turn-current["through_turn"].asInt()>=chronicleInterval;
+                                      if(due&&written<maxChroniclesPerTurn) {
+                                          auto &facts=turnContexts.at(a).facts;
+                                          for(auto k:{"actor_name","status","conflicts","commitments"})input["facts"][k]=facts[k];
+                                          input["facts"]["date"]=campaignDate(w.turn);
+                                          bool first=!current["summary"].isString();
+                                          if(!first)input["previous_chronicle"]=current["summary"];
+                                          input["campaign_events"]=store.chronicleEvents(a,first?0:current["through_turn"].asInt());
+                                          auto background=store.background(a);
+                                          // Later rewrites build on the previous chronicle, unless it was written without a source.
+                                          if((first||!current.get("with_source",false).asBool())&&background["history_source"].isString())
+                                              input["reference_only"]["history_source"]=background["history_source"];
+                                          input["reference_only"]["title"]=background["title"];
+                                      }
+                                  }
+                                  if(!input.isNull()) {
+                                      ++written;
+                                      try {
+                                          auto summary=provider.chronicle(input,a);
+                                          Json::Value document;document["summary"]=summary;document["through_turn"]=w.turn;
+                                          document["with_source"]=input["reference_only"].isMember("history_source")||current.get("with_source",false).asBool();
+                                          document["events_covered"]=input["campaign_events"].size();
+                                          std::lock_guard l(mutex);
+                                          document["source_revision"]=store.background(a)["revision"];
+                                          store.saveChronicle(a,document);store.recordInference(id,provider.takeAudit());
+                                          current=document;
+                                      } catch (const std::exception &) {
+                                          // Optional like narration: the nation keeps its earlier chronicle or the raw excerpt.
+                                          std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());
+                                      }
+                                  }
+                                  if(!current["summary"].isString())continue;
+                                  turnContexts.at(a).reference["chronicle"]=current["summary"];
+                                  turnRefs[a]["chronicle"]=current["summary"];
+                                  for(Json::ArrayIndex n=0;n<allocations.size();++n)
+                                      if(allocations[n]["actor"]==a&&allocations[n]["region"]=="")turnIndependent[n].reference["chronicle"]=current["summary"];
+                              }
                               std::map<std::string, TurnOrders> intentions{{w.player, orders}};
                               for (auto &a : actors) {
-                                  auto c = contexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=3;c.facts["player_actions"]=encode(orders);
+                                  auto c = turnContexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=3;c.facts["player_actions"]=encode(orders);
                                   intentions[a] = provider.decide(w, c).orders;
                                   // Flushed as it lands so the client can show it before the month is adjudicated.
                                   {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
@@ -569,12 +629,12 @@ int main(int argc, char **argv) {
                               Json::Value independent(Json::arrayValue);
                               for(Json::ArrayIndex n=0;n<allocations.size();++n){
                                   auto slot=allocations[n];auto a=slot["actor"].asString(),r=slot["region"].asString();
-                                  auto decision=provider.decide(w,independentContexts[n]);
+                                  auto decision=provider.decide(w,turnIndependent[n]);
                                   {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                                   for(auto &o:decision.orders){slot["action"]=o.text;if(!r.empty()){o.targets.push_back(r);slot["regional_actor"]=r;}slot["actor_action_index"]=Json::UInt(intentions[a].size());intentions[a].push_back(o);independent.append(slot);}
                               }
                               auto result = resolve(w);
-                              auto adjudication=adjudicationInput(result.state,contexts,intentions,adjacency);
+                              auto adjudication=adjudicationInput(result.state,turnContexts,intentions,adjacency);
                               // Attach trusted slot attribution by matching each appended action once.
                               for(auto &slot:independent){unsigned index=0;for(auto &i:adjudication["intentions"])if(i["actor"]==slot["actor"]&&index++==slot["actor_action_index"].asUInt()){i["initiative_type"]=slot["initiative_type"];if(slot.isMember("regional_actor"))i["regional_actor"]=slot["regional_actor"];break;}}
                               adjudication["facts"]["regional_politics"]=Json::objectValue;
@@ -583,7 +643,7 @@ int main(int argc, char **argv) {
                               {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                               result=applyDelta(result,delta,geography);
                               result=applyMonthlyStatus(result,delta,adjacency);
-                              auto frozen=refs;frozen["delta"]=encode(delta);
+                              auto frozen=turnRefs;frozen["delta"]=encode(delta);
                               frozen["contexts"]=adjudication;
                               Json::Value recorded;
                               for (auto &[a, o] : intentions)
