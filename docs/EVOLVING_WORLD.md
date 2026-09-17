@@ -1,6 +1,6 @@
 # Evolving campaign world
 
-Campaigns now persist actor identities, fixed territories with independent ownership/control, located entities, conflicts, commitments, and recorded model deltas. Existing development saves were removed with the application stopped and its exclusive save lock held. No migration is provided.
+Campaigns now persist actor identities, fixed territories with independent ownership/control, located entities, conflicts, commitments, and recorded model deltas. Political state and identity revisions are additive; existing saves and replay exports remain readable.
 
 ## Geography
 
@@ -16,14 +16,14 @@ Rebuild with `make geography-env` then `make data` when inputs change. For an ex
 
 There are no fixed action types, costs or national statistics. Each month the player writes up to eight free-text actions, each optionally pinned to up to four region/entity/actor targets (clicking a map region adds one to the selected action). A turn:
 
-1. Picks up to four AI nations to act: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes up to three free-text actions of its own, without thinking.
+1. Reserves two independent national actions and one independent regional action, then picks up to four reactive AI nations: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes up to three free-text actions of its own, without thinking.
 2. Runs `resolve`: advances the month and completes construction whose `completes_turn` has arrived, recording a factual completion event.
 3. Asks the model to adjudicate every action together (with thinking) and compiles its answer into a validated delta.
 4. Commits state, delta, events and inference records in one transaction, then requests narration.
 
 Actor IDs are independent of country codes. A landless actor keeps playing.
 
-`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, conflict and commitment. Deltas are what is validated, saved and replayed.
+`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, conflict, commitment and regional politics. Deltas are what is validated, saved and replayed.
 
 The model does not write deltas directly. Asking a 4B model for exact `before`/`after` objects produced invalid output in most scenarios. Instead it returns compact **operations nested in events**, and `compileOperations` in `src/world.cpp` derives the exact delta:
 
@@ -78,7 +78,7 @@ Narration runs after commit and cannot mutate state; failed narration leaves the
 
 ## Historical preparation and context
 
-“Prepare campaign references” explicitly caches Wikipedia references for the player, initial neighbors and involved conflict/commitment actors. The result reports coverage and failures. Individual actor refresh remains available. No reference downloads occur as an implicit consequence of advancing a turn. Fictional actors have no real Wikipedia identity.
+“Prepare campaign references” can explicitly refresh Wikipedia references for the player, initial neighbors and involved conflict/commitment actors. The result reports coverage and failures. Individual actor refresh remains available. Automatic background preparation also prioritizes upcoming independent actors at creation/resume and after commits. Monthly inference never waits for reference downloads; submission freezes available material. Fictional actors have no real Wikipedia identity.
 
 AI nation decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
 
@@ -135,3 +135,5 @@ Earlier runs showed the model's typical mistakes. It sometimes picks the wrong o
 
 ## Validation boundaries
  Structural validity is separate from whether a model outcome sensibly follows a player's action. There is no combat strength model: reach and tempo limit what force can do, but whether an attack succeeds is the model's judgment. A small model may misunderstand an action or narrate background events of little consequence. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
+
+See [living political world](../README.md#a-living-political-world) and [architecture](ARCHITECTURE.md#independent-politics-and-identity-persistence) for regional authorization, identity operations, deterministic flags and compatibility. The model timing results above predate the three additional independent monthly actions.

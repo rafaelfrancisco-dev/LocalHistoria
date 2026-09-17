@@ -110,10 +110,12 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     Json::Value input;
     input["facts"] = c.facts;
     input["reference_only"] = c.reference;
-    auto j = completion(
-        input,
-        parse(R"({"type":"object","additionalProperties":false,"required":["actions"],"properties":{"actions":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})"),
-        "You lead this nation in a fictional monthly strategy sandbox. Write up to three concise actions (one sentence each) "
+    auto schema = parse(R"({"type":"object","additionalProperties":false,"required":["actions"],"properties":{"actions":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})");
+    int count=c.facts.get("action_count",3).asInt();
+    schema["properties"]["actions"]["maxItems"]=count;
+    if(c.facts.get("initiative_type", "reactive")!="reactive")schema["properties"]["actions"]["minItems"]=count;
+    auto j = completion(input, schema,
+        "You represent the actor specified by initiative_type in this fictional monthly sandbox. Obey action_count. For independent_regional you represent only regional_identity, not its governing nation: propose civic initiatives, negotiations or autonomy demands; never national military orders, treaties or armed rebellion. For independent initiatives act from your own agenda, geography and history. Write concise actions (one sentence each) "
         "it plausibly takes this month, given its facts, commitments, conflicts and recent events. Each action must be achievable "
         "within a month or be a realistic step toward a longer goal. recent_events already happened: do not repeat them; "
         "follow up, change course or respond to new developments. Refer to nations and regions by name.", 0, 0.7);
@@ -121,6 +123,7 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         throw ValidationError("Invalid decision shape");
     auto o = parseOrders(j["actions"]);
     validate(w, c.actor, o);
+    if(o.size()>size_t(count)||(c.facts.get("initiative_type","reactive")!="reactive"&&o.size()!=size_t(count)))throw ValidationError("Decision action count mismatch");
     return {o, "Local model"};
 }
 std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e) { return narrate(e,{}); }
@@ -144,6 +147,15 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     std::vector<std::pair<std::string,std::string>> actions;
     for(auto &i:input["intentions"])actions.emplace_back(i["actor"].asString(),i["action"].asString());
     auto schema=operationSchema(w,input["facts"],actions);
+    for(Json::ArrayIndex n=0;n<input["intentions"].size();++n)if(input["intentions"][n]["regional_actor"].isString()) {
+        auto &item=schema["properties"]["events"]["prefixItems"][n];
+        Json::Value regionalOp;
+        for(const auto &op:item["properties"]["operations"]["items"]["anyOf"])if(op["properties"]["action"]["enum"][0]=="regional_initiative")regionalOp=op;
+        if(regionalOp.isNull())throw ValidationError("Regional context lacks its territory");
+        regionalOp["properties"]["region"]=Json::objectValue;regionalOp["properties"]["region"]["const"]=input["intentions"][n]["regional_actor"];
+        item["properties"]["operations"]["items"]=regionalOp;
+        item["properties"]["operations"]["minItems"]=1;item["properties"]["operations"]["maxItems"]=1;
+    }
     static const std::string instruction=
         "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's actions (intentions) against the facts. "
         "Return events: exactly one per action, in the given order, each starting with that action's text; describe what actually happened to that action this month. "
@@ -154,7 +166,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "Realism: a turn is one month. Judge what can realistically be achieved in a month given the facts, history and ongoing efforts. "
         "Large goals such as conquering a country, winning a war, founding a city or transforming an economy only advance by a step: describe partial progress, never complete them at once. "
         "Actions without map effects (reforms, investment, research, trade, speeches, negotiations) are valid events with no operations; describe their plausible effect. "
-        "Do not invent rules or deny actions for lack of permission; the game itself rejects map changes that are out of reach. "
+        "Regional intentions are attributed by regional_actor: only regional_initiative is permitted, recording agenda, relations and an optional pending demand. They cannot authorize national actions. National actors may explicitly respond_regional with demand_id and accepted/rejected; pending demands never imply consent. Independence requires explicit national agreement or an established relevant campaign conflict; never autonomous armed rebellion. change_identity requires actor, name, change_type (rename or refounding), reason, and flag_design. Only substantive national renames or explicit constitutional/regime refoundings qualify; elections, border changes and alignments retain flags. create_actor also proposes flag_design (layout horizontal/vertical/cross/diagonal, three hex palette colors, emblem none/circle/diamond, explanation). Use conservative campaign-grounded symbolism, never invented historical claims. "
         "Operations: build (starts constructing a city, port, base, army, fleet or event_site in a region the actor controls; it takes months to finish), "
         "occupy (military control of a bordering region, owner unchanged), restore_control, transfer_territory (the owner cedes a region, or an occupier annexes a region it held before this month), "
         "move_entity (an army moves one neighboring region, a fleet up to 1,500 km), set_entity_status (never to finish construction: the game completes it at completes_turn), create_actor (a new state; the owner transfers it a region in the same event), "
@@ -168,6 +180,13 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     } catch (const ValidationError &) {
         // A reasoning run can exhaust its budget before answering; retry once without thinking.
         response = completion(input, schema, instruction, 0, 0.6);
+    }
+    if(!response["events"].isArray()||response["events"].size()!=actions.size())throw ValidationError("Every intention requires an outcome");
+    for(Json::ArrayIndex i=0;i<response["events"].size();++i){
+        auto &event=response["events"][i];auto &intent=input["intentions"][i];
+        if(event["actor"]!=intent["actor"]||(event.isMember("action")&&event["action"]!=intent["action"]))throw ValidationError("Outcome attribution mismatch");
+        if(intent["regional_actor"].isString()&&(event["operations"].size()!=1||event["operations"][0]["action"]!="regional_initiative"||event["operations"][0]["region"]!=intent["regional_actor"]))throw ValidationError("Regional outcome requires its bounded agenda operation");
+        for(auto k:{"initiative_type","regional_actor"}){event.removeMember(k);if(intent.isMember(k))event[k]=intent[k];}
     }
     return compileOperations(w, response, adjacency);
 }

@@ -13,6 +13,7 @@ Store::Store(const std::string &p, bool readOnly) {
     if (readOnly)
         return;
     sqlite3_busy_timeout(db, 3000);
+    sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots TEXT,PRIMARY KEY(campaign,month));");
     sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
         "INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs(id "
@@ -79,7 +80,7 @@ void Store::create(const WorldState &w, bool replace) {
     sql("BEGIN IMMEDIATE");
     try {
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
-            "DELETE FROM initial_world; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference;");
+            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference;");
         execute("INSERT INTO campaign VALUES(1,?)", {dump(encode(w))});
         execute("INSERT INTO initial_world VALUES(1,?)", {dump(encode(w))});
         sql("COMMIT");
@@ -158,10 +159,12 @@ Json::Value Store::journal() {
               "turns t LEFT JOIN narration n ON t.job=n.job ORDER BY t.turn DESC LIMIT 24");
     for (auto &x : j)
         x["events"] = parse(x["events"].asString());
+    for(auto &month:j){month["structured_events"]=Json::arrayValue;for(auto &row:query("SELECT document FROM events WHERE turn=? ORDER BY rowid",{month["turn"].asString()}))month["structured_events"].append(parse(row["document"].asString()));}
     return j;
 }
 CountryContext Store::campaignContext(const WorldState &w,const std::string &actor) {
     auto c=context(w,actor,journal(),background(actor));
+    c.facts["regional_politics"]=Json::objectValue;for(auto &r:w.regionalPolitics.getMemberNames())if(w.territories[r]["controller"]==actor)c.facts["regional_politics"][r]=w.regionalPolitics[r];
     Json::Value regions(Json::arrayValue),entities(Json::arrayValue);
     for(auto &id:c.facts["territories"].getMemberNames())regions.append(id);
     for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);

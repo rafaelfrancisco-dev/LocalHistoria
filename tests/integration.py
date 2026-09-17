@@ -27,10 +27,16 @@ class Mock(http.server.BaseHTTPRequestHandler):
     result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'operations':[{'action':'build','kind':'port','name':'Fixture port','actor':'PT','region':rid},{'action':'transfer_territory','region':rid,'to':'ES'}]}]}
    elif intentions:
     result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
+   existing=result['events'];result['events']=[next((e for e in existing if e['actor']==i['actor'] and (e['description']==i['action'] or fixture)),{'actor':i['actor'],'blocked_by':'none','description':i['action'],'causes':[],'operations':[]}) for i in value['intentions']]
+   for i,e in zip(value['intentions'],result['events']):
+    if i.get('regional_actor'):
+     e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
+    if 'identity-fixture' in i['action']:
+     e['operations']=[{'action':'change_identity','actor':i['actor'],'name':'Atlantic Republic','change_type':'rename' if 'refound' not in i['action'] else 'refounding','reason':'Explicit constitutional settlement','flag_design':{'layout':'horizontal','palette':['#123456','#abcdef','#987654'],'emblem':'circle','explanation':'Shared civic future'}}]
   elif 'authoritative_events' in raw:
    result={'text':'A quiet month of fictional administration.'}
   else:
-   result={'actions':[]}
+   value=json.loads(raw);facts=value.get('facts',{});result={'actions':[{'text':'Discuss a local civic initiative' if facts.get('initiative_type')=='independent_regional' else 'Discuss a national civic initiative'}] if facts.get('initiative_type','').startswith('independent_') else []}
   content=json.dumps(result)
   response=json.dumps({'choices':[{'message':{'content':content}}]}).encode()
   try:self.send_response(200);self.end_headers();self.wfile.write(response)
@@ -38,7 +44,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
 class Server:
  def __init__(self,folder,endpoint=None,timeout=.25):
   self.p=port();self.base=f'http://127.0.0.1:{self.p}';self.config=folder/'config.json';self.save=folder/'save.sqlite';self.log=open(folder/'server.log','a')
-  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout}))
+  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'reference_network':False}))
   self.endpoint=endpoint
  def start(self):
   args=[str(ROOT/'build/localhistoria'),str(self.config)]
@@ -95,15 +101,29 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==1
-   events=[e['text'] for e in s.get('campaign')['journal'][0]['events']];assert len(events)==2 and all(e.startswith(o['text']) for e,o in zip(events,payload['orders'])),events
+   events=[e['text'] for e in s.get('campaign')['journal'][0]['events']];assert len(events)==5 and all(e.startswith(o['text']) for e,o in zip(events[:2],payload['orders'])),events
    s.get('turns',order(w,'stale-turn',[]),409)
    j=s.get('turns',order(current,'second-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==2
-   with sqlite3.connect(s.save) as db:db.execute('INSERT INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
+   with sqlite3.connect(s.save) as db:db.execute('INSERT OR REPLACE INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
    j=s.get('turns',order(current,'third-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
    replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)
+   legacy_initial=json.loads(json.dumps(export['initial_state']))
+   for key in ('regional_politics','activity'):legacy_initial.pop(key,None)
+   legacy_state=json.loads(json.dumps(legacy_initial));legacy_state['turn']=1
+   legacy={'initial_state':legacy_initial,'campaign':legacy_state,'geography':{},'turns':[{'state':legacy_state,'events':[],'intentions':{},'reference':{'delta':{'changes':[],'events':[]}}}]}
+   legacyfile=folder/'legacy-replay.json';legacyfile.write_text(json.dumps(legacy));subprocess.run([str(ROOT/'build/replay_verify'),str(legacyfile)],check=True)
+   with sqlite3.connect(s.save) as db:
+    allocations=json.loads(db.execute('SELECT slots FROM monthly_allocations WHERE month=1').fetchone()[0])
+   assert allocations==export['turns'][0]['reference']['allocations']
+   for turn in export['turns']:
+    independent=[e for e in turn['reference']['delta']['events'] if e.get('initiative_type','').startswith('independent_')]
+    assert len(independent)==3 and sum('regional_actor' in e for e in independent)==1
+   for body in Mock.requests:
+    inp=json.loads(body['messages'][1]['content']);facts=inp.get('facts',{})
+    if facts.get('initiative_type','').startswith('independent_'):assert 'player_actions' not in facts and 'intentions' not in inp
    export['turns'][0]['state']['turn']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],capture_output=True).returncode==1
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
@@ -134,6 +154,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
   try:
    Mock.mode='valid'
    subprocess.run(['node','tests/browser.mjs'],cwd=ROOT,env=dict(os.environ,LOCALHISTORIA_TEST_URL=b.base),check=True)
+   browser_export=folder/'browser-replay.json';browser_export.write_text(json.dumps(b.get('replay')));subprocess.run([str(ROOT/'build/replay_verify'),str(browser_export)],check=True)
    saved=b.get('campaign')['state'];b.stop();b.start();assert b.get('campaign')['state']==saved
    print('Browser campaign also survived server restart')
   finally:b.stop()

@@ -44,7 +44,7 @@ If the model is unreachable, times out, or returns an illegal or malformed resul
 
 ## Optional Wikipedia reference
 
-Open a country's **Cities & reference sources** section and explicitly choose **Download / refresh Wikipedia reference**. This is the only gameplay feature that contacts external services. It resolves a country entity by ISO code (with four explicit overrides), follows its English Wikipedia sitelink, and caches a bounded excerpt with attribution, article URL, revision, language and retrieval time. Missing/ambiguous mappings do not block play. A failed refresh preserves an existing valid cache. Cached references are copied into each turn's replay record; later refreshes do not rewrite past turns.
+Campaign references prepare automatically at creation/resume and ahead of upcoming actors, on a separate bounded background queue. Turns use a frozen snapshot of available cache and never wait for downloads. Country references use ISO identity; regional references require a unique exact English label, country affiliation and administrative parent in Wikidata. Missing or ambiguous references permit conservative actions without invented history. Failed refreshes preserve valid cache. You can also explicitly refresh a country's reference from its inspector. Fictional countries never receive fabricated Wikipedia identities. Set `"reference_network": false` in the server JSON config to disable Wikimedia requests while continuing to use cached references.
 
 Current articles may contain events after January 2026. This is a fictional sandbox, not a historically constrained simulation. The supplied geography's exact upstream revision and license were not included; see [data provenance](docs/DATA.md) before redistributing it.
 
@@ -71,3 +71,11 @@ Integration tests create disposable temporary saves and never replace your activ
 - `saves/`: ignored campaign files; `config/`: example `port`/`save_path`/`timeout_seconds` config file
 
 Single-user, loopback-only scaffold. Fine-tuning, bundled models, multiplayer and production packaging are outside its scope.
+
+## A living political world
+
+Each month reserves three independent actions alongside reactions to your orders: two different non-player nations and one region (including regions of your own country). Country-balanced regional selection and two-month cooldown preferences reduce repetition. Empty orders still produce independent activity. Scarce candidate pools redistribute available slots, never exceeding three.
+
+Regions retain agendas, relations and pending demands across control changes. See them in the governing country's inspector. Only an explicit national response can accept or reject a demand; a region cannot command national armies, sign treaties or rename its country. Independence requires national agreement or an established relevant conflict and validated land allocation. Autonomous armed rebellion is excluded.
+
+New states, substantive renames and explicit constitutional/regime refoundings receive campaign flags. The model proposes a small geometric design; C++ renders allowlisted SVG and uses a deterministic fallback for invalid designs. Elections and ordinary political changes keep existing flags. Names update throughout the interface, actor IDs remain permanent, and the journal retains historical flag revisions.

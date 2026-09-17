@@ -1,4 +1,5 @@
 #include "localhistoria/world.h"
+#include "localhistoria/politics.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -51,12 +52,32 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         if(kind=="entity")collection=&w.entities;
         if(kind=="conflict")collection=&w.conflicts;
         if(kind=="commitment")collection=&w.commitments;
+        if(kind=="regional")collection=&w.regionalPolitics;
         require(collection,"Unknown change kind");
         require((*collection)[id]==c["before"],"Change precondition failed");
         require(c["after"].isObject(),"Deletion is not allowed; update status instead");
         if(kind=="actor") {
-            require(c["before"].isNull(),"Actor identity is immutable");
+            if(!c["before"].isNull()) {
+                auto expected=c["before"];for(auto k:{"name","identity_revisions","flag_revision"}){if(c["after"].isMember(k))expected[k]=c["after"][k];else expected.removeMember(k);}
+                require(expected==c["after"],"Identity change cannot alter permanent affiliation");
+                auto &old=c["before"]["identity_revisions"];auto &revs=c["after"]["identity_revisions"];
+                bool correction=old==revs&&c["before"]["flag_revision"]==c["after"]["flag_revision"]&&identityCorrection(c["before"]["name"].asString(),c["after"]["name"].asString());
+                unsigned prior=old.isArray()?old.size():1;
+                require(correction||(revs.isArray()&&revs.size()==prior+1),"Identity revision required");
+                if(old.isArray())for(unsigned i=0;i<old.size();++i)require(old[i]==revs[i],"Historical revision is immutable");
+            }
+            auto &revs=c["after"]["identity_revisions"];
+            if(revs.isArray()&&!revs.empty()&&revs!=c["before"]["identity_revisions"]) {
+                auto &last=revs[revs.size()-1];
+                require(c["after"]["flag_revision"].isUInt()&&c["after"]["flag_revision"].asUInt()==revs.size()-1&&last["origin_event"]==c["event"]&&last["name"]==c["after"]["name"]&&last["renderer_version"]==1&&last["svg"]==renderFlag(last["specification"]),"Invalid identity flag revision");
+                if(revs.size()>1&&revs[revs.size()-2]["svg"].isString())require(last["svg"]!=revs[revs.size()-2]["svg"],"Replacement flag must differ");
+            }
             require(c["after"]["name"].isString()&&!c["after"]["name"].asString().empty()&&c["after"]["name"].asString().size()<=120&&c["after"]["color"].isString()&&std::regex_match(c["after"]["color"].asString(),std::regex("#[0-9a-fA-F]{6}")),"Invalid actor identity");
+        }
+        if(kind=="regional") {
+            auto &p=c["after"];
+            require(w.territories.isMember(id)&&w.territories[id]["kind"]!="residual"&&p["agenda"].isString()&&p["agenda"].asString().size()<=500&&p["relations"].isString()&&(p["relations"]=="neutral"||p["relations"]=="cooperative"||p["relations"]=="strained")&&p["demands"].isArray()&&p["demands"].size()<=8&&p["supporting_events"].isArray()&&p["supporting_events"].size()<=12,"Invalid regional politics");
+            for(auto &demand:p["demands"])require(demand["id"].isString()&&demand["text"].isString()&&demand["text"].asString().size()<=500&&(demand["status"]=="pending"||demand["status"]=="accepted"||demand["status"]=="rejected"),"Invalid regional demand");
         }
         if(kind=="territory") {
             require(!c["before"].isNull(),"Territory geometry is fixed");
@@ -87,7 +108,12 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         for(auto &id:e["actors"])require(id.isString()&&w.hasActor(id.asString()),"Unknown event related actor");
         for(auto &id:e["regions"])require(id.isString()&&w.territories.isMember(id.asString()),"Unknown event region");
         for(auto &id:e["entities"])require(id.isString()&&w.entities.isMember(id.asString()),"Unknown event entity");
-        r.events.push_back({e["actor"].asString(),"development",e["id"].asString(),e["text"].asString()});
+        if(e["initiative_type"].isString()&&e["initiative_type"].asString().rfind("independent_",0)==0) {
+            auto key=e.get("regional_actor", "").asString();if(key.empty())key=e["actor"].asString();
+            require(!e.isMember("regional_actor")||w.territories.isMember(key),"Unknown regional attribution");
+            w.activity[key]=w.turn;w.activity[e["actor"].asString()]=w.turn;
+        }
+        r.events.push_back({e["actor"].asString(),e.get("initiative_type","development").asString(),e["id"].asString(),e["text"].asString()});
     }
     for(auto kind:{"conflicts","commitments"}) {
         auto collection=kind==std::string("conflicts")?w.conflicts:w.commitments;
@@ -147,7 +173,12 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     };
     Json::Value p;
     auto parties=parse(R"({"type":"array","minItems":2,"maxItems":6})");parties["items"]=actorId;
-    p=Json::objectValue;p["actor_id"]=actorId;p["name"]=string(120);p["color"]=parse(R"({"type":"string","pattern":"^#[0-9a-fA-F]{6}$"})");op("create_actor",p);
+    p=Json::objectValue;p["actor_id"]=actorId;p["name"]=string(120);p["color"]=parse(R"({"type":"string","pattern":"^#[0-9a-fA-F]{6}$"})");p["flag_design"]=flagDesignSchema();op("create_actor",p);
+    p=Json::objectValue;p["actor"]=actor;p["name"]=string(120);p["reason"]=string(500);p["change_type"]=parse(R"({"type":"string","enum":["rename","refounding","correction"]})");p["flag_design"]=flagDesignSchema();op("change_identity",p);
+    if(!regions.empty()) {
+        p=Json::objectValue;p["region"]=region;p["agenda"]=string(500);p["relations"]=parse(R"({"type":"string","enum":["neutral","cooperative","strained"]})");p["demand"]=parse(R"({"type":"string","maxLength":500})");op("regional_initiative",p);
+        p=Json::objectValue;p["region"]=region;p["demand_id"]=string(100);p["response"]=parse(R"({"type":"string","enum":["accepted","rejected"]})");op("respond_regional",p);
+    }
     p=Json::objectValue;p["actors"]=parties;p["text"]=string(500);op("open_conflict",p);
     p=Json::objectValue;p["actors"]=parties;p["text"]=string(500);op("add_commitment",p);
     if(!regions.empty()) {
@@ -241,6 +272,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         require(e.isObject()&&e["description"].isString()&&e["actor"].isString()&&e["blocked_by"].isString()&&e["background"].isBool()&&e["causes"].isArray()&&e["operations"].isArray()&&e["operations"].size()<=8,"Invalid operation event");
         auto ev=e["actor"].asString();require(w.hasActor(ev),"Unknown event actor");
         if(e["background"].asBool()&&++background>3)continue;
+        auto regional=e.get("regional_actor", "").asString();
+        require(regional.empty()||(w.territories.isMember(regional)&&w.territories[regional]["controller"]==ev&&w.territories[regional]["kind"]!="residual"),"Invalid regional authority");
         auto text=e["description"].asString();
         auto base="t"+std::to_string(w.turn)+"-"+slug(text,32);auto id=base;
         for(int n=2;!eventIds.insert(id).second;++n)id=base+"-"+std::to_string(n);
@@ -269,13 +302,45 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 if(!reaches(a,r))throw Infeasible("no border, army or fleet within reach of "+w.territories[r]["name"].asString());
                 taken[a].insert(r);if(taken[a].size()>2)throw Infeasible("at most two regions can change hands by force in one month");
             };
-            if(name=="create_actor") {
+            if(!regional.empty()&&name!="regional_initiative")throw Infeasible("regional initiatives require an explicit national response for national operations");
+            if(name=="regional_initiative"||name=="respond_regional") {
+                auto r=region();if(w.territories[r]["kind"]=="residual")throw Infeasible("residual geometry has no political actor");
+                auto p=current("regional",w.regionalPolitics,r);if(p.isNull())p=regionalState(w,r);
+                if(name=="regional_initiative") {
+                    if(regional!=r)throw Infeasible("only the selected regional actor can set its agenda");
+                    p["agenda"]=str("agenda");p["relations"]=str("relations");
+                    if(o["demand"].isString()&&!o["demand"].asString().empty()) {
+                        if(p["demands"].size()>=8){for(Json::ArrayIndex n=0;n<p["demands"].size();++n)if(p["demands"][n]["status"]!="pending"){p["demands"].removeIndex(n,nullptr);break;}}
+                        if(p["demands"].size()>=8)throw Infeasible("regional pending demand capacity reached");
+                        Json::Value demand;demand["id"]=id;demand["text"]=o["demand"];demand["status"]="pending";demand["authority_at_creation"]=ev;p["demands"].append(demand);
+                    }
+                } else {
+                    if(!regional.empty()||w.territories[r]["controller"]!=ev)throw Infeasible("only current national authority can respond");
+                    bool found=false;for(auto &d:p["demands"])if(d["id"]==str("demand_id")&&d["status"]=="pending"){auto response=str("response");if(response!="accepted"&&response!="rejected")throw Infeasible("invalid national response");d["status"]=response;d["response_event"]=id;d["responding_authority"]=ev;found=true;}
+                    if(!found)throw Infeasible("no pending demand to answer");
+                }
+                p["supporting_events"].append(id);if(p["supporting_events"].size()>12)p["supporting_events"].removeIndex(0,nullptr);
+                touch("regional",r,w.regionalPolitics[r],id,why)=p;regions.insert(r);
+            } else if(name=="change_identity") {
+                auto a=party("actor");if(a!=ev)throw Infeasible("only a national actor can change its own identity");
+                auto v=current("actor",w.actors,a);auto type=str("change_type");auto newName=str("name");auto reason=str("reason");
+                if(type!="rename"&&type!="refounding"&&type!="correction")throw Infeasible("unknown identity change");
+                if(reason.size()>500||newName.size()>120)throw Infeasible("identity exceeds bounds");
+                if(type=="correction") { if(!identityCorrection(newName,v["name"].asString()))throw Infeasible("substantive rename requires a new identity"); }
+                if(type=="rename"&&identityCorrection(newName,v["name"].asString()))type="correction";
+                if(index.contains("actor:"+a))throw Infeasible("only one identity change per actor per month");
+                if(type=="correction"){v["name"]=newName;touch("actor",a,w.actors[a],id,reason)=v;actors.insert(a);continue;}
+                // Capture original static identity before updating its name.
+                if(!v["identity_revisions"].isArray()){Json::Value old;if(!std::regex_match(a,std::regex("[A-Z]{2}")))old=makeFlag(Json::nullValue,w.campaignId+a,"legacy");else {old["static_flag"]=v.get("static_flag",a);old["origin_event"]="initial";}old["name"]=v["name"];v["identity_revisions"].append(old);}
+                v["name"]=newName;reviseIdentity(v,o["flag_design"],w.campaignId+a+id,id);
+                touch("actor",a,w.actors[a],id,reason)=v;actors.insert(a);
+            } else if(name=="create_actor") {
                 if(++newActors>1)throw Infeasible("only one new state can emerge per month");
                 auto requested=str("actor_id"),a=slug(str("name"),30);
                 for(int n=2;w.hasActor(a)||index.contains("actor:"+a);++n)a=slug(str("name"),30)+"-"+std::to_string(n);
                 if(!w.hasActor(requested))aliases[requested]=a;
                 aliases["~"+normal(str("name"))]=a;aliases["~"+normal(requested)]=a;
-                Json::Value identity;identity["name"]=str("name");identity["color"]=str("color");
+                Json::Value identity;identity["name"]=str("name");identity["color"]=str("color");reviseIdentity(identity,o["flag_design"],w.campaignId+a+id,id);
                 touch("actor",a,Json::nullValue,id,why)=identity;actors.insert(a);createdHere.insert(a);
             } else if(name=="open_conflict"||name=="add_commitment") {
                 if(!o["actors"].isArray()||o["actors"].size()<2)throw Infeasible("needs two parties");
@@ -329,6 +394,13 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                     auto to=party("to");
                     // Owners may cede; others must already have held the region before this month to annex it.
                     bool cession=ev==owner,annexation=controller==ev&&(to==ev||createdHere.contains(to)),returned=controller==ev&&to==owner;
+                    if(createdHere.contains(to)&&!cession){
+                        bool established=false;for(auto &conflict:w.conflicts)if(conflict["status"]=="open"){
+                            auto &parties=conflict["actors"];bool acting=std::find(parties.begin(),parties.end(),Json::Value(ev))!=parties.end();bool governing=std::find(parties.begin(),parties.end(),Json::Value(owner))!=parties.end();
+                            established=established||(acting&&governing);
+                        }
+                        if(!established)throw Infeasible("independence needs national agreement or an established relevant conflict");
+                    }
                     if(!cession&&!annexation&&!returned)throw Infeasible(controller==ev?"cannot hand over land it does not own":"must occupy "+w.territories[r]["name"].asString()+" for at least a month before annexing it");
                     t["owner"]=to;t["controller"]=to;
                 } else if(name=="occupy") {
@@ -350,17 +422,28 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             actors.clear();regions.clear();entities.clear();
             blocked="infeasible";text="Could not happen this month ("+std::string(x.what())+"): "+text;
         }
+        if(!regional.empty()) {
+            regions.insert(regional);
+            // Even narrative-only and failed attempts leave a persistent regional history.
+            auto p=current("regional",w.regionalPolitics,regional);if(p.isNull())p=regionalState(w,regional);
+            if(std::find(p["supporting_events"].begin(),p["supporting_events"].end(),Json::Value(id))==p["supporting_events"].end())p["supporting_events"].append(id);
+            if(p["supporting_events"].size()>12)p["supporting_events"].removeIndex(0,nullptr);
+            touch("regional",regional,w.regionalPolitics[regional],id,"Regional political history")=p;
+        }
         actors.insert(ev);
         if(!breaches.empty()&&blocked=="none")text+=" This breached the commitment: "+w.commitments[breaches]["text"].asString();
         Json::Value event;event["id"]=id;event["actor"]=ev;if(blocked!="none")event["blocked_by"]=blocked;if(!breaches.empty()&&blocked=="none")event["breaches"]=breaches;event["text"]=text.substr(0,2000);event["background"]=e["background"];event["causes"]=e["causes"];
         for(auto [key,values]:std::initializer_list<std::pair<const char*,std::set<std::string>*>>{{"actors",&actors},{"regions",&regions},{"entities",&entities}}) {
             event[key]=Json::arrayValue;for(auto &v:*values)event[key].append(v);
         }
+        for(auto k:{"initiative_type","regional_actor"})if(e.isMember(k))event[k]=e[k];
+        event["identity_changes"]=Json::arrayValue;
+        for(const auto &c:pending)if(c.kind=="actor"&&c.event==id&&c.after["flag_revision"].isUInt()&&c.after["flag_revision"]!=c.before["flag_revision"]){Json::Value link;link["actor"]=c.id;link["revision"]=c.after["flag_revision"];event["identity_changes"].append(link);}
         events.append(event);
     }
     WorldDelta d;d.events=events;
     // Actors first so later territory and entity changes may reference them.
-    for(auto kind:{"actor","territory","entity","conflict","commitment"})
+    for(auto kind:{"actor","territory","entity","conflict","commitment","regional"})
         for(auto &c:pending)if(c.kind==kind&&c.before!=c.after) {
             Json::Value j;j["kind"]=c.kind;j["id"]=c.id;j["before"]=c.before;j["after"]=c.after;j["event"]=c.event;j["rationale"]=c.rationale;d.changes.append(j);
         }

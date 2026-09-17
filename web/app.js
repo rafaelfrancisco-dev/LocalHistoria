@@ -46,9 +46,13 @@ function month(turn) {
     timeZone: "UTC",
   });
 }
-function flag(img, code) {
+function flag(img, code, revision = state?.actors?.[code]?.flag_revision) {
   img.hidden = false;
-  img.src = "/flags/" + code.toLowerCase() + ".svg";
+  const actor = state?.actors?.[code];
+  const generated = revision !== undefined || (actor && !/^[A-Z]{2}$/.test(code));
+  img.src = generated
+    ? `/api/v1/flag?campaign=${encodeURIComponent(state.campaign_id)}&actor=${encodeURIComponent(code)}&revision=${revision ?? "fallback"}`
+    : "/flags/" + code.toLowerCase() + ".svg";
   img.onerror = () => {
     img.hidden = true;
   };
@@ -126,6 +130,16 @@ function renderStats() {
   }
   $("country-description").textContent =
     selected === state.player ? "Your nation" : "Another nation of this world";
+  let politics = $("regional-politics");
+  if (!politics) { politics = document.createElement("section"); politics.id = "regional-politics"; $("stats").after(politics); }
+  politics.replaceChildren();
+  for (const [id, p] of Object.entries(state.regional_politics || {})) {
+    if (state.territories[id]?.controller !== selected) continue;
+    const h = document.createElement("h3"); h.textContent = state.territories[id].name;
+    const agenda = document.createElement("p"); agenda.textContent = `${p.agenda} · Relations: ${p.relations}`;
+    politics.append(h, agenda);
+    for (const d of p.demands) { const line = document.createElement("p"); line.textContent = `${d.status}: ${d.text} (${d.id})`; politics.append(line); }
+  }
 }
 async function select(code, zoom = false) {
   selected = code;
@@ -138,7 +152,7 @@ async function select(code, zoom = false) {
     map.fitBounds(selectedLayer.getBounds(), { maxZoom: 5 });
   const detail = await api("country?code=" + encodeURIComponent(code));
   if (selected !== code) return;
-  $("country-name").textContent = detail.name;
+  $("country-name").textContent = state?.actors?.[code]?.name || detail.name;
   flag($("flag"), code);
   $("country-description").textContent =
     "Sandbox actor";
@@ -175,9 +189,7 @@ async function load() {
   const j = await api("campaign");
   state = j.state;
   if (state) {
-    for (const [code, actor] of Object.entries(state.actors || {}))
-      if (!countries.some(c => c.code === code)) countries.push({code, name:actor.name});
-    await refreshCampaignMap();
+    countries = Object.entries(state.actors || {}).map(([code, actor]) => ({code, name:actor.name})).sort((a,b) => a.name.localeCompare(b.name));
   }
   $("llama-endpoint").value = j.llama_endpoint;
   $("date").textContent = month(state?.turn || 0);
@@ -190,10 +202,12 @@ async function load() {
     $("player-label").textContent =
       "Playing as " + (countries.find((c) => c.code === state.player)?.name || state.player);
     renderActions();
+    const expanded = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details")?.open).map(e => e.dataset.turn));
     $("journal").replaceChildren();
     for (const entry of j.journal) {
       const box = document.createElement("article");
       box.className = "entry";
+      box.dataset.turn = String(entry.turn);
       const h = document.createElement("h3");
       h.textContent = month(entry.turn - 1);
       const p = document.createElement("p");
@@ -204,12 +218,19 @@ async function load() {
         : "AI narration · authoritative events below";
       box.append(h, label, p);
       const details = document.createElement("details");
+      details.open = expanded.has(String(entry.turn));
       const summary = document.createElement("summary");
       summary.textContent = "Authoritative events";
       details.append(summary);
       for (const event of entry.events) {
         const line = document.createElement("p");
-        line.textContent = event.text;
+        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : "") + event.text;
+        const structured = entry.structured_events?.find(e => e.id === event.target);
+        if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
+        for (const change of structured?.identity_changes || []) {
+          const img = document.createElement("img"); img.width = 48; img.alt = "Flag adopted in this event";
+          flag(img, change.actor, change.revision); line.append(img);
+        }
         details.append(line);
       }
       box.append(details);
@@ -221,6 +242,8 @@ async function load() {
   }
   list();
   restyleMap();
+  if (selected && state?.actors?.[selected]) { $("country-name").textContent = state.actors[selected].name; flag($("flag"), selected); }
+  if (state) await refreshCampaignMap();
   return j;
 }
 function setBusy(value) {
@@ -413,7 +436,7 @@ async function refreshCampaignMap() {
     const p=f.properties,label=document.createElement("span");
     label.textContent=`${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
     l.bindTooltip(label);
-    l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.owner) await select(p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
+    l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.controller || p.owner) await select(p.controller || p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
   }}).addTo(map);
   mapControls.addOverlay(layers,"Territories and occupation");
   await refreshEntities();
@@ -427,6 +450,8 @@ prepare.onclick=protect(async()=>{
   } finally {prepare.disabled=false;}
 });
 protect(async () => {
+  setBusy(true);
+  try {
   countries = await api("countries");
   list();
   const existing = await api("campaign");
@@ -478,4 +503,5 @@ protect(async () => {
       setBusy(false);
     }
   }
+  } finally { setBusy(false); }
 })();

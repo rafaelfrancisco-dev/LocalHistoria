@@ -16,16 +16,16 @@ int main(int argc, char **argv) {
         int turns = 0;
         for (const auto &turn : input["turns"]) {
             for (auto &actor : turn["intentions"].getMemberNames())
-                parseOrders(turn["intentions"][actor]);
+                for(const auto &action:turn["intentions"][actor]) {Json::Value single(Json::arrayValue);single.append(action);parseOrders(single);}
             auto result = resolve(world);
             if(turn["reference"].isMember("delta"))result=applyDelta(result,parseDelta(turn["reference"]["delta"]),input["geography"]);
-            if (encode(result.state) != turn["state"] || encode(result.events) != turn["events"])
+            if (encode(result.state) != encode(decode(turn["state"])) || encode(result.events) != turn["events"])
                 throw std::runtime_error("Replay mismatch at turn " +
                                          std::to_string(result.state.turn));
             world = result.state;
             turns++;
         }
-        if (encode(world) != input["campaign"])
+        if (encode(world) != encode(decode(input["campaign"])))
             throw std::runtime_error("Final campaign mismatch");
         std::cout << turns << " turns replayed identically without inference\n";
         return 0;

@@ -1,4 +1,7 @@
 #include "localhistoria/history.h"
+#include "localhistoria/politics.h"
+#include <ctime>
+#include <regex>
 #include "localhistoria/providers.h"
 #include "localhistoria/store.h"
 #include <condition_variable>
@@ -20,11 +23,12 @@ class Worker {
     std::condition_variable cv;
     std::queue<std::function<void()>> tasks;
     bool stop = false;
+    bool drain;
     std::thread thread;
 
   public:
-    Worker()
-        : thread([this] {
+    explicit Worker(bool drain = true)
+        : drain(drain), thread([this] {
               for (;;) {
                   std::function<void()> f;
                   {
@@ -42,17 +46,19 @@ class Worker {
                   }
               }
           }) {}
-    ~Worker() {
+    ~Worker() { finish(); }
+    void finish() {
         {
             std::lock_guard l(m);
             stop = true;
+            if (!drain) tasks = {};
         }
         cv.notify_all();
-        thread.join();
+        if (thread.joinable()) thread.join();
     }
     void add(std::function<void()> f) {
         std::lock_guard l(m);
-        if (tasks.size() >= 8)
+        if (stop || tasks.size() >= 8)
             throw ValidationError("Work queue full; retry later");
         tasks.push(std::move(f));
         cv.notify_one();
@@ -240,9 +246,45 @@ int main(int argc, char **argv) {
             store.setSetting("llama_endpoint", endpoint);
         std::mutex mutex;
         LocalProvider provider(endpoint, timeoutSeconds);
+        const bool referenceNetwork=config.get("reference_network",true).asBool();
+        Transport referenceTransport=[referenceNetwork](const std::string &host,const std::string &path,const Json::Value &body,double timeout){
+            if(!referenceNetwork)throw std::runtime_error("Reference network disabled");
+            return httpJson(host,path,body,timeout);
+        };
         std::map<std::string, Json::Value> auxiliary;
         unsigned auxiliaryId = 0;
+        std::set<std::string> preparing;
+        std::map<std::string,std::time_t> retryAfter;
+        Worker referenceWorker(false);
         Worker worker;
+        // Called under mutex. One bounded queue, deduplicated, with failures backed off.
+        auto prepareReferences = [&](const WorldState &w) {
+            std::vector<std::string> wanted;
+            for(auto &slot:scheduleInitiatives(w)){wanted.push_back(slot["actor"].asString());if(slot["region"]!="")wanted.push_back(slot["region"].asString());}
+            wanted.push_back(w.player);
+            for(auto &n:reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player}))wanted.push_back(n["b"].asString());
+            for(auto &key:wanted) {
+                if(preparing.size()>=8)break;
+                if(key.empty()||preparing.contains(key)||store.background(key).get("available",false).asBool()||retryAfter[key]>std::time(nullptr))continue;
+                auto cached=store.background(key);
+                if(cached["retrieved_at"].isIntegral()&&cached["retrieved_at"].asInt64()+3600>std::time(nullptr))continue;
+                bool regional=w.territories.isMember(key);
+                if(!regional&&reference.query("SELECT code FROM countries WHERE code=?",{key}).empty())continue;
+                auto region=regional?w.territories[key]:Json::Value();
+                preparing.insert(key);
+                try { referenceWorker.add([&,key,region,regional]{
+                    Json::Value result;
+                    try{result=regional?fetchRegionalHistory(region["name"].asString(),region["initial_affiliation"].asString(),referenceTransport):fetchHistory(key,referenceTransport);}
+                    catch(const std::exception &e){result["available"]=false;result["reason"]=e.what();}
+                    if(!result.get("available",false).asBool())result["retrieved_at"]=Json::Int64(std::time(nullptr));
+                    std::lock_guard lock(mutex);
+                    if(result.get("available",false).asBool()||!store.background(key).get("available",false).asBool())store.cache(key,result);
+                    if(!result.get("available",false).asBool())retryAfter[key]=std::time(nullptr)+3600;
+                    preparing.erase(key);
+                }); } catch(const ValidationError &) {preparing.erase(key);break;}
+            }
+        };
+        {std::lock_guard lock(mutex);prepareReferences(decode(store.campaign()));}
         auto reply = [](auto cb, Json::Value j, int status = 200) {
             auto r = HttpResponse::newHttpJsonResponse(j);
             r->setStatusCode(static_cast<HttpStatusCode>(status));
@@ -321,7 +363,7 @@ int main(int argc, char **argv) {
                       WorldState w;
                       for (auto &c : reference.query("SELECT code,name FROM countries ORDER BY code")) {
                           auto id=c["code"].asString();
-                          w.actors[id]["name"]=c["name"];
+                          w.actors[id]["name"]=c["name"];w.actors[id]["static_flag"]=id;
                           unsigned hash=0;for(unsigned char ch:id)hash=hash*31+ch;
                           char color[8];snprintf(color,sizeof(color),"#%06x",0x405050+(hash*7919)%0x909090);
                           w.actors[id]["color"]=color;
@@ -340,6 +382,7 @@ int main(int argc, char **argv) {
                       store.create(w, b.get("confirm_replace", false).isBool() &&
                                           b.get("confirm_replace", false).asBool());
                   }
+                  prepareReferences(decode(store.campaign()));
                   j["state"] = store.campaign();
                   j["journal"] = store.journal();
                   j["active_jobs"] =
@@ -348,6 +391,14 @@ int main(int argc, char **argv) {
                   reply(cb, j);
               },
               {Get, Post});
+        route("/api/v1/flag", [&](auto req,auto,auto cb) {
+            std::lock_guard lock(mutex);auto w=decode(store.campaign());auto a=req->getParameter("actor"),rev=req->getParameter("revision");
+            if(req->getParameter("campaign")!=w.campaignId||!w.hasActor(a))throw ValidationError("Unknown campaign flag");
+            auto actor=w.actors[a];std::string svg;
+            if(rev=="fallback")svg=makeFlag(Json::nullValue,w.campaignId+a,"legacy")["svg"].asString();
+            else {if(!std::regex_match(rev,std::regex("[0-9]{1,6}")))throw ValidationError("Invalid flag revision");auto n=std::stoul(rev);if(!actor["identity_revisions"].isArray()||n>=actor["identity_revisions"].size())throw ValidationError("Unknown flag revision");auto r=actor["identity_revisions"][Json::ArrayIndex(n)];svg=r["svg"].asString();if(svg.empty()){auto code=r["static_flag"].asString();if(!std::regex_match(code,std::regex("[A-Z]{2}")))throw ValidationError("No static flag");std::ifstream f("web/flags/"+lower(code)+".svg");svg=std::string(std::istreambuf_iterator<char>(f),{});}}
+            auto response=HttpResponse::newHttpResponse();response->setBody(svg);response->addHeader("Content-Type","image/svg+xml");response->addHeader("Content-Security-Policy","default-src 'none'; sandbox");response->addHeader("X-Content-Type-Options","nosniff");response->addHeader("Cache-Control","private, max-age=31536000, immutable");cb(response);
+        },{Get});
         route("/api/v1/model-config",
               [&](auto, auto b, auto cb) {
                   if (!b["llama_endpoint"].isString())
@@ -366,7 +417,8 @@ int main(int argc, char **argv) {
         route("/api/v1/countries",
               [&](auto, auto, auto cb) {
                   std::lock_guard l(mutex);
-                  reply(cb, reference.query("SELECT code,name FROM countries ORDER BY name"));
+                  auto w=decode(store.campaign());auto rows=reference.query("SELECT code,name FROM countries ORDER BY name");
+                  if(!w.campaignId.empty()){rows=Json::arrayValue;for(auto &a:w.actors.getMemberNames()){Json::Value c;c["code"]=a;c["name"]=w.actors[a]["name"];rows.append(c);}}reply(cb,rows);
               },
               {Get});
         route("/api/v1/country",
@@ -378,7 +430,7 @@ int main(int argc, char **argv) {
                       auto w=decode(store.campaign());if(!w.actors.isMember(code))throw ValidationError("Unknown country");
                       Json::Value j=w.actors[code];j["cities"]=Json::arrayValue;j["background"]["available"]=false;j["background"]["reason"]="Fictional campaign actor";reply(cb,j);return;
                   }
-                  auto j = rows[0];
+                  auto j = rows[0];auto current=decode(store.campaign());if(current.hasActor(code))j["name"]=current.actors[code]["name"];
                   j["cities"] = reference.query("SELECT name,population,city_wikidata FROM cities "
                                                 "WHERE code=? ORDER BY population DESC LIMIT 15",
                                                 {code});
@@ -429,23 +481,54 @@ int main(int argc, char **argv) {
                   std::set<std::string> actors;
                   for(auto &a:candidates)if(a!=w.player&&w.hasActor(a)&&actors.size()<maxAiActors)actors.insert(a);
                   actors.erase(w.player);
+                  auto allocations=scheduleInitiatives(w,actors);
+                  auto prior=store.query("SELECT slots FROM monthly_allocations WHERE campaign=? AND month=?",{w.campaignId,std::to_string(w.turn+1)});
+                  if(!prior.empty())allocations=parse(prior[0]["slots"].asString());
+                  else store.execute("INSERT INTO monthly_allocations VALUES(?,?,?)",{w.campaignId,std::to_string(w.turn+1),dump(allocations)});
+                  refs["allocations"]=allocations;
                   refs[w.player] = store.background(w.player);
                   for (auto &a : actors)
                       refs[a] = store.background(a);
                   std::map<std::string,CountryContext> contexts;
                   contexts[w.player]=store.campaignContext(w,w.player);
                   for(auto &a:actors)contexts[a]=store.campaignContext(w,a);
+                  std::vector<CountryContext> independentContexts;
+                  for(auto &slot:allocations) {
+                      auto a=slot["actor"].asString(),r=slot["region"].asString();
+                      auto c=store.campaignContext(w,a);contexts[a]=c;
+                      c.facts["initiative_type"]=slot["initiative_type"];c.facts["action_count"]=1;
+                      if(!r.empty()) {
+                          // No national military inventory or player orders in a regional decision.
+                          c.facts=Json::objectValue;c.facts["initiative_type"]=slot["initiative_type"];c.facts["action_count"]=1;c.facts["turn"]=w.turn;
+                          c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;c.facts["governing_authority"]=w.actors[a];
+                          c.facts["politics"]=regionalState(w,r);c.facts["related_history"]=Json::arrayValue;
+                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
+                          c.reference=store.background(r);refs[r]=c.reference;
+                      }
+                      refs[a]=store.background(a);independentContexts.push_back(c);
+                  }
+                  prepareReferences(w);
                   try {
-                      worker.add([&, w, orders, id, actors, refs, contexts] {
+                      worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts] {
                           bool committed = false;
                           try {
                               std::map<std::string, TurnOrders> intentions{{w.player, orders}};
                               for (auto &a : actors) {
-                                  auto c = contexts.at(a);
+                                  auto c = contexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=3;c.facts["player_actions"]=encode(orders);
                                   intentions[a] = provider.decide(w, c).orders;
+                              }
+                              Json::Value independent(Json::arrayValue);
+                              for(Json::ArrayIndex n=0;n<allocations.size();++n){
+                                  auto slot=allocations[n];auto a=slot["actor"].asString(),r=slot["region"].asString();
+                                  auto decision=provider.decide(w,independentContexts[n]);
+                                  for(auto &o:decision.orders){slot["action"]=o.text;if(!r.empty()){o.targets.push_back(r);slot["regional_actor"]=r;}slot["actor_action_index"]=Json::UInt(intentions[a].size());intentions[a].push_back(o);independent.append(slot);}
                               }
                               auto result = resolve(w);
                               auto adjudication=adjudicationInput(result.state,contexts,intentions,adjacency);
+                              // Attach trusted slot attribution by matching each appended action once.
+                              for(auto &slot:independent){unsigned index=0;for(auto &i:adjudication["intentions"])if(i["actor"]==slot["actor"]&&index++==slot["actor_action_index"].asUInt()){i["initiative_type"]=slot["initiative_type"];if(slot.isMember("regional_actor"))i["regional_actor"]=slot["regional_actor"];break;}}
+                              adjudication["facts"]["regional_politics"]=Json::objectValue;
+                              for(auto &slot:allocations)if(slot["region"]!=""){auto r=slot["region"].asString();adjudication["facts"]["regional_politics"][r]=regionalState(w,r);}
                               auto delta=provider.adjudicate(result.state,adjudication,adjacency);
                               result=applyDelta(result,delta,geography);
                               auto frozen=refs;frozen["delta"]=encode(delta);
@@ -458,6 +541,7 @@ int main(int argc, char **argv) {
                                   store.recordInference(id,provider.takeAudit());
                                   store.commit(id, result, recorded, frozen, false);
                                   committed = true;
+                                  prepareReferences(result.state);
                               }
                               try {
                                   CountryContext narrationContext;
@@ -504,8 +588,8 @@ int main(int argc, char **argv) {
                       }
                   }
                   auto id = "history-" + std::to_string(++auxiliaryId);
-                  worker.add([&, code, id] {
-                      auto result = fetchHistory(code);
+                  referenceWorker.add([&, code, id] {
+                      auto result = fetchHistory(code,referenceTransport);
                       std::lock_guard l(mutex);
                       if (result["available"].asBool() || store.background(code).isNull())
                           store.cache(code, result);
@@ -544,7 +628,7 @@ int main(int argc, char **argv) {
             for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)for(auto &a:v["actors"])actors.insert(a.asString());
             if(b.isNull()){Json::Value coverage;for(auto &a:actors)coverage[a]=store.background(a);reply(cb,coverage);return;}
             auto id="prepare-"+std::to_string(++auxiliaryId);Json::Value j;j["id"]=id;j["status"]="running";auxiliary[id]=j;
-            worker.add([&,actors,id]{for(auto &a:actors){auto result=fetchHistory(a);std::lock_guard l(mutex);store.cache(a,result);auxiliary[id]["coverage"][a]=result;}std::lock_guard l(mutex);auxiliary[id]["status"]="complete";});reply(cb,j,202);
+            referenceWorker.add([&,actors,id]{for(auto &a:actors){if(!std::regex_match(a,std::regex("[A-Z]{2}")))continue;auto result=fetchHistory(a,referenceTransport);std::lock_guard l(mutex);if(result["available"].asBool()||!store.background(a).get("available",false).asBool())store.cache(a,result);auxiliary[id]["coverage"][a]=result;}std::lock_guard l(mutex);auxiliary[id]["status"]="complete";});reply(cb,j,202);
         },{Get,Post});
         route("/api/v1/replay",
               [&](auto, auto, auto cb) {
@@ -577,6 +661,9 @@ int main(int argc, char **argv) {
         std::cout << "LocalHistoria: http://127.0.0.1:" << config.get("port", 8080).asInt()
                   << " (fictional sandbox)\n";
         app().run();
+        // Finish while captured callbacks and preparation state are still alive.
+        worker.finish();
+        referenceWorker.finish();
         return 0;
     } catch (const std::exception &e) {
         std::cerr << e.what() << "\n";

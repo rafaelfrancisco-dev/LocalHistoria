@@ -49,7 +49,7 @@ int main(){try{
  auto facts=encode(opsBase.state);auto schema=operationSchema(opsBase.state,facts,{{"old-state","Build a port"},{"neighbor","Wait"}});
  auto &outcomes=schema["properties"]["events"];
  check(outcomes["minItems"].asInt()==2&&outcomes["maxItems"].asInt()==2&&!outcomes.isMember("items")&&outcomes["prefixItems"][0]["properties"]["action"]["const"]=="Build a port"&&outcomes["prefixItems"][1]["properties"]["actor"]["const"]=="neighbor","One outcome per action");
- check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==7,"Schema");
+ check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
  auto &developments=schema["properties"]["world_events"];
  check(developments["maxItems"].asInt()==2&&!developments["items"]["properties"].isMember("operations")&&developments["items"]["properties"]["actor"]["enum"]==parse(R"(["far","neighbor"])"),"World events are narrative and never the player's decisions");
  auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[]}]})"),{});

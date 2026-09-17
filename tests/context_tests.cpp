@@ -18,5 +18,23 @@ int main(){try{
   throw std::runtime_error("Unexpected inference");
  });
  bool failed=false;try{full.decide(w,c);}catch(const ValidationError &){failed=true;}if(!failed)throw std::runtime_error("Mandatory exhaustion accepted");
+
+ // Regional outcomes carry their bounded agenda operation, independently of grammar enforcement.
+ w.turn=1;w.territories["r"]=parse(R"({"name":"Region","controller":"PT","owner":"PT"})");
+ Json::Value input;input["facts"]=encode(w);input["intentions"]=parse(R"([{"actor":"PT","action":"Request local representation","initiative_type":"independent_regional","regional_actor":"r"}])");
+ bool omit=false;
+ LocalProvider regional("http://127.0.0.1:8081",1,[&](auto,auto path,auto body,double){
+  if(path=="/props")return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+  if(path=="/apply-template")return parse(R"({"prompt":"regional"})");
+  if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
+  auto spec=body["response_format"]["json_schema"]["schema"]["properties"]["events"]["prefixItems"][0]["properties"]["operations"];
+  if(spec["minItems"]!=1||spec["items"]["properties"]["region"]["const"]!="r")throw std::runtime_error("Regional schema missing limits");
+  auto outcome=parse(R"({"events":[{"actor":"PT","action":"Request local representation","blocked_by":"none","causes":[],"description":"Local assembly petitioned","operations":[{"action":"regional_initiative","region":"r","agenda":"Representation","relations":"neutral","demand":"Local assembly"}]}]})");
+  if(omit)outcome["events"][0]["operations"]=Json::arrayValue;
+  Json::Value result;result["choices"][0]["message"]["content"]=dump(outcome);return result;
+ });
+ auto regionalDelta=regional.adjudicate(w,input,{});if(regionalDelta.events[0]["regional_actor"]!="r"||regionalDelta.changes.empty())throw std::runtime_error("Regional attribution missing");
+ omit=true;failed=false;try{regional.adjudicate(w,input,{});}catch(const ValidationError &){failed=true;}if(!failed)throw std::runtime_error("Missing agenda operation accepted");
+ c.facts["initiative_type"]="independent_national";c.facts["action_count"]=1;failed=false;try{p.decide(w,c);}catch(const ValidationError &){failed=true;}if(!failed)throw std::runtime_error("Empty independent slot accepted");
  std::cout<<"Tokenizer budget, hostile reference isolation, frozen context and mandatory exhaustion passed\n";
 }catch(const std::exception &e){std::cerr<<e.what()<<"\n";return 1;}}

@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
                 if(path=="/apply-template")return parse(R"({"prompt":"fixture"})");
                 if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
                 seen=b;
-                return parse(R"({"choices":[{"message":{"content":"{\"events\":[]}","reasoning_content":"Thinking"}}]})");
+                return parse(R"({"choices":[{"message":{"content":"{\"events\":[{\"actor\":\"PT\",\"blocked_by\":\"none\",\"causes\":[],\"description\":\"Waited\",\"operations\":[]}]}","reasoning_content":"Thinking"}}]})");
             });
             Json::Value input;input["intentions"][0]["actor"]="PT";input["intentions"][0]["action"]="Wait";
             judge.adjudicate(w, input, {});

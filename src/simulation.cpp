@@ -21,6 +21,7 @@ Json::Value encode(const WorldState &w) {
     Json::Value j;
     j["campaign_id"] = w.campaignId;
     j["actors"] = w.actors; j["territories"] = w.territories; j["entities"] = w.entities; j["conflicts"] = w.conflicts; j["commitments"] = w.commitments;
+    j["regional_politics"] = w.regionalPolitics; j["activity"] = w.activity;
     j["turn"] = w.turn;
     j["player"] = w.player;
     return j;
@@ -35,6 +36,9 @@ WorldState decode(const Json::Value &j) {
     if (j["entities"].isObject()) w.entities=j["entities"];
     if (j["conflicts"].isObject()) w.conflicts=j["conflicts"];
     if (j["commitments"].isObject()) w.commitments=j["commitments"];
+    for(auto key:{"regional_politics","activity"})if(!j[key].isNull()&&!j[key].isObject())throw ValidationError("Invalid political collection");
+    if(j["regional_politics"].isObject())w.regionalPolitics=j["regional_politics"];
+    if(j["activity"].isObject())w.activity=j["activity"];
     w.turn = j["turn"].asInt();
     w.player = j["player"].asString();
     return w;

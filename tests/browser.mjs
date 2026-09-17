@@ -64,7 +64,7 @@ try {
   );
   await page.locator("#turn").click();
   await page.waitForFunction(
-    () => document.querySelector("#date").textContent === "February 2026",
+    () => document.querySelector("#date").textContent === "February 2026" && !busy,
   );
   await page
     .locator("#journal details")
@@ -77,12 +77,12 @@ try {
   assert.equal(await page.locator("#action-0").inputValue(), "");
   await page.locator("#turn").click();
   await page.waitForFunction(
-    () => document.querySelector("#date").textContent === "March 2026",
+    () => document.querySelector("#date").textContent === "March 2026" && !busy,
   );
   await page.reload();
   try {
     await page.waitForFunction(
-      () => document.querySelector("#date").textContent === "March 2026",
+      () => document.querySelector("#date").textContent === "March 2026" && !busy,
     );
   } catch (e) {
     console.error("STATUS", await page.locator("#status").innerText());
@@ -137,7 +137,7 @@ try {
   await page.locator(".action-card .chip").first().click();
   await page.waitForFunction(() => document.querySelectorAll(".action-card .chip").length === 1);
   await page.locator("#turn").click();
-  await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026");
+  await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026" && !busy);
   await page.waitForFunction(id=>state.territories[id].owner==="ES",rid);
   assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"ES");
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
@@ -147,6 +147,34 @@ try {
   await page.reload();
   await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
   assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");
+
+  const regional = await page.evaluate(() => Object.keys(state.regional_politics)[0]);
+  assert.ok(regional);
+  await page.evaluate(async id => { await select(state.territories[id].controller); }, regional);
+  assert.match(await page.locator("#regional-politics").innerText(), /pending: Request a regional assembly/);
+  await page.locator("#action-0").fill("Adopt the Atlantic Republic constitution: identity-fixture");
+  await page.locator("#turn").click();
+  await page.waitForFunction(() => state?.actors?.PT?.flag_revision === 1 && !busy);
+  await page.locator("#search").fill("Atlantic Republic");
+  await page.getByRole("button", { name: "Atlantic Republic", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("#country-name").textContent === "Atlantic Republic");
+  await page.waitForFunction(() => document.querySelector("#playing-as-name").textContent === "Atlantic Republic");
+  const firstFlag = await page.locator("#flag").getAttribute("src");
+  assert.match(firstFlag, /revision=1/);
+  await page.waitForFunction(() => document.querySelector("#flag").naturalWidth > 0);
+  const firstSvg = await (await fetch(base + firstFlag)).text();
+  await page.locator("#action-0").fill("Explicitly refound the constitution: refound identity-fixture");
+  await page.locator("#turn").click();
+  await page.waitForFunction(() => state?.actors?.PT?.flag_revision === 2 && !busy);
+  await page.waitForFunction(() => document.querySelector("#flag").getAttribute("src").includes("revision=2"));
+  const secondFlag = await page.locator("#flag").getAttribute("src");
+  assert.match(secondFlag, /revision=2/);
+  assert.notEqual(await (await fetch(base + secondFlag)).text(), firstSvg);
+  assert.equal(await (await fetch(base + firstFlag)).text(), firstSvg);
+  assert.ok(await page.locator('#journal img[src*="revision=1"]').count());
+  await page.reload();
+  await page.waitForFunction(() => state?.actors?.PT?.flag_revision === 2 && !busy);
+  await page.waitForFunction(() => document.querySelector("#playing-as-name").textContent === "Atlantic Republic");
 
   fs.mkdirSync("tests/artifacts", { recursive: true });
   await page.screenshot({
