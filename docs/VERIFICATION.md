@@ -6,7 +6,35 @@ Verified on macOS / Apple silicon on 2026-09-17, using AppleClang 21, Drogon 1.9
 
 `make test` builds the app and replay verifier and passes the core, data, world and context CTest suites. The core executable reports **43 checks passed**, covering month advance and scheduled construction completion, serialization, free-text action shape/length/target/duplicate validation, malformed/timeout model rejection, thinking and output budgets following the reported context size, invalid-endpoint construction rejection, constrained request shape, duplicate/idempotent submissions, overlap prevention, transaction rollback, narration isolation, save/reload, interrupted jobs, reference mappings and attribution, missing/ambiguous mappings, recorded Wikipedia response parsing and bounded introduction/history excerpts.
 
-The world suite covers delta validation (occupation, secession, entity placement inside polygons with holes, construction schedules), history retrieval and atomic rollback. It also covers every feasibility rule: unreachable regions, the two-regions-per-month limit, annexation only after a month of occupation, one-region army moves, unfinished units, construction by decree, building without control, one new state per month, new states needing land, narrative-only events, narrative world events that cannot act for the player, and schema alignment of one outcome per action. The Python data suite verifies 258 unique feature IDs, France/Norway/Kosovo/Taiwan normalization, unresolved metadata handling, 239 actor records, 152,970 city records, separate country/city Wikidata fields, absence of synthetic national population totals and complete supplied flag coverage.
+The world suite covers delta validation (occupation, secession, entity placement inside polygons with holes, construction schedules), history retrieval and atomic rollback. It also covers every feasibility rule: unreachable regions, the two-regions-per-month limit, annexation only after a month of occupation, one-region army moves, unfinished units, construction by decree, building without control, one new state per month, new states needing land, narrative-only events, narrative world events that cannot act for the player, and schema alignment of one outcome per action. The status suite checks:
+
+- exact regional sums and local-currency formatting;
+- annual growth over 12 months;
+- war fronts on shared borders, with casualties and displacement only there;
+- population conserved except for deaths, refugees crossing into bystanders, and returns after a ceasefire;
+- intensity from fighting and kind;
+- the occupation GDP floor, capped model effects, and new-state inheritance;
+- historians' naming and numbering;
+- determinism through saved JSON;
+- a 12-month run of the real seeded world, checking the Russo-Ukrainian War toll stays within realistic bounds.
+
+World tests cover named wars and treaties, invalid kinds, effect validation, party-only intensity changes, ended dates, and rejection of unnamed new conflicts while legacy ones stay valid. Integration tests cover:
+
+- national status and seeded wars on a new campaign;
+- war tolls in the journal;
+- a model-declared war getting its fallback name, a front and casualties;
+- a save from before national status gaining it and still replaying.
+
+The browser test covers the stats panel, the Wars & treaties dialog, and the map mode colouring Donetsk as a front.
+
+A live check on 2026-09-17 ran `./start.sh` (Qwen3.5-4B via `llama serve`), then a Portugal turn with "Declare war on Spain over the disputed Olivenza border and send troops to occupy Galicia" and "Sign a defence pact with Morocco":
+
+- **Before the fix**, adjudication included the fronts of every seeded war, giving an 11.4k-token prompt that ran out of output tokens.
+- **After the fix**, with fronts limited to wars of acting nations and an answer budget that scales with the number of actions, the prompt was 5.2k tokens and the turn took 181 s.
+- **Outcome.** The model opened a low-intensity *Portuguese-Spanish Border War* (35 killed and 889 displaced along 12 border regions) and a *Portugal-Morocco Defence Pact*. The seeded wars reported their monthly tolls.
+- **Weakness.** The small model tends to attach mild "growth" effects to routine events, including Spain's economy for being attacked; C++ caps keep this bounded.
+
+The Python data suite verifies 258 unique feature IDs, France/Norway/Kosovo/Taiwan normalization, unresolved metadata handling, 239 actor records, 152,970 city records, separate country/city Wikidata fields, absence of synthetic national population totals and complete supplied flag coverage.
 
 ## Real HTTP and browser
 

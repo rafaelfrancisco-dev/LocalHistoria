@@ -2,6 +2,9 @@
 const $ = (id) => document.getElementById(id);
 let countries = [],
   state = null,
+  nationalStatus = {},
+  mapMode = "political",
+  highlight = null,
   selected = null,
   layers,
   selectedLayer = null,
@@ -47,8 +50,10 @@ function month(turn) {
   });
 }
 function flag(img, code, revision = state?.actors?.[code]?.flag_revision) {
-  img.hidden = false;
   const actor = state?.actors?.[code];
+  // Campaign-created actors only have generated flags, which need the loaded campaign.
+  img.hidden = !actor && !/^[A-Z]{2}$/.test(code);
+  if (img.hidden) return;
   const generated = revision !== undefined || (actor && !/^[A-Z]{2}$/.test(code));
   img.src = generated
     ? `/api/v1/flag?campaign=${encodeURIComponent(state.campaign_id)}&actor=${encodeURIComponent(code)}&revision=${revision ?? "fallback"}`
@@ -81,7 +86,58 @@ function list() {
     $("countries").append(b);
   }
 }
+// Wars & treaties map mode: relations of the selected country, war fronts and occupations.
+const INTENSITY = { low: 1, medium: 2, high: 3 };
+const RELATION_COLORS = { self: "#d9b875", enemy: "#a8413a", ally: "#4f86c6", partner: "#3f9d92", war: "#6e3b36", front: "#f28c38", neutral: "#2b3a41" };
+const ALLIANCE_KINDS = new Set(["alliance", "defence_pact", "union"]);
+let diplomacyCache = null;
+function diplomacyIndex() {
+  if (diplomacyCache) return diplomacyCache;
+  const index = { front: {}, atWar: new Set(), relation: {}, members: null, memberColor: null };
+  for (const c of Object.values(state?.conflicts || {})) {
+    if (c.status !== "open" || c.intensity === "none") continue;
+    c.actors.forEach((a) => index.atWar.add(a));
+    for (const r of c.affected_regions || []) index.front[r] = Math.max(index.front[r] || 0, INTENSITY[c.intensity] || 1);
+  }
+  const relate = (a, kind) => {
+    const order = ["partner", "ally", "enemy"];
+    if (a !== selected && order.indexOf(kind) > order.indexOf(index.relation[a])) index.relation[a] = kind;
+  };
+  if (selected) {
+    for (const c of Object.values(state?.commitments || {}))
+      if (c.status === "open" && c.actors.includes(selected)) c.actors.forEach((a) => relate(a, ALLIANCE_KINDS.has(c.kind) ? "ally" : "partner"));
+    for (const c of Object.values(state?.conflicts || {}))
+      if (c.status === "open" && c.actors.includes(selected)) c.actors.forEach((a) => relate(a, "enemy"));
+  }
+  if (highlight) {
+    const item = state?.[highlight.kind === "conflict" ? "conflicts" : "commitments"]?.[highlight.id];
+    if (item) {
+      index.members = new Set(item.actors);
+      index.memberColor = highlight.kind === "conflict" ? RELATION_COLORS.enemy : ALLIANCE_KINDS.has(item.kind) ? RELATION_COLORS.ally : RELATION_COLORS.partner;
+    }
+  }
+  return (diplomacyCache = index);
+}
+function diplomacyStyle(f) {
+  const p = f.properties, owner = p.owner ?? p.code, index = diplomacyIndex();
+  const occupied = p.controller && owner && p.controller !== owner;
+  let fillColor = RELATION_COLORS.neutral, fillOpacity = 0.55;
+  if (index.members) {
+    if (index.members.has(owner)) { fillColor = index.memberColor; fillOpacity = 0.75; }
+  } else if (owner === selected) { fillColor = RELATION_COLORS.self; fillOpacity = 0.8; }
+  else if (index.relation[owner]) { fillColor = RELATION_COLORS[index.relation[owner]]; fillOpacity = 0.7; }
+  else if (index.atWar.has(owner)) { fillColor = RELATION_COLORS.war; fillOpacity = 0.6; }
+  if (index.front[p.id]) { fillColor = RELATION_COLORS.front; fillOpacity = 0.55 + 0.13 * index.front[p.id]; }
+  return {
+    color: occupied ? state?.actors?.[p.controller]?.color || "#fff" : "#3d4e55",
+    weight: occupied ? 2 : 0.5,
+    dashArray: occupied ? "4 3" : null,
+    fillColor,
+    fillOpacity,
+  };
+}
 function styleFor(f) {
+  if (mapMode === "diplomacy" && state) return diplomacyStyle(f);
   const owner = f.properties.owner ?? f.properties.code;
   const isSelected = owner === selected;
   const isPlayer = state && owner === state.player;
@@ -98,7 +154,9 @@ function styleFor(f) {
   };
 }
 function restyleMap() {
+  diplomacyCache = null;
   layers?.eachLayer((l) => l.setStyle(styleFor(l.feature)));
+  renderLegend();
 }
 function renderStats() {
   $("stats").replaceChildren();
@@ -111,6 +169,28 @@ function renderStats() {
   const count = (kind, statuses = ["active"]) =>
     entities.filter((e) => e.kind === kind && statuses.includes(e.status)).length;
   const building = entities.filter((e) => e.status === "under_construction").length;
+  const national = nationalStatus[selected];
+  if (national?.gdp) {
+    const [local, dollars] = national.gdp.split(" (");
+    const wars = national.wars.map((w) => `${w.name} (${w.intensity})`).join(" · ");
+    for (const [label, value, detail, wide] of [
+      ["GDP" + (national.estimated ? " · estimate" : ""), local, dollars ? dollars.slice(0, -1) : "", true],
+      ["population", national.population_text, national.displaced ? `${national.displaced.toLocaleString()} displaced` : ""],
+      ["GDP per capita", national.gdp_per_capita, ""],
+      ["stability", national.stability.replace(/ \(.*/, ""), national.stability.match(/\((.*)\)/)?.[1] || ""],
+      ["economy", national.economic_trend.replace(/ \(.*/, ""), national.economic_trend.match(/\((.*)\)/)?.[1] || ""],
+      ["at war", national.wars.length ? wars : "At peace", "", true],
+    ]) {
+      const cell = document.createElement("div");
+      cell.className = "stat" + (wide ? " wide" : "");
+      const strong = document.createElement("strong");
+      strong.textContent = value;
+      const span = document.createElement("span");
+      span.textContent = detail ? `${label} · ${detail}` : label;
+      cell.append(strong, span);
+      $("stats").append(cell);
+    }
+  }
   for (const [label, value] of [
     ["regions", territories.filter((t) => t.owner === selected).length],
     ["occupied by others", territories.filter((t) => t.owner === selected && t.controller !== selected).length],
@@ -188,6 +268,7 @@ async function select(code, zoom = false) {
 async function load() {
   const j = await api("campaign");
   state = j.state;
+  nationalStatus = j.national_status || {};
   if (state) {
     countries = Object.entries(state.actors || {}).map(([code, actor]) => ({code, name:actor.name})).sort((a,b) => a.name.localeCompare(b.name));
   }
@@ -195,6 +276,7 @@ async function load() {
   $("date").textContent = month(state?.turn || 0);
   $("controls").hidden = !state;
   $("playing-as").hidden = !state;
+  $("diplomacy-open").hidden = !state;
   if (state) {
     flag($("playing-as-flag"), state.player);
     $("playing-as-name").textContent =
@@ -224,7 +306,7 @@ async function load() {
       details.append(summary);
       for (const event of entry.events) {
         const line = document.createElement("p");
-        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : "") + event.text;
+        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
         for (const change of structured?.identity_changes || []) {
@@ -242,6 +324,7 @@ async function load() {
   }
   list();
   restyleMap();
+  if ($("diplomacy").open) renderDiplomacy();
   if (selected && state?.actors?.[selected]) { $("country-name").textContent = state.actors[selected].name; flag($("flag"), selected); }
   if (state) await refreshCampaignMap();
   return j;
@@ -435,12 +518,193 @@ async function refreshCampaignMap() {
   layers=L.geoJSON(geo,{style:styleFor,onEachFeature:(f,l)=>{
     const p=f.properties,label=document.createElement("span");
     label.textContent=`${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
-    l.bindTooltip(label);
+    l.bindTooltip(()=>{
+      if (mapMode!=="diplomacy") return label;
+      const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")+(p.displaced?` · ${p.displaced.toLocaleString()} displaced`:"")];
+      if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
+      for (const c of Object.values(state.conflicts)) if (c.status==="open"&&(c.affected_regions||[]).includes(p.id)) lines.push(`Front: ${c.name} (${c.intensity})`);
+      const treaties=Object.values(state.commitments).filter(c=>c.status==="open"&&c.actors.includes(p.owner)).map(c=>c.name);
+      if (treaties.length) lines.push("Treaties: "+treaties.slice(0,4).join(", ")+(treaties.length>4?` +${treaties.length-4}`:""));
+      const box=document.createElement("span");box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
+    });
     l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.controller || p.owner) await select(p.controller || p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
   }}).addTo(map);
   mapControls.addOverlay(layers,"Territories and occupation");
   await refreshEntities();
 }
+// Map mode: political ownership, or wars, fronts, occupations and the selected country's treaties.
+function readPreference(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+}
+function setMapMode(mode) {
+  mapMode = mode === "diplomacy" ? "diplomacy" : "political";
+  try { localStorage.setItem("mapMode", mapMode); } catch {}
+  if (mapMode === "political") highlight = null;
+  for (const b of modeControl.getContainer()?.querySelectorAll("button") || []) b.setAttribute("aria-pressed", b.dataset.mode === mapMode);
+  restyleMap();
+}
+const modeControl = L.control({ position: "topleft" });
+modeControl.onAdd = () => {
+  const box = L.DomUtil.create("div", "map-modes leaflet-bar");
+  for (const [mode, text] of [["political", "Political"], ["diplomacy", "Wars & treaties"]]) {
+    const b = L.DomUtil.create("button", "", box);
+    b.type = "button";
+    b.dataset.mode = mode;
+    b.textContent = text;
+    b.setAttribute("aria-pressed", mode === mapMode);
+    L.DomEvent.on(b, "click", (e) => { L.DomEvent.stop(e); setMapMode(mode); });
+  }
+  L.DomEvent.disableClickPropagation(box);
+  return box;
+};
+modeControl.addTo(map);
+const legend = L.control({ position: "bottomleft" });
+legend.onAdd = () => L.DomUtil.create("div", "map-legend");
+legend.addTo(map);
+function renderLegend() {
+  const box = legend.getContainer();
+  if (!box) return;
+  box.hidden = mapMode !== "diplomacy" || !state;
+  box.replaceChildren();
+  if (box.hidden) return;
+  const index = diplomacyIndex();
+  const title = document.createElement("strong");
+  const item = highlight && state[highlight.kind === "conflict" ? "conflicts" : "commitments"][highlight.id];
+  title.textContent = item ? item.name : `Relations of ${state.actors[selected]?.name || "the selected country"}`;
+  box.append(title);
+  const rows = item
+    ? [[index.memberColor, highlight.kind === "conflict" ? "Parties" : "Members"], [RELATION_COLORS.front, "War front"]]
+    : [[RELATION_COLORS.self, "Selected country"], [RELATION_COLORS.enemy, "At war with it"], [RELATION_COLORS.ally, "Allies (alliance, defence pact, union)"], [RELATION_COLORS.partner, "Other treaty partners"], [RELATION_COLORS.war, "Other nations at war"], [RELATION_COLORS.front, "War front (darker = more intense)"]];
+  rows.push([null, "Dashed border in the occupier’s colour: occupied"]);
+  for (const [color, text] of rows) {
+    const row = document.createElement("div");
+    const swatch = document.createElement("i");
+    if (color) swatch.style.background = color; else swatch.className = "dashed";
+    row.append(swatch, document.createTextNode(text));
+    box.append(row);
+  }
+  if (item) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Clear highlight";
+    clear.onclick = () => { highlight = null; restyleMap(); };
+    box.append(clear);
+  }
+}
+mapMode = readPreference("mapMode", "political") === "diplomacy" ? "diplomacy" : "political";
+setMapMode(mapMode);
+
+// Wars & treaties menu.
+let diplomacyTab = "wars";
+function kindLabel(kind) {
+  return (kind || "other").replaceAll("_", " ");
+}
+function zoomToRegions(ids) {
+  const bounds = [];
+  layers?.eachLayer((l) => { if (ids.includes(l.feature.properties.id)) bounds.push(l.getBounds()); });
+  if (bounds.length) map.fitBounds(bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast())), { maxZoom: 6 });
+}
+function showOnMap(kind, id) {
+  const item = state[kind === "conflict" ? "conflicts" : "commitments"][id];
+  highlight = { kind, id };
+  $("diplomacy").close();
+  setMapMode("diplomacy");
+  const regions = item.affected_regions?.length
+    ? item.affected_regions
+    : Object.entries(state.territories).filter(([, t]) => item.actors.includes(t.owner) && t.kind !== "residual").map(([rid]) => rid);
+  zoomToRegions(regions);
+}
+function renderDiplomacy() {
+  if (!state) return;
+  const mine = $("diplomacy-mine").checked && selected;
+  $("diplomacy-mine-label").textContent = `Only involving ${state.actors[selected]?.name || "the selected country"}`;
+  for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.setAttribute("aria-selected", tab.dataset.tab === diplomacyTab);
+  const items = [];
+  for (const [kind, collection] of [["conflict", state.conflicts], ["commitment", state.commitments]])
+    for (const [id, v] of Object.entries(collection || {})) {
+      const open = v.status === "open";
+      if (diplomacyTab === "wars" && !(kind === "conflict" && open)) continue;
+      if (diplomacyTab === "treaties" && !(kind === "commitment" && open)) continue;
+      if (diplomacyTab === "ended" && open) continue;
+      if (mine && !v.actors.includes(selected)) continue;
+      items.push({ kind, id, v });
+    }
+  items.sort((a, b) => (b.v.casualties || 0) - (a.v.casualties || 0) || (INTENSITY[b.v.intensity] || 0) - (INTENSITY[a.v.intensity] || 0) || (b.v.ended_turn ?? 0) - (a.v.ended_turn ?? 0) || String(a.v.name || a.id).localeCompare(String(b.v.name || b.id)));
+  const list = $("diplomacy-list");
+  list.replaceChildren();
+  if (!items.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = diplomacyTab === "wars" ? "No active wars." : diplomacyTab === "treaties" ? "No treaties in force." : "Nothing has ended yet.";
+    list.append(p);
+  }
+  for (const { kind, id, v } of items) {
+    const card = document.createElement("article");
+    card.className = "agreement " + kind;
+    const head = document.createElement("div");
+    head.className = "agreement-head";
+    const h = document.createElement("h3");
+    h.textContent = v.name || (kind === "conflict" ? "Unnamed conflict" : "Unnamed agreement");
+    const badges = document.createElement("span");
+    for (const text of [kindLabel(v.kind), kind === "conflict" && v.status === "open" ? `${v.intensity || "unknown"} intensity` : null].filter(Boolean)) {
+      const badge = document.createElement("span");
+      badge.className = "badge" + (text.includes("intensity") ? " intensity-" + (v.intensity || "unknown") : "");
+      badge.textContent = text;
+      badges.append(badge);
+    }
+    head.append(h, badges);
+    const parties = document.createElement("div");
+    parties.className = "parties";
+    v.actors.slice(0, 10).forEach((a) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "party";
+      const img = document.createElement("img");
+      img.alt = "";
+      flag(img, a);
+      chip.append(img, document.createTextNode(state.actors[a]?.name || a));
+      chip.onclick = protect(async () => { $("diplomacy").close(); await select(a, true); });
+      parties.append(chip);
+    });
+    if (v.actors.length > 10) parties.append(` +${v.actors.length - 10} more`);
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    const dates = [v.started_turn !== undefined ? `Since ${month(v.started_turn)}` : null, v.ended_turn !== undefined ? `ended ${month(v.ended_turn)}` : null].filter(Boolean).join(", ");
+    const toll = kind === "conflict" && (v.casualties || v.displaced) ? `${(v.casualties || 0).toLocaleString()} killed · ${(v.displaced || 0).toLocaleString()} displaced since 2026` + (v.last_month_casualties ? ` (${v.last_month_casualties.toLocaleString()} killed last month)` : "") : "";
+    meta.textContent = [dates, toll].filter(Boolean).join(" · ");
+    const text = document.createElement("p");
+    text.textContent = v.text;
+    card.append(head, parties, meta, text);
+    if (v.affected_regions?.length) {
+      const regions = document.createElement("div");
+      regions.className = "chips";
+      const label = document.createElement("small");
+      label.textContent = "Front:";
+      regions.append(label);
+      for (const r of v.affected_regions) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip";
+        b.textContent = state.territories[r]?.name || r;
+        b.onclick = () => { highlight = { kind, id }; $("diplomacy").close(); setMapMode("diplomacy"); zoomToRegions([r]); };
+        regions.append(b);
+      }
+      card.append(regions);
+    }
+    const show = document.createElement("button");
+    show.type = "button";
+    show.className = "show-on-map";
+    show.textContent = "Show on map";
+    show.onclick = () => showOnMap(kind, id);
+    card.append(show);
+    list.append(card);
+  }
+}
+$("diplomacy-open").onclick = () => { renderDiplomacy(); $("diplomacy").showModal(); };
+$("diplomacy-close").onclick = () => $("diplomacy").close();
+$("diplomacy").addEventListener("click", (e) => { if (e.target === $("diplomacy")) $("diplomacy").close(); });
+$("diplomacy-mine").onchange = renderDiplomacy;
+for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.onclick = () => { diplomacyTab = tab.dataset.tab; renderDiplomacy(); };
 const prepare=document.createElement("button");prepare.id="prepare";prepare.textContent="Prepare campaign references";
 $("controls").prepend(prepare);
 prepare.onclick=protect(async()=>{

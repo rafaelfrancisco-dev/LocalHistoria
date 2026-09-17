@@ -54,6 +54,25 @@ try {
   });
   await page.locator("#new-game").click();
   await page.locator("#controls").waitFor({ state: "visible" });
+  // National status in real currency, the Wars & treaties menu and its map mode.
+  await page.waitForFunction(() => document.querySelector("#stats").innerText.includes("€"));
+  assert.match(await page.locator("#stats").innerText(), /GDP[\s\S]*US\$[\s\S]*population[\s\S]*stability/i);
+  await page.locator("#diplomacy-open").click();
+  await page.locator("#diplomacy").waitFor({ state: "visible" });
+  assert.match(await page.locator("#diplomacy-list").innerText(), /Russo-Ukrainian War[\s\S]*Since February 2022/);
+  await page.getByRole("tab", { name: "Treaties & alliances" }).click();
+  assert.match(await page.locator("#diplomacy-list").innerText(), /North Atlantic Treaty Organization/);
+  await page.locator("#diplomacy-mine").check();
+  assert.doesNotMatch(await page.locator("#diplomacy-list").innerText(), /Collective Security Treaty Organization/);
+  await page.getByRole("tab", { name: "Active wars" }).click();
+  await page.locator("#diplomacy-mine").uncheck();
+  await page.locator("#diplomacy-list .agreement", { hasText: "Russo-Ukrainian War" }).locator(".show-on-map").click();
+  await page.waitForFunction(() => mapMode === "diplomacy" && !document.querySelector("#diplomacy").open);
+  assert.match(await page.locator(".map-legend").innerText(), /Russo-Ukrainian War[\s\S]*War front/);
+  assert.equal(await page.evaluate(() => { let fill; layers.eachLayer((l) => { if (l.feature.properties.name === "Donetsk Oblast") fill = l.options.fillColor; }); return fill; }), "#f28c38");
+  await page.locator(".map-legend button").click();
+  await page.getByRole("button", { name: "Political" }).click();
+  await page.waitForFunction(() => mapMode === "political" && document.querySelector(".map-legend").hidden);
   await page.locator("#action-0").fill("Invest in the national railway network");
   await page.locator("#add-action").click();
   await page.locator("#action-1").fill("Open trade talks with Spain");

@@ -1,4 +1,5 @@
 #include "localhistoria/simulation.h"
+#include "localhistoria/status.h"
 #include <sstream>
 namespace lh {
 std::string dump(const Json::Value &j) {
@@ -150,12 +151,18 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
             for (auto k : {"longitude", "latitude", "actor", "origin_event"}) e.removeMember(k);
             f["entities"][id] = e;
         }
+    // The nation's size, wealth, stability and wars ground every decision, adjudication and narration.
+    f["status"] = nationalStatus(w, a);
     for (auto kind : {"conflicts", "commitments"}) {
-        auto &collection = std::string(kind) == "conflicts" ? w.conflicts : w.commitments;
+        bool conflict = std::string(kind) == "conflicts";
+        auto &collection = conflict ? w.conflicts : w.commitments;
         f[kind] = Json::objectValue;
         for (auto &id : collection.getMemberNames())
-            if (collection[id]["status"] == "open" && involves(collection[id], a)) f[kind][id] = collection[id];
+            if (collection[id]["status"] == "open" && involves(collection[id], a)) f[kind][id] = describeAgreement(w, conflict ? "conflict" : "commitment", id);
     }
+    // Wars and treaties already appear in full above.
+    f["status"].removeMember("wars");
+    f["status"].removeMember("treaties");
     f["recent_events"] = Json::arrayValue;
     for (const auto &month : recent)
         for (const auto &event : month["events"])

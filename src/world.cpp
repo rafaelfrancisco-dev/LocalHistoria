@@ -1,5 +1,6 @@
 #include "localhistoria/world.h"
 #include "localhistoria/politics.h"
+#include "localhistoria/status.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -38,6 +39,10 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         require(e.isObject()&&e["id"].isString()&&e["text"].isString()&&e["actor"].isString()&&e["causes"].isArray()&&e["regions"].isArray()&&e["entities"].isArray()&&e["actors"].isArray()&&e["background"].isBool(),"Invalid structured event");
         require(e["id"].asString().rfind("t"+std::to_string(w.turn)+"-",0)==0 && eventIds.insert(e["id"].asString()).second && e["text"].asString().size()<=2000,"Invalid event ID or text");
         if(e["background"].asBool())++background;
+        if(e.isMember("effects")) {
+            require(e["effects"].isArray()&&e["effects"].size()<=3,"Invalid event effects");
+            for(auto &x:e["effects"])require(x.isObject()&&x["actor"].isString()&&x["economy"].isString()&&validEffect(x["economy"].asString())&&x["stability"].isString()&&validEffect(x["stability"].asString()),"Invalid event effect");
+        }
     }
     require(background<=3,"At most three background developments");
     for(auto &c:d.changes) {
@@ -108,6 +113,7 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         for(auto &id:e["actors"])require(id.isString()&&w.hasActor(id.asString()),"Unknown event related actor");
         for(auto &id:e["regions"])require(id.isString()&&w.territories.isMember(id.asString()),"Unknown event region");
         for(auto &id:e["entities"])require(id.isString()&&w.entities.isMember(id.asString()),"Unknown event entity");
+        for(auto &x:e["effects"])require(w.hasActor(x["actor"].asString()),"Unknown effect actor");
         if(e["initiative_type"].isString()&&e["initiative_type"].asString().rfind("independent_",0)==0) {
             auto key=e.get("regional_actor", "").asString();if(key.empty())key=e["actor"].asString();
             require(!e.isMember("regional_actor")||w.territories.isMember(key),"Unknown regional attribution");
@@ -118,8 +124,18 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
     for(auto kind:{"conflicts","commitments"}) {
         auto collection=kind==std::string("conflicts")?w.conflicts:w.commitments;
         for(auto &id:collection.getMemberNames()) {
-            auto &v=collection[id];require(v["actors"].isArray()&&v["actors"].size()>=2&&v["status"].isString()&&(v["status"]=="open"||v["status"]=="resolved")&&v["text"].isString()&&v["text"].asString().size()<=1000,"Invalid conflict or commitment");
+            const Json::Value &v=collection[id];require(v["actors"].isArray()&&v["actors"].size()>=2&&v["status"].isString()&&(v["status"]=="open"||v["status"]=="resolved")&&v["text"].isString()&&v["text"].asString().size()<=1000,"Invalid conflict or commitment");
             for(auto &a:v["actors"])require(a.isString()&&w.hasActor(a.asString()),"Unknown commitment actor");
+            bool conflict=kind==std::string("conflicts");
+            // Names and kinds are optional only for entries that predate them.
+            bool created=(conflict?base.state.conflicts:base.state.commitments)[id].isNull();
+            require(!created||(v["name"].isString()&&v["kind"].isString()),"New conflicts and commitments need a name and kind");
+            require(!v.isMember("name")||(v["name"].isString()&&!v["name"].asString().empty()&&v["name"].asString().size()<=160),"Invalid conflict or commitment name");
+            require(!v.isMember("kind")||(v["kind"].isString()&&(conflict?validConflictKind(v["kind"].asString()):validCommitmentKind(v["kind"].asString()))),"Invalid conflict or commitment kind");
+            for(auto k:{"started_turn","ended_turn"})require(!v.isMember(k)||v[k].isInt(),"Invalid conflict or commitment dates");
+            for(auto k:{"intensity","set_intensity"})require(!v.isMember(k)||(v[k].isString()&&validIntensity(v[k].asString())),"Invalid conflict intensity");
+            for(auto k:{"casualties","displaced"})require(!v.isMember(k)||(v[k].isIntegral()&&v[k].asInt64()>=0),"Invalid conflict totals");
+            for(auto k:{"affected_regions","theatre"})if(v.isMember(k)){require(v[k].isArray(),"Invalid conflict regions");for(auto &r:v[k])require(r.isString()&&w.territories.isMember(r.asString()),"Unknown conflict region");}
         }
     }
     return r;
@@ -179,8 +195,9 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
         p=Json::objectValue;p["region"]=region;p["agenda"]=string(500);p["relations"]=parse(R"({"type":"string","enum":["neutral","cooperative","strained"]})");p["demand"]=parse(R"({"type":"string","maxLength":500})");op("regional_initiative",p);
         p=Json::objectValue;p["region"]=region;p["demand_id"]=string(100);p["response"]=parse(R"({"type":"string","enum":["accepted","rejected"]})");op("respond_regional",p);
     }
-    p=Json::objectValue;p["actors"]=parties;p["text"]=string(500);op("open_conflict",p);
-    p=Json::objectValue;p["actors"]=parties;p["text"]=string(500);op("add_commitment",p);
+    // Kind leads name alphabetically, so the model decides what it is before naming it.
+    p=Json::objectValue;p["actors"]=parties;p["intensity"]=parse(R"({"type":"string","enum":["low","medium","high"]})");p["kind"]=parse(R"({"type":"string","enum":["war","border_conflict","insurgency","civil_war"]})");p["name"]=string(120);p["text"]=string(500);op("open_conflict",p);
+    p=Json::objectValue;p["actors"]=parties;p["kind"]=parse(R"({"type":"string","enum":["alliance","defence_pact","non_aggression_pact","trade_agreement","ceasefire","peace_treaty","union","other"]})");p["name"]=string(120);p["text"]=string(500);op("add_commitment",p);
     if(!regions.empty()) {
         p=Json::objectValue;p["kind"]=parse(R"({"type":"string","enum":["city","port","base","army","fleet","event_site"]})");p["name"]=string(120);p["actor"]=actor;p["region"]=region;op("build",p);
         p=Json::objectValue;p["region"]=region;p["to"]=actorId;op("transfer_territory",p);
@@ -192,14 +209,19 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
         p=Json::objectValue;p["entity"]=entity;p["status"]=parse(R"({"type":"string","enum":["active","inactive","destroyed"]})");op("set_entity_status",p);
     }
     if(!conflicts.empty()){p=Json::objectValue;p["conflict"]=enumeration(conflicts);op("resolve_conflict",p);}
+    if(!conflicts.empty()){p=Json::objectValue;p["conflict"]=enumeration(conflicts);p["intensity"]=parse(R"({"type":"string","enum":["low","medium","high"]})");op("set_conflict_intensity",p);}
     if(!commitments.empty()){p=Json::objectValue;p["commitment"]=enumeration(commitments);op("resolve_commitment",p);}
     Json::Value event;event["type"]="object";event["additionalProperties"]=false;
     // jsoncpp sorts keys and llama.cpp grammars keep that order: description precedes operations, action leads each operation.
-    for(auto k:{"actor","blocked_by","causes","description","operations"})event["required"].append(k);
+    for(auto k:{"actor","blocked_by","causes","description","effects","operations"})event["required"].append(k);
     // Denials must cite a real commitment, so a small model cannot invent prerequisites; physical limits are checked by C++.
     event["properties"]["blocked_by"]=enumeration(commitments);event["properties"]["blocked_by"]["enum"].insert(0,"none");
     event["properties"]["actor"]=actor;event["properties"]["description"]=string(400);
     event["properties"]["causes"]=parse(R"({"type":"array","maxItems":4})");
+    // Economic and stability consequences are qualitative; C++ turns them into bounded numbers.
+    auto effect=parse(R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
+    event["properties"]["effects"]=parse(R"({"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["actor","economy","stability"]}})");
+    event["properties"]["effects"]["items"]["properties"]["actor"]=actor;event["properties"]["effects"]["items"]["properties"]["economy"]=effect;event["properties"]["effects"]["items"]["properties"]["stability"]=effect;
     if(causes.empty())event["properties"]["causes"]["maxItems"]=0;else event["properties"]["causes"]["items"]=enumeration(causes);
     event["properties"]["operations"]=parse(R"({"type":"array","maxItems":5})");event["properties"]["operations"]["items"]["anyOf"]=ops;
     Json::Value schema;schema["type"]="object";schema["additionalProperties"]=false;schema["required"].append("events");schema["required"].append("world_events");
@@ -213,7 +235,7 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     outcomes["minItems"]=outcomes["maxItems"]=Json::UInt(outcomes["prefixItems"].size());
     // World events are unplanned developments: narrative only, never decisions of the player's nation, so they cannot
     // invent construction, treaties or conquests that nobody ordered.
-    auto development=event;development["required"]=Json::arrayValue;for(auto k:{"actor","causes","description"})development["required"].append(k);
+    auto development=event;development["required"]=Json::arrayValue;for(auto k:{"actor","causes","description","effects"})development["required"].append(k);
     development["properties"].removeMember("operations");development["properties"].removeMember("blocked_by");
     std::set<std::string> others(actors);others.erase(w.player);if(others.empty())others=actors;development["properties"]["actor"]=enumeration(others);
     schema["properties"]["world_events"]["type"]="array";schema["properties"]["world_events"]["maxItems"]=2;schema["properties"]["world_events"]["items"]=development;
@@ -268,6 +290,10 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         return v;
     };
     auto known=[&](const std::string &a){return w.hasActor(a)||index.contains("actor:"+a);};
+    // Names already used by any war or treaty, past or present, so repeats are numbered.
+    std::set<std::string> names;
+    auto lowered=[](std::string v){for(auto &ch:v)ch=char(std::tolower(static_cast<unsigned char>(ch)));return v;};
+    for(auto kind:{"conflict","commitment"})for(auto &cid:(kind==std::string("conflict")?w.conflicts:w.commitments).getMemberNames())names.insert(lowered(displayName(w,kind,cid)));
     for(auto &e:all) {
         require(e.isObject()&&e["description"].isString()&&e["actor"].isString()&&e["blocked_by"].isString()&&e["background"].isBool()&&e["causes"].isArray()&&e["operations"].isArray()&&e["operations"].size()<=8,"Invalid operation event");
         auto ev=e["actor"].asString();require(w.hasActor(ev),"Unknown event actor");
@@ -282,7 +308,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         std::string blocked=e["blocked_by"].asString(),breaches;
         // Treaties can be broken: a cited commitment only blocks an event whose outcome changes nothing; otherwise the breach is recorded.
         if(blocked!="none"&&!e["operations"].empty()&&w.commitments.isMember(blocked)){breaches=blocked;blocked="none";}
-        auto snapshot=std::make_tuple(pending,index,created,newActors,taken,aliases);
+        auto snapshot=std::make_tuple(pending,index,created,newActors,taken,aliases,names);
         try {
         for(auto &o:e["operations"]) {
             if(blocked!="none")break;
@@ -347,13 +373,30 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 auto kind=name=="open_conflict"?std::string("conflict"):std::string("commitment");
                 auto cid=std::string(kind=="conflict"?"c":"k")+std::to_string(w.turn)+"-"+std::to_string(++created);
                 Json::Value v;v["actors"]=Json::arrayValue;v["status"]="open";v["text"]=str("text");
-                for(auto &a:o["actors"]){if(!a.isString())throw Infeasible("unknown party");auto ref=actorRef(a.asString());if(!known(ref))throw Infeasible("unknown party "+ref);v["actors"].append(ref);actors.insert(ref);}
+                std::vector<std::string> members;
+                for(auto &a:o["actors"]){if(!a.isString())throw Infeasible("unknown party");auto ref=actorRef(a.asString());if(!known(ref))throw Infeasible("unknown party "+ref);if(std::find(members.begin(),members.end(),ref)!=members.end())continue;members.push_back(ref);v["actors"].append(ref);actors.insert(ref);}
+                if(members.size()<2)throw Infeasible("needs two parties");
+                auto type=o["kind"].asString();
+                if(kind=="conflict"?!validConflictKind(type):!validCommitmentKind(type))type=kind=="conflict"?"war":"other";
+                // Pending creations are not in w yet; name them against what they will be.
+                WorldState named=w;for(auto &m:members)if(!named.hasActor(m))named.actors[m]=current("actor",w.actors,m);
+                v["name"]=realisticName(named,kind,type,o["name"].isString()?o["name"].asString():"",members,v["text"].asString(),names);names.insert(lowered(v["name"].asString()));
+                v["kind"]=type;v["started_turn"]=w.turn;
+                if(kind=="conflict"){auto level=o["intensity"].asString();v["set_intensity"]=v["intensity"]=(level=="low"||level=="high")?level:"medium";v["affected_regions"]=Json::arrayValue;v["casualties"]=v["displaced"]=Json::Int64(0);}
                 touch(kind,cid,Json::nullValue,id,why)=v;
             } else if(name=="resolve_conflict"||name=="resolve_commitment") {
                 auto kind=name=="resolve_conflict"?std::string("conflict"):std::string("commitment");
                 auto cid=str(kind.c_str());auto &collection=kind=="conflict"?w.conflicts:w.commitments;
                 if(!collection.isMember(cid))throw Infeasible("unknown "+kind);
-                touch(kind,cid,collection[cid],id,why)["status"]="resolved";
+                auto &v=touch(kind,cid,collection[cid],id,why);v["status"]="resolved";v["ended_turn"]=w.turn;if(kind=="conflict")v["intensity"]="none";
+            } else if(name=="set_conflict_intensity") {
+                auto cid=str("conflict");auto level=str("intensity");
+                if(!w.conflicts.isMember(cid)||w.conflicts[cid]["status"]!="open")throw Infeasible("no such open conflict");
+                if(level!="low"&&level!="medium"&&level!="high")throw Infeasible("invalid intensity");
+                auto &parties=w.conflicts[cid]["actors"];
+                if(std::find(parties.begin(),parties.end(),Json::Value(ev))==parties.end())throw Infeasible("only a party can escalate or scale down "+displayName(w,"conflict",cid));
+                touch("conflict",cid,w.conflicts[cid],id,why)["set_intensity"]=level;
+                for(auto &a:parties)actors.insert(a.asString());
             } else if(name=="build") {
                 auto r=region();auto builder=party("actor");auto kind=str("kind");
                 auto t=current("territory",w.territories,r);
@@ -418,7 +461,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         }
         for(auto &a:createdHere){bool land=false;for(auto &c:pending)land=land||(c.kind=="territory"&&c.after["owner"]==a);if(!land)throw Infeasible("a new state needs territory");}
         } catch(const Infeasible &x) {
-            std::tie(pending,index,created,newActors,taken,aliases)=snapshot;
+            std::tie(pending,index,created,newActors,taken,aliases,names)=snapshot;
             actors.clear();regions.clear();entities.clear();
             blocked="infeasible";text="Could not happen this month ("+std::string(x.what())+"): "+text;
         }
@@ -437,6 +480,17 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             event[key]=Json::arrayValue;for(auto &v:*values)event[key].append(v);
         }
         for(auto k:{"initiative_type","regional_actor"})if(e.isMember(k))event[k]=e[k];
+        // Only something that happened has consequences; malformed or unknown effects are dropped, not fatal.
+        if(blocked=="none"&&e["effects"].isArray()) {
+            Json::Value effects(Json::arrayValue);
+            for(auto &x:e["effects"]) {
+                if(effects.size()>=3||!x.isObject()||!x["actor"].isString()||!x["economy"].isString()||!x["stability"].isString())continue;
+                auto a=actorRef(x["actor"].asString());auto economy=x["economy"].asString(),stability=x["stability"].asString();
+                if(!known(a)||!validEffect(economy)||!validEffect(stability)||(economy=="none"&&stability=="none"))continue;
+                Json::Value effect;effect["actor"]=a;effect["economy"]=economy;effect["stability"]=stability;effects.append(effect);
+            }
+            if(!effects.empty())event["effects"]=effects;
+        }
         event["identity_changes"]=Json::arrayValue;
         for(const auto &c:pending)if(c.kind=="actor"&&c.event==id&&c.after["flag_revision"].isUInt()&&c.after["flag_revision"]!=c.before["flag_revision"]){Json::Value link;link["actor"]=c.id;link["revision"]=c.after["flag_revision"];event["identity_changes"].append(link);}
         events.append(event);

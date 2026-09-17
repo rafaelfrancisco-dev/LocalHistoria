@@ -13,3 +13,5 @@ __pycache__/
 
 /.venv-geography/
 *.sqlite-journal
+/data/.stats-imported
+/logs/

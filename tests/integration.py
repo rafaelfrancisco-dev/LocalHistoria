@@ -31,6 +31,9 @@ class Mock(http.server.BaseHTTPRequestHandler):
    for i,e in zip(value['intentions'],result['events']):
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
+    if 'war-fixture' in i['action']:
+     e['operations']=[{'action':'open_conflict','actors':['PT','ES'],'kind':'war','intensity':'medium','name':'War','text':'Border war with Spain'}]
+     e['effects']=[{'actor':'PT','economy':'decline','stability':'decline'}]
     if 'identity-fixture' in i['action']:
      e['operations']=[{'action':'change_identity','actor':i['actor'],'name':'Atlantic Republic','change_type':'rename' if 'refound' not in i['action'] else 'refounding','reason':'Explicit constitutional settlement','flag_design':{'layout':'horizontal','palette':['#123456','#abcdef','#987654'],'emblem':'circle','explanation':'Shared civic future'}}]
   elif 'authoritative_events' in raw:
@@ -85,7 +88,11 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
 
   s=Server(folder,f'http://127.0.0.1:{mock.server_port}');s.start()
   try:
-   w=s.get('campaign',{'country':'PT'})['state'];assert w['turn']==0 and len(w['actors'])==239 and 'countries' not in w
+   created=s.get('campaign',{'country':'PT'});w=created['state'];assert w['turn']==0 and len(w['actors'])==242 and 'countries' not in w
+   pt=created['national_status']['PT'];assert 10_000_000<pt['population']<11_500_000 and pt['gdp'].startswith('€') and 'US$' in pt['gdp'] and pt['stability'],pt
+   names={c['name'] for c in w['conflicts'].values()}|{c['name'] for c in w['commitments'].values()};assert {'Russo-Ukrainian War','North Atlantic Treaty Organization','European Union'}<=names,names
+   assert any(t['controller']=='RU' and t['owner']=='UA' for t in w['territories'].values())
+   assert s.get('country?code=PT')['status']['population']==pt['population']
    s.get('turns',order(w,'illegal-target',[{'text':'Invade','targets':['ZZ']}]),409)
    s.get('turns',order(w,'typed-action',[{'action':'economy'}]),409)
    assert s.get('campaign')['state']==w
@@ -101,10 +108,15 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==1
-   events=[e['text'] for e in s.get('campaign')['journal'][0]['events']];assert len(events)==5 and all(e.startswith(o['text']) for e,o in zip(events[:2],payload['orders'])),events
+   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and all(e.startswith(o['text']) for e,o in zip(events[:2],payload['orders'])),events
+   tolls=[e['text'] for e in journal if e['action']=='war_toll'];assert any(t.startswith('Russo-Ukrainian War (high intensity): about ') for t in tolls),tolls
+   assert current['conflicts']['c0-1']['casualties']>0 and current['territories'] != w['territories']
    s.get('turns',order(w,'stale-turn',[]),409)
-   j=s.get('turns',order(current,'second-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
+   j=s.get('turns',order(current,'second-turn',[{'text':'war-fixture: declare war on Spain','targets':['ES']}]),202);assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==2
+   war=next(c for c in current['conflicts'].values() if c['actors']==['PT','ES']);assert war['name']=='Portugal–Spain War' and war['kind']=='war' and war['started_turn']==2,war
+   assert war['intensity']=='medium' and war['affected_regions'] and war['casualties']>0 and war['displaced']>0,war
+   assert current['actors']['PT']['status']['stability']<w['actors']['PT']['status']['stability']
    with sqlite3.connect(s.save) as db:db.execute('INSERT OR REPLACE INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
    j=s.get('turns',order(current,'third-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
@@ -128,9 +140,27 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
-   assert Mock.requests and all(b['max_tokens'] in (768,2048) and b['response_format']['type']=='json_schema' for b in Mock.requests)
-   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, frozen references, restart and interrupted jobs',flush=True)
+   assert Mock.requests and all((b['max_tokens']==768 or 2048<=b['max_tokens']<=6144) and b['response_format']['type']=='json_schema' for b in Mock.requests)
+   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, national status, named wars and war tolls, frozen references, restart and interrupted jobs',flush=True)
   finally:s.stop()
+
+  # A save from before national status gains it on its next month and still replays exactly.
+  legacyfolder=folder/'legacy';legacyfolder.mkdir();l=Server(legacyfolder,f'http://127.0.0.1:{mock.server_port}');l.start()
+  try:
+   Mock.mode='valid';old=l.get('campaign',{'country':'PT'})['state']
+   for a in old['actors'].values():a.pop('status',None)
+   for t in old['territories'].values():
+    for k in ('population','gdp_usd','displaced','occupation_gdp'):t.pop(k,None)
+    t['controller']=t['owner']
+   old['actors']={k:v for k,v in old['actors'].items() if len(k)==2};old['conflicts']={};old['commitments']={}
+   l.stop()
+   with sqlite3.connect(l.save) as db:db.execute('UPDATE campaign SET state=?',(json.dumps(old),));db.execute('UPDATE initial_world SET state=?',(json.dumps(old),))
+   l.start();assert 'national_status' in l.get('campaign')
+   j=l.get('turns',order(old,'legacy-turn',[]),202);assert l.poll(j['id'])['status']=='complete'
+   upgraded=l.get('campaign');assert upgraded['state']['actors']['PT']['status'] and upgraded['national_status']['PT']['population']>10_000_000 and not upgraded['state']['conflicts']
+   legacyexport=legacyfolder/'replay.json';legacyexport.write_text(json.dumps(l.get('replay')));subprocess.run([str(ROOT/'build/replay_verify'),str(legacyexport)],check=True)
+   print('Legacy save gained national status and replayed',flush=True)
+  finally:l.stop()
 
   cfgfolder=folder/'config-test';cfgfolder.mkdir()
   endpointA=f'http://127.0.0.1:{mock.server_port}';endpointB='http://127.0.0.1:1'

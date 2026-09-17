@@ -14,12 +14,13 @@ Rebuild with `make geography-env` then `make data` when inputs change. For an ex
 
 ## Monthly simulation
 
-There are no fixed action types, costs or national statistics. Each month the player writes up to eight free-text actions, each optionally pinned to up to four region/entity/actor targets (clicking a map region adds one to the selected action). A turn:
+There are no fixed action types or costs. National status (population, GDP, stability) grounds decisions and evolves deterministically; see [National status and war](#national-status-and-war). Each month the player writes up to eight free-text actions, each optionally pinned to up to four region/entity/actor targets (clicking a map region adds one to the selected action). A turn:
 
 1. Reserves two independent national actions and one independent regional action, then picks up to four reactive AI nations: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes up to three free-text actions of its own, without thinking.
 2. Runs `resolve`: advances the month and completes construction whose `completes_turn` has arrived, recording a factual completion event.
 3. Asks the model to adjudicate every action together (with thinking) and compiles its answer into a validated delta.
-4. Commits state, delta, events and inference records in one transaction, then requests narration.
+4. Applies `applyMonthlyStatus`: demographic and economic trends, model effects, occupation, war fronts, casualties, displacement and stability.
+5. Commits state, delta, events and inference records in one transaction, then requests narration.
 
 Actor IDs are independent of country codes. A landless actor keeps playing.
 
@@ -32,7 +33,8 @@ The model does not write deltas directly. Asking a 4B model for exact `before`/`
   - Related actors, regions and entities are derived from its operations.
   - An event may have no operations: reforms, trade, research and negotiations are recorded as history.
   - At most three background events are kept.
-- **Operations.** Each is named by `action`: `build`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict`, `resolve_conflict`, `add_commitment`, `resolve_commitment`. Alliances and treaties are commitments; armies and fleets are entities.
+- **Operations.** Each is named by `action`: `build`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict` (with `kind`, `name` and starting `intensity`), `set_conflict_intensity` (parties only), `resolve_conflict`, `add_commitment` (with `kind` and `name`), `resolve_commitment`. Alliances and treaties are commitments; armies and fleets are entities.
+- **Effects.** Each event lists up to three `effects`: `{actor, economy, stability}`, each one of `severe_decline`, `decline`, `none`, `growth`, `strong_growth`. Invalid or unknown effects are dropped; infeasible or blocked events have none.
 - **Schema constraints.**
   - Region, entity, event-actor, conflict, commitment and cause references are restricted to IDs present in the supplied facts.
   - `blocked_by` accepts only `none` or an open commitment ID, so a denial cannot cite an invented rule.
@@ -75,6 +77,54 @@ Validation runs on a copy. The complete state, accepted delta, indexed event rel
 - oversized mandatory context.
 
 Narration runs after commit and cannot mutate state; failed narration leaves the factual summary.
+
+## National status and war
+
+`src/status.cpp` holds all rates as named constants. Everything here is deterministic: jitter of ±30% comes from a stable hash of campaign, month and region, so replay recomputes it exactly after applying recorded deltas.
+
+**Seeding.** `seedStatus` gives each actor its `country_stats` row and each region its `region_stats` share. New campaigns also receive the January 2026 wars, occupations and treaties. A save from before national status is seeded (without the 2026 world) at its next month, and that turn freezes the inputs in `reference.status_seed` for replay.
+
+**Grounding.** `context()` adds a compact `status` to every decision, adjudication and narration input:
+
+- population, GDP in local currency and USD, GDP per capita, stability label and economic trend;
+- wars and treaties by name, kind, intensity and totals (blocs above six members show only their size).
+
+Relevant regions show their population. The adjudication prompt asks the model to judge feasibility against economy size, population, stability and war burden.
+
+**Names.** `realisticName` keeps a specific proposed name. A name made only of generic words (war, treaty, pact…), or one repeating the description, is replaced with "Portugal–Spain War", "Civil War in X", "X Insurgency", "Treaty of <largest city>" or "A–B Defence Pact". Names already used, even by ended entries, get "Second", "Third"…
+
+**Each month**, after the accepted delta:
+
+1. **Trend.** Region population and GDP grow by the owner's annual rates ÷ 12 (clamped to ±5% and ±10% a year).
+2. **Model effects.** Economy: −1.0 / −0.3 / 0 / +0.2 / +0.5% GDP. Stability: −6 / −2 / 0 / +1 / +3. Per-actor totals are capped at ±1.5% and ±8, and a quarter of the stability effect shifts the baseline.
+3. **Occupation.** Occupied regions lose 2% of output a month, down to 40% of their value when occupation began. Seeded occupations start at that floor.
+4. **Fronts.** Each open conflict's affected regions, capped at 12, are:
+   - regions whose control changed between its parties this month;
+   - regions of the parties where a party's entity was destroyed;
+   - seeded theatre regions still held by a party;
+   - regions controlled by a party that border a region controlled by another party.
+
+   Effective intensity is `none` under an open ceasefire or peace treaty between two parties, `high` when control changed or an entity was destroyed this month, `low` when there is no front, and otherwise the declared intensity.
+5. **Toll**, per month by intensity low / medium / high, scaled by kind (war and civil war 1.0, border conflict 0.4, insurgency 0.3):
+
+   | | low | medium | high |
+   | --- | --- | --- | --- |
+   | Military deaths, share of each party's national population (landless parties: a quarter of the front's population) | 0.0001% | 0.002% | 0.008% |
+   | Civilian deaths, share of each front region | 0.0003% | 0.0015% | 0.005% |
+   | Displacement, share of each front region (plus a one-off 8% when a region changes hands) | 0.03% | 0.15% | 0.4% |
+   | Front GDP loss | 0.1% | 0.4% | 1% |
+   | GDP drag across the parties' land | 0.005% | 0.02% | 0.05% |
+
+   - Deaths come out of the population a party recruits from, at most 1% of a region per month.
+   - 35% of displaced people cross into bordering non-party countries; the rest go to the owner's unaffected regions. With nowhere safe, they go anywhere else in the country.
+   - Half of per-capita output moves with them.
+   - Once a region is calm and back under its owner, 3% of its displaced return each month.
+   - Population is conserved except for deaths.
+6. **Stability** moves 8% of the way toward a target each month, by at most 10 points. The target is the baseline, minus 3 / 8 / 15 for the most intense war, minus 25 × the occupied share of population, minus 5 when GDP fell over 1% that month. Deaths above 0.01% of population cost another point.
+
+A year of the seeded Russo-Ukrainian War at high intensity produces about 180,000 deaths and 0.9 million displaced, and roughly 55,000 deaths in the Sudanese Civil War. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
+
+Limitations: conflicts have parties, not sides, so co-belligerents listed in one war count as opposing each other. Military deaths are not tied to entities. Regional splits are estimates.
 
 ## Historical preparation and context
 

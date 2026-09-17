@@ -252,6 +252,198 @@ a {
   color: var(--muted);
   font-size: 11px;
 }
+.stat.wide {
+  grid-column: 1/-1;
+}
+.stat.wide strong {
+  font-size: 17px;
+}
+#diplomacy-open {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+dialog#diplomacy {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(85vh, 900px);
+  padding: 0 20px 20px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+dialog#diplomacy::backdrop {
+  background: rgb(5 12 16 / 70%);
+}
+.dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+.dialog-head button {
+  margin: 0;
+  padding: 2px 10px;
+  font-size: 20px;
+  line-height: 1;
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tabs button {
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.tabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+label.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+label.filter input {
+  width: auto;
+  margin: 0;
+}
+.agreement {
+  border-top: 1px solid var(--line);
+  padding: 12px 0 4px;
+}
+.agreement-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.agreement h3 {
+  margin: 0;
+  font:
+    18px Georgia,
+    serif;
+}
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #2b4149;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.badge.intensity-high {
+  background: #7d3d35;
+  color: #f5d6cf;
+}
+.badge.intensity-medium {
+  background: #6b4a2e;
+  color: #f1dcc2;
+}
+.parties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  align-items: center;
+}
+.party {
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.party img {
+  width: 16px;
+  height: 12px;
+  object-fit: cover;
+}
+.agreement p {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.agreement .meta {
+  color: var(--accent);
+  font-size: 12px;
+}
+.agreement .show-on-map {
+  margin: 8px 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.agreement .chips small {
+  letter-spacing: 0;
+  color: var(--muted);
+}
+#diplomacy-list .empty {
+  color: var(--muted);
+}
+.map-modes {
+  display: flex;
+  background: var(--panel);
+}
+.map-modes button {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+.map-modes button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #18252a;
+  font-weight: 650;
+}
+.map-legend {
+  background: rgb(24 40 49 / 92%);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  max-width: 240px;
+}
+.map-legend[hidden] {
+  display: none;
+}
+.map-legend strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.map-legend div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-legend i {
+  width: 12px;
+  height: 10px;
+  flex: none;
+}
+.map-legend i.dashed {
+  border: 1.5px dashed var(--text);
+}
+.map-legend button {
+  margin: 6px 0 0;
+  padding: 2px 8px;
+  font-size: 11px;
+}
 details {
   border-block: 1px solid var(--line);
   padding: 12px 0;
@@ -354,6 +546,12 @@ footer {
   }
   .notice {
     padding: 10px 15px;
+  }
+  dialog#diplomacy {
+    padding: 0 16px 16px;
+  }
+  .map-legend {
+    max-width: 180px;
   }
   .panel {
     grid-column: auto;

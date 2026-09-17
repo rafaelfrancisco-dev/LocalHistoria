@@ -64,7 +64,9 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     const unsigned contextLimit=props["default_generation_settings"]["n_ctx"].asUInt();
     // Reasoning shares the output budget, so thinking needs a context large enough to hold it.
     bool thinking=reasoningBudget>0&&contextLimit>=16384;
-    unsigned answer=schema["properties"].isMember("events")?2048:768;
+    // Every adjudicated action needs room for its description, effects and operations.
+    unsigned outcomes=schema["properties"]["events"]["prefixItems"].size();
+    unsigned answer=schema["properties"].isMember("events")?std::clamp<unsigned>(768+256*outcomes,2048,6144):768;
     // Unbounded, a 4B model reasons for thousands of tokens (minutes) about simple actions.
     b["max_tokens"]=answer+(thinking?reasoningBudget:0);
     b["chat_template_kwargs"]["enable_thinking"]=thinking;
@@ -117,7 +119,7 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     auto j = completion(input, schema,
         "You represent the actor specified by initiative_type in this fictional monthly sandbox. Obey action_count. For independent_regional you represent only regional_identity, not its governing nation: propose civic initiatives, negotiations or autonomy demands; never national military orders, treaties or armed rebellion. For independent initiatives act from your own agenda, geography and history. Write concise actions (one sentence each) "
         "it plausibly takes this month, given its facts, commitments, conflicts and recent events. Each action must be achievable "
-        "within a month or be a realistic step toward a longer goal. recent_events already happened: do not repeat them; "
+        "within a month or be a realistic step toward a longer goal, and fit the nation's status: its population, economy (GDP in real currency), stability and wars limit what it can afford and attempt. recent_events already happened: do not repeat them; "
         "follow up, change course or respond to new developments. Refer to nations and regions by name.", 0, 0.7);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} || !j["actions"].isArray())
         throw ValidationError("Invalid decision shape");
@@ -166,6 +168,10 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "Realism: a turn is one month. Judge what can realistically be achieved in a month given the facts, history and ongoing efforts. "
         "Large goals such as conquering a country, winning a war, founding a city or transforming an economy only advance by a step: describe partial progress, never complete them at once. "
         "Actions without map effects (reforms, investment, research, trade, speeches, negotiations) are valid events with no operations; describe their plausible effect. "
+        "Ground every outcome in each nation's status: population, GDP (real currency), stability, wars and treaties. A small or poor economy cannot fund what a large one can; unstable or war-weary nations face unrest, desertion and failed reforms; a nation fighting a high-intensity war has little to spare. "
+        "effects: economic and stability consequences of the event, as severe_decline, decline, growth or strong_growth, only for nations it clearly affects; never invent numbers, the game computes them. Most events have effects []; list a nation only when something changes. Wars, sanctions, blockades, coups and major reforms have strong ones. "
+        "Name every new war and treaty the way historians and newspapers would: specific, never generic. Wars after places, peoples or causes (Second Iberian War, Galician War, Douro Border Conflict, Rif Insurgency); treaties after the signing city or purpose (Treaty of Porto, Lisbon Defence Pact, Madrid Trade Accord). Choose kind (war, border_conflict, insurgency, civil_war; alliance, defence_pact, non_aggression_pact, trade_agreement, ceasefire, peace_treaty, union, other) and a war's starting intensity (low, medium, high). "
+        "set_conflict_intensity lets a party escalate (a major offensive) or scale down (a lull, withdrawal) an existing war; a ceasefire or peace treaty is add_commitment with that kind, and resolve_conflict only when the war has actually ended. "
         "Regional intentions are attributed by regional_actor: only regional_initiative is permitted, recording agenda, relations and an optional pending demand. They cannot authorize national actions. National actors may explicitly respond_regional with demand_id and accepted/rejected; pending demands never imply consent. Independence requires explicit national agreement or an established relevant campaign conflict; never autonomous armed rebellion. change_identity requires actor, name, change_type (rename or refounding), reason, and flag_design. Only substantive national renames or explicit constitutional/regime refoundings qualify; elections, border changes and alignments retain flags. create_actor also proposes flag_design (layout horizontal/vertical/cross/diagonal, three hex palette colors, emblem none/circle/diamond, explanation). Use conservative campaign-grounded symbolism, never invented historical claims. "
         "Operations: build (starts constructing a city, port, base, army, fleet or event_site in a region the actor controls; it takes months to finish), "
         "occupy (military control of a bordering region, owner unchanged), restore_control, transfer_territory (the owner cedes a region, or an occupier annexes a region it held before this month), "

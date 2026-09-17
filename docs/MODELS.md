@@ -15,7 +15,7 @@ llama serve \
 
 `-hf` makes llama.cpp itself download the default Q4_K_M file from the [unsloth GGUF repository](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF) on first launch and cache it under `~/.cache/huggingface`. Review the model license and publisher. To use a local file instead, replace `-hf …` with `-m path/to/Qwen3.5-4B-Q4_K_M.gguf`.
 
-In another terminal, from the project root:
+`./start.sh` in the project root runs this command (with any `MODEL`, `MODEL_FILE`, `MODEL_PORT` or `CTX_SIZE` overrides) and the game together; see the README. To run them separately, in another terminal, from the project root:
 
 ```sh
 ./build/localhistoria --llama-endpoint=http://127.0.0.1:8081

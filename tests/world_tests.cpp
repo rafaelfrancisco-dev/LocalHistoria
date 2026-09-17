@@ -109,5 +109,21 @@ int main(){try{
  rejects([&]{compile(R"({"events":[{"description":"Ghost","actor":"nobody","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");});
  auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[]})"));
  check(compileOperations(opsBase.state,noisy,adjacency).events.size()==3,"Background events capped");
+ // Wars and treaties get historians' names, kinds and intensity; effects are validated and recorded on events.
+ check(outcomes["prefixItems"][0]["required"].size()==7&&outcomes["prefixItems"][0]["properties"]["effects"]["maxItems"]==3,"Events carry effects");
+ auto named=compile(R"({"events":[{"description":"War is declared","actor":"old-state","blocked_by":"none","background":false,"causes":[],"effects":[{"actor":"old-state","economy":"decline","stability":"growth"},{"actor":"ghost","economy":"decline","stability":"decline"},{"actor":"neighbor","economy":"none","stability":"none"}],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"kind":"war","intensity":"high","name":"March War","text":"War over the March"},{"action":"add_commitment","actors":["neighbor","far"],"kind":"defence_pact","name":"Defence Pact","text":"Mutual defence"}]},
+  {"description":"Another war","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"open_conflict","actors":["neighbor","old-state"],"kind":"skirmish","name":"March War","text":"Again"}]}]})");
+ auto namedWorld=applyDelta(opsBase,named,geo);
+ check(namedWorld.state.conflicts["c1-1"]["name"]=="March War"&&namedWorld.state.conflicts["c1-1"]["set_intensity"]=="high"&&namedWorld.state.conflicts["c1-1"]["started_turn"]==1,("Named war: "+dump(namedWorld.state.conflicts)).c_str());
+ check(namedWorld.state.commitments["k1-2"]["name"]=="Neighbor–Far Defence Pact"&&namedWorld.state.commitments["k1-2"]["kind"]=="defence_pact","Generic treaty name replaced");
+ check(namedWorld.state.conflicts["c1-3"]["name"]=="Second March War"&&namedWorld.state.conflicts["c1-3"]["kind"]=="war","Repeated name numbered, invalid kind defaulted");
+ check(named.events[0]["effects"].size()==1&&named.events[0]["effects"][0]["actor"]=="old-state"&&!named.events[1].isMember("effects"),"Only valid effects recorded");
+ auto intensity=[&](const char *actor){return compileOperations(namedWorld.state,parse(std::string(R"({"events":[{"description":"Offensive","actor":")")+actor+R"(","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"set_conflict_intensity","conflict":"c1-1","intensity":"low"}]}]})"),adjacency);};
+ check(!infeasible(intensity("neighbor"))&&infeasible(intensity("far")),"Only parties change a war's intensity");
+ auto ended=compileOperations(namedWorld.state,parse(R"({"events":[{"description":"Peace","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"resolve_conflict","conflict":"c1-1"}]}]})"),adjacency);
+ auto peaceWorld=applyDelta(namedWorld,ended,geo);check(peaceWorld.state.conflicts["c1-1"]["ended_turn"]==1&&peaceWorld.state.conflicts["c1-1"]["intensity"]=="none","Ended wars record when");
+ auto unnamed=d;unnamed.changes=Json::arrayValue;Json::Value bare;bare["kind"]="conflict";bare["id"]="c9";bare["before"]=Json::nullValue;bare["after"]=parse(R"({"actors":["old-state","neighbor"],"status":"open","text":"War"})");bare["event"]="t1-change";bare["rationale"]="x";unnamed.changes.append(bare);
+ rejects([&]{applyDelta(base,unnamed,geo);});
+ auto legacy=base;legacy.state.conflicts["c9"]=bare["after"];applyDelta(legacy,WorldDelta{},geo); // Entries from before names stay valid.
  std::cout<<"World deltas: occupation, secession, entity placement, holes, construction schedule, reach, pacing, annexation, conflicts, reload, replay, old history and atomic rollback passed\n";
 }catch(const std::exception&e){std::cerr<<e.what()<<"\n";return 1;}}

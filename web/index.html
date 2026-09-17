@@ -22,6 +22,7 @@
             <img id="playing-as-flag" alt="" />Playing as
             <span id="playing-as-name"></span>
           </p>
+          <button id="diplomacy-open" type="button" hidden>Wars &amp; treaties</button>
         </div>
         <div id="model-settings">
           <label for="llama-endpoint">Model endpoint</label>
@@ -62,7 +63,11 @@
         <div id="stats"></div>
         <details>
           <summary>Cities &amp; reference sources</summary>
-          <p>City populations are reference records, never national totals.</p>
+          <p>
+            National population, GDP and stability start from World Bank data
+            (latest year, CC BY 4.0) and documented estimates, then evolve with
+            the campaign. City populations are reference records.
+          </p>
           <div id="cities"></div>
           <button id="refresh" hidden>
             Download / refresh Wikipedia reference
@@ -86,6 +91,19 @@
         </section>
       </section>
     </main>
+    <dialog id="diplomacy" aria-labelledby="diplomacy-title">
+      <div class="dialog-head">
+        <h2 id="diplomacy-title">Wars &amp; treaties</h2>
+        <button id="diplomacy-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="wars" aria-selected="true">Active wars</button>
+        <button role="tab" data-tab="treaties" aria-selected="false">Treaties &amp; alliances</button>
+        <button role="tab" data-tab="ended" aria-selected="false">Ended</button>
+      </div>
+      <label class="filter"><input id="diplomacy-mine" type="checkbox" /> <span id="diplomacy-mine-label">Only involving the selected country</span></label>
+      <div id="diplomacy-list" role="tabpanel"></div>
+    </dialog>
     <footer>
       Local play · January 2026 onward · Fictional outcomes adjudicated by a local model ·
       <a href="/credits.html">Data &amp; credits</a>

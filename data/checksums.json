@@ -2,5 +2,9 @@
   "data/source/countries.geojson": "45f41865adec4f86602c2cd05c0e29cd8b437614bf2f5b5a863d12463202cae4",
   "data/source/json-cities.json.gz": "311575e7b90512b15cc1ba6c9e897b3e8f3905a9c6e09db344a7dc1cac1ba2f5",
   "web/vendor/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",
-  "web/vendor/leaflet.css": "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6"
+  "web/vendor/leaflet.css": "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6",
+  "data/source/country_stats.json": "f34bdec587b2ef67f6ed26261137f4a9d8582ed2f88a912cad64b043ebaef5fe",
+  "data/source/currencies.json": "9c9208ec4d3915abcda356b20760e2ef4a8d03bf60930f6b176d20d7d39b5c4c",
+  "data/source/stats_overrides.json": "6bcd8b11a01e91c79bbab38400c5afe2e39515587634e9e1d26fcaef014369d2",
+  "data/source/world_2026.json": "1728bbc9d37790993367036fe2b275e9944a9e48cc54919f6605738167b49093"
 }

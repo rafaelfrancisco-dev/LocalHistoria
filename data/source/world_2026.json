@@ -1,0 +1,43 @@
+{
+ "note": "Curated major wars and treaties in force on 1 January 2026, the campaign start. Region names refer to geoBoundaries ADM1 names in data/world.sqlite. The control and front lines are simplified to whole regions. This is a game starting point, not an authoritative account.",
+ "actors": {
+  "rapid-support-forces": {"name": "Rapid Support Forces", "color": "#8a6d3b", "base": "SD"},
+  "national-unity-government": {"name": "National Unity Government of Myanmar", "color": "#5f8a5a", "base": "MM"},
+  "afc-m23": {"name": "Congo River Alliance (AFC/M23)", "color": "#7a5c8a", "base": "CD"}
+ },
+ "conflicts": [
+  {"name": "Russo-Ukrainian War", "kind": "war", "started": "2022-02", "intensity": "high", "actors": ["RU", "UA"],
+   "text": "Russia's full-scale invasion of Ukraine, begun in February 2022, continues as a war of attrition along a front stretching from Kharkiv to Kherson, with long-range drone and missile strikes on both sides.",
+   "occupied": {"RU": [["UA", "Autonomous Republic of Crimea"], ["UA", "Luhansk Oblast"], ["UA", "Donetsk Oblast"]]},
+   "affected": [["UA", "Donetsk Oblast"], ["UA", "Luhansk Oblast"], ["UA", "Zaporizhia Oblast"], ["UA", "Kherson Oblast"], ["UA", "Kharkiv Oblast"], ["UA", "Sumy Oblast"], ["UA", "Dnipropetrovsk Oblast"], ["RU", "Belgorod Oblast"], ["RU", "Kursk Oblast"]]},
+  {"name": "Sudanese Civil War", "kind": "civil_war", "started": "2023-04", "intensity": "high", "actors": ["SD", "rapid-support-forces"],
+   "text": "The war between the Sudanese Armed Forces and the Rapid Support Forces, begun in April 2023. The army retook Khartoum in 2025; the RSF holds Darfur after taking El Fasher, and fighting has shifted to Kordofan.",
+   "occupied": {"rapid-support-forces": [["SD", "North Darfur"], ["SD", "South Darfur"], ["SD", "West Darfur"], ["SD", "Central Darfur"], ["SD", "East Darfur"], ["SD", "West Kordofan"]]},
+   "affected": [["SD", "North Kordofan"], ["SD", "South Kordofan"], ["SD", "West Kordofan"], ["SD", "North Darfur"], ["SD", "Blue Nile"]]},
+  {"name": "Myanmar Civil War", "kind": "civil_war", "started": "2021-05", "intensity": "medium", "actors": ["MM", "national-unity-government"],
+   "text": "The armed resistance to the 2021 military coup, fought by People's Defence Forces and allied ethnic armed organisations against the junta, which lost large border areas in 2023-2024.",
+   "occupied": {},
+   "affected": [["MM", "Saigang"], ["MM", "Chin"], ["MM", "Kachin"], ["MM", "Rakhine"], ["MM", "Shan"], ["MM", "Kayah"], ["MM", "Magway"]]},
+  {"name": "Kivu Conflict", "kind": "insurgency", "started": "2022-03", "intensity": "medium", "actors": ["CD", "afc-m23"],
+   "text": "The M23 rebellion in eastern Congo, which seized Goma and Bukavu in early 2025. A Washington-brokered DRC-Rwanda agreement and Doha talks have not ended the fighting.",
+   "occupied": {"afc-m23": [["CD", "North Kivu"]]},
+   "affected": [["CD", "North Kivu"], ["CD", "South Kivu"]]}
+ ],
+ "commitments": [
+  {"name": "North Atlantic Treaty Organization", "kind": "alliance", "started": "1949-04", "actors": ["AL","BE","BG","CA","HR","CZ","DK","EE","FI","FR","DE","GR","HU","IS","IT","LV","LT","LU","ME","NL","MK","NO","PL","PT","RO","SK","SI","ES","SE","TR","GB","US"], "text": "Collective defence alliance; an armed attack on one member is considered an attack on all (Article 5)."},
+  {"name": "European Union", "kind": "union", "started": "1993-11", "actors": ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"], "text": "Political and economic union with a single market, customs union and, for most members, the euro; includes a mutual assistance clause (Article 42.7)."},
+  {"name": "Collective Security Treaty Organization", "kind": "alliance", "started": "1992-05", "actors": ["RU","BY","AM","KZ","KG","TJ"], "text": "Russian-led military alliance; Armenia froze its participation in 2024."},
+  {"name": "Union State of Russia and Belarus", "kind": "union", "started": "1999-12", "actors": ["RU","BY"], "text": "Supranational union with military integration; Russian tactical nuclear weapons are stationed in Belarus."},
+  {"name": "Shanghai Cooperation Organisation", "kind": "other", "started": "2001-06", "actors": ["CN","RU","IN","PK","KZ","KG","TJ","UZ","IR","BY"], "text": "Eurasian political, economic and security cooperation organisation."},
+  {"name": "AUKUS", "kind": "defence_pact", "started": "2021-09", "actors": ["AU","GB","US"], "text": "Security partnership providing Australia with nuclear-powered submarines and advanced defence technology."},
+  {"name": "ANZUS Treaty", "kind": "defence_pact", "started": "1951-09", "actors": ["AU","NZ","US"], "text": "Pacific security treaty committing the parties to act against common dangers."},
+  {"name": "US-Japan Security Treaty", "kind": "defence_pact", "started": "1960-01", "actors": ["US","JP"], "text": "Treaty of Mutual Cooperation and Security; the United States defends Japan and maintains bases there."},
+  {"name": "US-ROK Mutual Defense Treaty", "kind": "defence_pact", "started": "1953-10", "actors": ["US","KR"], "text": "Mutual defence treaty; United States Forces Korea are stationed in South Korea."},
+  {"name": "US-Philippines Mutual Defense Treaty", "kind": "defence_pact", "started": "1951-08", "actors": ["US","PH"], "text": "Mutual defence treaty covering armed attacks in the Pacific, including the South China Sea."},
+  {"name": "Sino-North Korean Treaty of Friendship", "kind": "defence_pact", "started": "1961-07", "actors": ["CN","KP"], "text": "Mutual Aid and Cooperation Friendship Treaty obliging each party to assist the other if attacked."},
+  {"name": "Russia-North Korea Comprehensive Strategic Partnership Treaty", "kind": "defence_pact", "started": "2024-06", "actors": ["RU","KP"], "text": "Mutual assistance treaty; North Korean troops fought for Russia in Kursk Oblast."},
+  {"name": "United States-Mexico-Canada Agreement", "kind": "trade_agreement", "started": "2020-07", "actors": ["US","MX","CA"], "text": "North American free trade agreement, due for joint review in 2026 amid US tariff disputes."},
+  {"name": "Mercosur", "kind": "trade_agreement", "started": "1991-03", "actors": ["AR","BR","PY","UY","BO"], "text": "South American customs union; Venezuela remains suspended."},
+  {"name": "Washington Peace Agreement", "kind": "peace_treaty", "started": "2025-06", "actors": ["CD","RW"], "text": "US-brokered agreement between the DR Congo and Rwanda on respecting territorial integrity and ending support for armed groups."}
+ ]
+}

@@ -1,6 +1,6 @@
 # LocalHistoria
 
-A local C++20/Drogon strategy sandbox in the spirit of Pax Historia. Choose one of 239 nations, begin in **January 2026**, and each month write what your nation does in your own words. A local model decides what actually happens, what other nations do in response, and how the map changes: occupations, annexations, new states, construction, treaties and wars. There are no fixed action types, costs or statistics. The world's state is its map, its entities and its history.
+A local C++20/Drogon strategy sandbox in the spirit of Pax Historia. Choose one of 239 nations, begin in **January 2026**, and each month write what your nation does in your own words. A local model decides what actually happens, what other nations do in response, and how the map changes: occupations, annexations, new states, construction, treaties and wars. There are no fixed action types or costs. Each nation starts from its real January 2026 situation: population, GDP in its own currency (with a US dollar equivalent), political stability, and the wars and treaties it is part of. These evolve month by month and ground every model decision.
 
 ## Run
 
@@ -15,6 +15,16 @@ make
 make test
 ./build/localhistoria --llama-endpoint=http://127.0.0.1:8081
 ```
+
+Or start the model and the game together with one command. It builds if needed, reuses a model server already running on port 8081, waits for the model to load and opens the browser. Ctrl+C stops both:
+
+```sh
+./start.sh                 # or: make start
+./start.sh --no-open config/local-model.json
+MODEL_FILE=~/models/Qwen3.5-4B-Q4_K_M.gguf ./start.sh
+```
+
+It needs llama.cpp (`llama` or `llama-server`) on your PATH. Logs go to `logs/`. `./start.sh --help` lists the overrides (`MODEL`, `MODEL_FILE`, `MODEL_PORT`, `CTX_SIZE`).
 
 Open **http://127.0.0.1:8080** (use this address, not `localhost`). Run from the project root. CMake discovers installed dependencies. On Linux, install Drogon, JsonCpp, SQLite development packages, a C++20 compiler, CMake and Python 3, then use the same commands. Set `CMAKE_PREFIX_PATH` when configuring manually for a custom dependency prefix.
 
@@ -39,6 +49,14 @@ A turn is one month, and the game keeps outcomes realistic:
 - An action beyond these limits still appears in the journal as a failed attempt, and the rest of the month proceeds.
 
 Actions without map effects (reforms, trade, research, diplomacy) are recorded as events and shape later adjudication through the campaign history.
+
+### Nations, wars and treaties
+
+- **National status.** Population, GDP and stability start from World Bank data (latest available year) plus documented estimates for territories it omits, split across regions. Annexed or seceding land takes its people and output with it. Each month populations and economies follow their trend. The model can nudge a nation's economy and stability qualitatively (from severe decline to strong growth); the game turns that into bounded numbers.
+- **January 2026 world.** New campaigns start with the Russo-Ukrainian War, the Sudanese Civil War, the Myanmar Civil War and the Kivu Conflict under way, including Russian-held Crimea, Donetsk and Luhansk. NATO, the EU, the CSTO, AUKUS and other major treaties are already in force.
+- **Named wars and treaties.** The model names new wars and treaties the way historians would (*Second Iberian War*, *Treaty of Porto*). Generic names are replaced and repeats are numbered. **Wars & treaties** in the header lists active wars, treaties and ended ones, with parties, dates, casualties, displacement and front regions.
+- **War tolls.** Every month the game finds each war's front: regions changing hands, regions where units were destroyed, and bordering regions held by opposing parties. It applies deaths and displacement scaled by intensity and kind of war, calibrated against Russia–Ukraine and Sudan. Displaced people move to safer regions or cross into neighboring countries, and return once it is calm. The journal reports each war's monthly toll.
+- **Map modes.** Switch the map between **Political** and **Wars & treaties**. The second shows the selected country's enemies, allies and treaty partners, other wars, active fronts by intensity, and occupied regions.
 
 If the model is unreachable, times out, or returns an illegal or malformed result, the whole turn fails with no state change. Resubmit once the model is healthy. Narration is non-authoritative and may lag the saved turn; reload to see it. If narration fails, a factual event summary is kept. Inference is serialized. Adjudication reasons briefly before answering, so a month takes roughly one to two minutes on a 4B model.
 

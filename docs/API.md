@@ -4,10 +4,10 @@ All routes except the SVG flag endpoint use JSON at `http://127.0.0.1:8080/api/v
 
 | Route | Method | Behavior |
 |---|---|---|
-| `/campaign` | GET | State or null, latest 24 journal entries, running jobs, current model endpoint |
+| `/campaign` | GET | State or null, `national_status` for every actor, latest 24 journal entries, running jobs, current model endpoint |
 | `/campaign` | POST | `{country:"PT",confirm_replace:false}`; confirmation required for existing campaign |
 | `/countries` | GET | Country codes and names; no cities or national populations |
-| `/country?code=PT` | GET | Metadata, top 15 city records, cached reference |
+| `/country?code=PT` | GET | Metadata, top 15 city records, cached reference and, during a campaign, `status` |
 | `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders}`, where `orders` is the month's free-text actions; returns persisted job ID, HTTP 202 |
 | `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; error message on failure; auxiliary jobs also contain results |
 | `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
@@ -25,7 +25,22 @@ Example action list:
 ]
 ```
 
-Each action has `text` (1–500 bytes, non-blank, unique within the list) and optional `targets`: up to four existing region, entity or actor IDs. Any other field is invalid. The list holds at most 8 actions and may be empty, which lets a month pass. There are no action types: the model decides outcomes. The game enforces realistic reach and pacing (see [Evolving world](EVOLVING_WORLD.md)), and an out-of-reach outcome is recorded as a failed attempt rather than an error. Campaign state contains `actors`, `territories`, `entities`, `conflicts` and `commitments`; there are no numeric national statistics.
+Each action has `text` (1–500 bytes, non-blank, unique within the list) and optional `targets`: up to four existing region, entity or actor IDs. Any other field is invalid. The list holds at most 8 actions and may be empty, which lets a month pass. There are no action types: the model decides outcomes. The game enforces realistic reach and pacing (see [Evolving world](EVOLVING_WORLD.md)), and an out-of-reach outcome is recorded as a failed attempt rather than an error. Campaign state contains `actors`, `territories`, `entities`, `conflicts` and `commitments`.
+
+National status:
+
+- Territories carry `population`, `gdp_usd` and `displaced` (people currently displaced from there), plus `occupation_gdp` while occupied.
+- Actors carry `status`: `stability`, `baseline_stability`, `gdp_growth`, `pop_growth` (annual %), `currency`, `symbol`, `usd_rate`, `estimated`, `last_gdp_change` and `last_population_change`.
+- `national_status[actor]` is derived from owned regions: `population`, `population_text`, `gdp` (e.g. `"€306.8 billion (US$346.6 billion)"`), `gdp_usd`, `gdp_per_capita`, `stability` (label and score), `stability_score`, `economic_trend`, `wars`, `treaties`, `occupied_regions`, `occupying_regions`, `displaced` and `estimated`.
+
+Wars and treaties:
+
+- Conflicts have `name`, `kind` (`war`, `border_conflict`, `insurgency`, `civil_war`), `started_turn`, optional `ended_turn`, `set_intensity` (declared), `intensity` (effective this month: `none`, `low`, `medium`, `high`), `affected_regions`, cumulative `casualties` and `displaced`, and `last_month_casualties`/`last_month_displaced`. Seeded wars also have a `theatre`.
+- Commitments have `name`, `kind` (`alliance`, `defence_pact`, `non_aggression_pact`, `trade_agreement`, `ceasefire`, `peace_treaty`, `union`, `other`), `started_turn` and optional `ended_turn`.
+- Turns before 0 are months before January 2026.
+- Entries from older saves may lack these fields, and clients should fall back to the parties' names.
+- Journal events with action `war_toll` report each active war's monthly casualties and displacement.
+- Replay exports include `adjacency` once a campaign has national status.
 
 Retry an uncertain turn submission with the same UUID key and identical body. A changed body with the same key is an error. A response from an older campaign UUID cannot affect its replacement. Interrupted turns retain their original failed job; resubmit with a new key. History and preparation jobs are bounded in-memory conveniences and may disappear after restart or eviction; request them again. The turn completes before optional narration; factual events are immediately available, and refreshing later can show model narration.
 

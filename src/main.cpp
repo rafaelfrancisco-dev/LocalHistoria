@@ -1,5 +1,6 @@
 #include "localhistoria/history.h"
 #include "localhistoria/politics.h"
+#include "localhistoria/status.h"
 #include <ctime>
 #include <regex>
 #include "localhistoria/providers.h"
@@ -145,10 +146,15 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
         for (auto k : {"occupied_by_others", "occupying"})
             for (auto &id : c.facts[k].getMemberNames()) relevant.insert(id);
     }
-    for (auto &id : w.conflicts.getMemberNames())
-        if (w.conflicts[id]["status"] == "open")
-            for (auto &r : w.conflicts[id]["regions"])
-                if (r.isString()) relevant.insert(r.asString());
+    // Fronts of wars this month's actors fight; distant wars would crowd the prompt with irrelevant regions.
+    for (auto &id : w.conflicts.getMemberNames()) {
+        auto &c = w.conflicts[id];
+        bool involved = false;
+        for (auto &a : c["actors"]) involved = involved || acting.contains(a.asString());
+        if (c["status"] == "open" && involved)
+            for (auto &r : c["affected_regions"])
+                if (r.isString() && relevant.size() < 60) relevant.insert(r.asString());
+    }
     // Where the acting nations' armies and fleets stand, so movement has somewhere to go.
     for (auto &id : w.entities.getMemberNames()) {
         auto &e = w.entities[id];
@@ -160,7 +166,7 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
     for (auto &id : relevant) {
         if (!w.territories.isMember(id)) continue;
         auto t = w.territories[id];
-        for (auto k : {"longitude", "latitude", "initial_affiliation", "kind"}) t.removeMember(k);
+        for (auto k : {"longitude", "latitude", "initial_affiliation", "kind", "gdp_usd", "occupation_gdp"}) t.removeMember(k);
         t["within_reach_of"] = Json::arrayValue;
         for (auto &a : acting)
             if (reaches(w, adjacency, a, id)) t["within_reach_of"].append(a);
@@ -238,6 +244,13 @@ int main(int argc, char **argv) {
         for(auto &r:reference.query("SELECT id,geometry FROM regions"))geography[r["id"].asString()]=parse(r["geometry"].asString());
         Adjacency adjacency;
         for(auto &r:reference.query("SELECT a,b FROM region_neighbors"))adjacency[r["a"].asString()].insert(r["b"].asString());
+        // National statistics, regional shares and the January 2026 wars and treaties.
+        StatusSeed statusSeed;
+        for(auto &r:reference.query("SELECT * FROM country_stats")){auto code=r["code"].asString();r.removeMember("code");statusSeed.countries[code]=r;}
+        for(auto &r:reference.query("SELECT * FROM region_stats")){auto id=r["id"].asString();r.removeMember("id");statusSeed.regions[id]=r;}
+        auto seedRows=reference.query("SELECT document FROM world_seed WHERE id=1");
+        if(statusSeed.countries.empty()||seedRows.empty())throw std::runtime_error("Reference database lacks national statistics; run make data");
+        statusSeed.world=parse(seedRows[0]["document"].asString());
         std::string endpoint = llamaFlagGiven
                                    ? validateEndpoint(llamaFlagValue)
                                    : validateEndpoint(store.setting("llama_endpoint",
@@ -378,12 +391,14 @@ int main(int argc, char **argv) {
                       w.player = b["country"].asString();
                       if (!w.hasActor(w.player))
                           throw ValidationError("Country is not playable");
+                      seedStatus(w, statusSeed, true);
                       w.campaignId = utils::getUuid();
                       store.create(w, b.get("confirm_replace", false).isBool() &&
                                           b.get("confirm_replace", false).asBool());
                   }
                   prepareReferences(decode(store.campaign()));
                   j["state"] = store.campaign();
+                  if (!j["state"].isNull()) j["national_status"] = allNationalStatus(decode(j["state"]));
                   j["journal"] = store.journal();
                   j["active_jobs"] =
                       store.query("SELECT id,status FROM jobs WHERE status='running'");
@@ -430,7 +445,7 @@ int main(int argc, char **argv) {
                       auto w=decode(store.campaign());if(!w.actors.isMember(code))throw ValidationError("Unknown country");
                       Json::Value j=w.actors[code];j["cities"]=Json::arrayValue;j["background"]["available"]=false;j["background"]["reason"]="Fictional campaign actor";reply(cb,j);return;
                   }
-                  auto j = rows[0];auto current=decode(store.campaign());if(current.hasActor(code))j["name"]=current.actors[code]["name"];
+                  auto j = rows[0];auto current=decode(store.campaign());if(current.hasActor(code)){j["name"]=current.actors[code]["name"];j["status"]=nationalStatus(current,code);}
                   j["cities"] = reference.query("SELECT name,population,city_wikidata FROM cities "
                                                 "WHERE code=? ORDER BY population DESC LIMIT 15",
                                                 {code});
@@ -456,6 +471,9 @@ int main(int argc, char **argv) {
                   auto w = decode(store.campaign());
                   if (b["campaign_id"] != w.campaignId || w.campaignId.empty())
                       throw ValidationError("Stale campaign");
+                  // Saves from before national status gain it at this month; replay re-seeds from the frozen inputs.
+                  bool backfill = !hasStatus(w);
+                  if (backfill) seedStatus(w, statusSeed, false);
                   auto orders = parseOrders(b["orders"]);
                   auto payload = dump(b);
                   auto existing = store.query("SELECT id,payload FROM jobs WHERE key=?",
@@ -471,10 +489,15 @@ int main(int argc, char **argv) {
                                           b["idempotency_key"].asString(), payload);
                   auto id = job["id"].asString();
                   Json::Value refs(Json::objectValue);
+                  refs["status_version"] = statusVersion;
+                  if (backfill) refs["status_seed"] = encode(statusSeed);
                   auto mentions=mentioned(w,w.player,orders);
                   // AI nations that act this month: those the player addresses first, then ongoing disputes and one rotating neighbor.
                   std::vector<std::string> candidates(mentions.actors.begin(),mentions.actors.end());
-                  for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)if(v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end())for(auto &a:v["actors"])candidates.push_back(a.asString());
+                  // Large blocs (NATO, the EU) would otherwise fill every month with the same alphabetical members.
+                  auto engaged=[&](const Json::Value &v){return v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end();};
+                  for(auto &v:w.conflicts)if(engaged(v))for(auto &a:v["actors"])candidates.push_back(a.asString());
+                  for(auto &v:w.commitments)if(engaged(v)&&v["actors"].size()<=3)for(auto &a:v["actors"])candidates.push_back(a.asString());
                   auto neighbors=reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player});
                   if(!neighbors.empty())candidates.push_back(neighbors[w.turn%neighbors.size()]["b"].asString());
                   if(neighbors.empty()&&w.actors.size()>1){auto names=w.actors.getMemberNames();candidates.push_back(names[w.turn%names.size()]);}
@@ -500,7 +523,8 @@ int main(int argc, char **argv) {
                       if(!r.empty()) {
                           // No national military inventory or player orders in a regional decision.
                           c.facts=Json::objectValue;c.facts["initiative_type"]=slot["initiative_type"];c.facts["action_count"]=1;c.facts["turn"]=w.turn;
-                          c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;c.facts["governing_authority"]=w.actors[a];
+                          c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;for(auto k:{"gdp_usd","occupation_gdp"})c.facts["regional_identity"].removeMember(k);
+                          c.facts["governing_authority"]=w.actors[a];c.facts["governing_authority"].removeMember("identity_revisions");c.facts["governing_authority"]["status"]=nationalStatus(w,a);
                           c.facts["politics"]=regionalState(w,r);c.facts["related_history"]=Json::arrayValue;
                           for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
                           c.reference=store.background(r);refs[r]=c.reference;
@@ -531,6 +555,7 @@ int main(int argc, char **argv) {
                               for(auto &slot:allocations)if(slot["region"]!=""){auto r=slot["region"].asString();adjudication["facts"]["regional_politics"][r]=regionalState(w,r);}
                               auto delta=provider.adjudicate(result.state,adjudication,adjacency);
                               result=applyDelta(result,delta,geography);
+                              result=applyMonthlyStatus(result,delta,adjacency);
                               auto frozen=refs;frozen["delta"]=encode(delta);
                               frozen["contexts"]=adjudication;
                               Json::Value recorded;
@@ -625,7 +650,7 @@ int main(int argc, char **argv) {
         route("/api/v1/prepare", [&](auto,auto b,auto cb) {
             std::lock_guard l(mutex);auto w=decode(store.campaign());if(w.player.empty())throw ValidationError("Start a campaign first");
             std::set<std::string> actors{w.player};for(auto &r:reference.query("SELECT b FROM neighbors WHERE a=?",{w.player}))actors.insert(r["b"].asString());
-            for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)for(auto &a:v["actors"])actors.insert(a.asString());
+            for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)if(v["actors"].size()<=3&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end())for(auto &a:v["actors"])actors.insert(a.asString());
             if(b.isNull()){Json::Value coverage;for(auto &a:actors)coverage[a]=store.background(a);reply(cb,coverage);return;}
             auto id="prepare-"+std::to_string(++auxiliaryId);Json::Value j;j["id"]=id;j["status"]="running";auxiliary[id]=j;
             referenceWorker.add([&,actors,id]{for(auto &a:actors){if(!std::regex_match(a,std::regex("[A-Z]{2}")))continue;auto result=fetchHistory(a,referenceTransport);std::lock_guard l(mutex);if(result["available"].asBool()||!store.background(a).get("available",false).asBool())store.cache(a,result);auxiliary[id]["coverage"][a]=result;}std::lock_guard l(mutex);auxiliary[id]["status"]="complete";});reply(cb,j,202);
@@ -645,6 +670,9 @@ int main(int argc, char **argv) {
                       for(auto &change:refs["delta"]["changes"])if(change["kind"]=="entity") {auto region=change["after"]["region"].asString();j["geography"][region]=geography[region];}
                   }
                   j["turns"] = store.query("SELECT * FROM turns ORDER BY turn");
+                  // Monthly consequences follow region adjacency, so replay needs it once status exists.
+                  bool status=false;for(auto &t:j["turns"])status=status||t["reference"].asString().find("\"status_version\"")!=std::string::npos;
+                  if(status){j["adjacency"]=Json::objectValue;for(auto &[a,bs]:adjacency)for(auto &b:bs)j["adjacency"][a].append(b);}
                   for (auto &t : j["turns"])
                       for (auto k : {"state", "intentions", "events", "reference"})
                           t[k] = parse(t[k].asString());
