@@ -509,6 +509,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         if(blocked=="none") {
             std::set<std::string> causes;for(auto &c:e["causes"])if(c.isString())causes.insert(c.asString());
             for(auto &eid:w.entities.getMemberNames()) {
+                // Sites created this month are not in w yet and need no renewal; kind never changes, so check it before copying.
+                if(w.entities[eid].get("kind","")!="event_site")continue;
                 auto site=current("entity",w.entities,eid);
                 if(site["kind"]!="event_site"||site["status"]!="active"||(!entities.contains(eid)&&!causes.contains(site["origin_event"].asString())))continue;
                 touch("entity",eid,w.entities[eid],id,"Renewed by a related event")["expires_turn"]=w.turn+eventMapMonths;entities.insert(eid);

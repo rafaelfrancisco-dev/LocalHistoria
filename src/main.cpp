@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
                           c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;for(auto k:{"gdp_usd","occupation_gdp"})c.facts["regional_identity"].removeMember(k);
                           c.facts["governing_authority"]=w.actors[a];c.facts["governing_authority"].removeMember("identity_revisions");c.facts["governing_authority"]["status"]=nationalStatus(w,a);
                           c.facts["politics"]=regionalState(w,r);c.facts["related_history"]=Json::arrayValue;
-                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) AND "+std::string(Store::happened)+" ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
+                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) AND "+Store::happened+" ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
                           c.reference=store.background(r);refs[r]=c.reference;
                       }
                       refs[a]=store.background(a);independentContexts.push_back(c);
@@ -759,7 +759,7 @@ int main(int argc, char **argv) {
             }
             auto q=req->getParameter("q");if(q.size()>200)throw ValidationError("Search is too long");filter["q"]=q;
             filter["on_map"]=req->getParameter("on_map")=="1";filter["major"]=req->getParameter("major")=="1";
-            auto integer=[&](const char *key,int fallback,int low,int high){auto p=req->getParameter(key);if(p.empty())return fallback;if(!std::regex_match(p,std::regex("[0-9]{1,6}")))throw ValidationError(std::string("Invalid ")+key);return std::clamp(std::stoi(p),low,high);};
+            auto integer=[&](const char *key,int fallback,int low,int high){auto p=req->getParameter(key);if(p.empty())return fallback;static const std::regex digits("[0-9]{1,6}");if(!std::regex_match(p,digits))throw ValidationError(std::string("Invalid ")+key);return std::clamp(std::stoi(p),low,high);};
             filter["before_turn"]=integer("before_turn",w.turn+1,0,w.turn+1);
             filter["limit"]=integer("limit",filter["on_map"].asBool()?500:50,1,filter["on_map"].asBool()?500:100);
             auto j=w.campaignId.empty()?Json::Value():store.eventLog(w,filter);

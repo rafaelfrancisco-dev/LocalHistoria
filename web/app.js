@@ -310,10 +310,7 @@ async function load() {
         line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
-        for (const change of structured?.identity_changes || []) {
-          const img = document.createElement("img"); img.width = 48; img.alt = "Flag adopted in this event";
-          flag(img, change.actor, change.revision); line.append(img);
-        }
+        flagThumbs(structured?.identity_changes, line);
         details.append(line);
       }
       box.append(details);
@@ -579,8 +576,7 @@ async function refreshCampaignMap() {
     l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.controller || p.owner) await select(p.controller || p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
   }}).addTo(map);
   mapControls.addOverlay(layers,"Territories and occupation");
-  await refreshEntities();
-  await refreshEventMarkers();
+  await Promise.all([refreshEntities(), refreshEventMarkers()]);
 }
 // Map mode: political ownership, or wars, fronts, occupations and the selected country's treaties.
 function readPreference(key, fallback) {
@@ -691,31 +687,11 @@ function renderDiplomacy() {
   for (const { kind, id, v } of items) {
     const card = document.createElement("article");
     card.className = "agreement " + kind;
-    const head = document.createElement("div");
-    head.className = "agreement-head";
-    const h = document.createElement("h3");
-    h.textContent = v.name || (kind === "conflict" ? "Unnamed conflict" : "Unnamed agreement");
-    const badges = document.createElement("span");
-    for (const text of [kindLabel(v.kind), kind === "conflict" && v.status === "open" ? `${v.intensity || "unknown"} intensity` : null].filter(Boolean)) {
-      const badge = document.createElement("span");
-      badge.className = "badge" + (text.includes("intensity") ? " intensity-" + (v.intensity || "unknown") : "");
-      badge.textContent = text;
-      badges.append(badge);
-    }
-    head.append(h, badges);
-    const parties = document.createElement("div");
-    parties.className = "parties";
-    v.actors.slice(0, 10).forEach((a) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "party";
-      const img = document.createElement("img");
-      img.alt = "";
-      flag(img, a);
-      chip.append(img, document.createTextNode(state.actors[a]?.name || a));
-      chip.onclick = protect(async () => { $("diplomacy").close(); await select(a, true); });
-      parties.append(chip);
-    });
+    const head = cardHead(v.name || (kind === "conflict" ? "Unnamed conflict" : "Unnamed agreement"), [
+      [kindLabel(v.kind), ""],
+      kind === "conflict" && v.status === "open" ? [`${v.intensity || "unknown"} intensity`, "intensity-" + (v.intensity || "unknown")] : null,
+    ]);
+    const parties = partyChips(v.actors, "diplomacy", 10);
     if (v.actors.length > 10) parties.append(` +${v.actors.length - 10} more`);
     const meta = document.createElement("p");
     meta.className = "meta";
@@ -725,34 +701,73 @@ function renderDiplomacy() {
     const text = document.createElement("p");
     text.textContent = v.text;
     card.append(head, parties, meta, text);
-    if (v.affected_regions?.length) {
-      const regions = document.createElement("div");
-      regions.className = "chips";
-      const label = document.createElement("small");
-      label.textContent = "Front:";
-      regions.append(label);
-      for (const r of v.affected_regions) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "chip";
-        b.textContent = state.territories[r]?.name || r;
-        b.onclick = () => { highlight = { kind, id }; $("diplomacy").close(); setMapMode("diplomacy"); zoomToRegions([r]); };
-        regions.append(b);
-      }
-      card.append(regions);
-    }
-    const show = document.createElement("button");
-    show.type = "button";
-    show.className = "show-on-map";
-    show.textContent = "Show on map";
-    show.onclick = () => showOnMap(kind, id);
-    card.append(show);
+    const regions = document.createElement("div");
+    regions.className = "chips";
+    chipRow(regions, "Front:", (v.affected_regions || []).map((r) => [state.territories[r]?.name || r, () => { highlight = { kind, id }; $("diplomacy").close(); setMapMode("diplomacy"); zoomToRegions([r]); }]));
+    if (regions.childElementCount) card.append(regions);
+    card.append(button("Show on map", "show-on-map", () => showOnMap(kind, id)));
     list.append(card);
   }
 }
+// Card pieces shared by the Wars & treaties and Events menus.
+function button(text, className, onclick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = className;
+  b.textContent = text;
+  b.onclick = onclick;
+  return b;
+}
+// badges: [text, extra class] pairs; null entries are skipped.
+function cardHead(title, badges) {
+  const head = document.createElement("div");
+  head.className = "agreement-head";
+  const h = document.createElement("h3");
+  h.textContent = title;
+  const row = document.createElement("span");
+  for (const [text, cls] of badges.filter(Boolean)) {
+    const badge = document.createElement("span");
+    badge.className = cls ? `badge ${cls}` : "badge";
+    badge.textContent = text;
+    row.append(badge);
+  }
+  head.append(h, row);
+  return head;
+}
+function partyChips(actors, dialog, max) {
+  const parties = document.createElement("div");
+  parties.className = "parties";
+  for (const a of actors.slice(0, max)) {
+    const chip = button("", "party", protect(async () => { $(dialog).close(); await select(a, true); }));
+    const img = document.createElement("img");
+    img.alt = "";
+    flag(img, a);
+    chip.append(img, document.createTextNode(actorName(a)));
+    parties.append(chip);
+  }
+  return parties;
+}
+// entries: [name, onclick] pairs; an empty row adds nothing.
+function chipRow(container, label, entries) {
+  if (!entries.length) return;
+  const small = document.createElement("small");
+  small.textContent = label;
+  container.append(small, ...entries.map(([name, onclick]) => button(name, "chip", onclick)));
+}
+function flagThumbs(changes, into, separator) {
+  for (const change of changes || []) {
+    const img = document.createElement("img"); img.width = 48; img.alt = "Flag adopted in this event";
+    flag(img, change.actor, change.revision);
+    if (separator) into.append(separator);
+    into.append(img);
+  }
+}
+function wireDialog(id) {
+  $(id + "-close").onclick = () => $(id).close();
+  $(id).addEventListener("click", (e) => { if (e.target === $(id)) $(id).close(); });
+}
 $("diplomacy-open").onclick = () => { renderDiplomacy(); $("diplomacy").showModal(); };
-$("diplomacy-close").onclick = () => $("diplomacy").close();
-$("diplomacy").addEventListener("click", (e) => { if (e.target === $("diplomacy")) $("diplomacy").close(); });
+wireDialog("diplomacy");
 $("diplomacy-mine").onchange = renderDiplomacy;
 for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.onclick = () => { diplomacyTab = tab.dataset.tab; renderDiplomacy(); };
 // Events: markers for what is still on the map, and a menu of every event.
@@ -821,111 +836,64 @@ async function fetchEvents(append) {
   if (request !== eventsRequest) return;
   eventsItems = append ? eventsItems.concat(j.events) : j.events;
   eventsNext = j.more ? j.next_before_turn : null;
-  renderEvents();
+  renderEvents(append ? j.events : null);
 }
-function renderEvents() {
+// Category chips are built once; renders only update which are pressed.
+const eventsCategoryChips = Object.entries(EVENT_CATEGORIES).map(([id, text]) =>
+  [id, button(text, "chip", protect(async () => { eventsCategories.has(id) ? eventsCategories.delete(id) : eventsCategories.add(id); await fetchEvents(false); }))]);
+$("events-categories").replaceChildren(...eventsCategoryChips.map(([, b]) => b));
+// appended: cards to add below the list; otherwise the whole list is redrawn.
+function renderEvents(appended) {
   for (const tab of document.querySelectorAll("#events [role=tab]")) tab.setAttribute("aria-selected", tab.dataset.tab === eventsTab);
   $("events-major-label").hidden = eventsTab === "map";
   $("events-scope").options[1].textContent = `Selected country (${state?.actors?.[selected]?.name || "none"})`;
-  $("events-categories").replaceChildren(...Object.entries(EVENT_CATEGORIES).map(([id, text]) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "chip";
-    b.textContent = text;
-    b.setAttribute("aria-pressed", eventsCategories.has(id));
-    b.onclick = protect(async () => { eventsCategories.has(id) ? eventsCategories.delete(id) : eventsCategories.add(id); await fetchEvents(false); });
-    return b;
-  }));
+  for (const [id, b] of eventsCategoryChips) b.setAttribute("aria-pressed", eventsCategories.has(id));
   const list = $("events-list");
-  list.replaceChildren();
-  if (!eventsItems.length) {
-    const p = document.createElement("p");
-    p.className = "empty";
-    p.textContent = eventsTab === "map" ? "No major events are on the map right now." : "No events match.";
-    list.append(p);
+  if (!appended) {
+    list.replaceChildren();
+    if (!eventsItems.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = eventsTab === "map" ? "No major events are on the map right now." : "No events match.";
+      list.append(p);
+    }
   }
-  for (const ev of eventsItems) {
-    const card = document.createElement("article");
-    card.className = "agreement event-card";
-    card.dataset.id = ev.id;
-    const head = document.createElement("div");
-    head.className = "agreement-head";
-    const h = document.createElement("h3");
-    h.textContent = month(ev.turn - 1);
-    const badges = document.createElement("span");
-    for (const [text, cls] of [ev.major ? ["major", "major"] : null, [EVENT_CATEGORIES[ev.category] || ev.category, ""], ev.on_map ? ["on the map", ""] : null, ev.breaches ? ["breached a treaty", "blocked"] : null, ev.blocked_by ? ["held back by a treaty", "blocked"] : null].filter(Boolean)) {
-      const badge = document.createElement("span");
-      badge.className = "badge " + cls;
-      badge.textContent = text;
-      badges.append(badge);
-    }
-    head.append(h, badges);
-    const parties = document.createElement("div");
-    parties.className = "parties";
-    for (const a of [...new Set([ev.actor, ...ev.actors])].slice(0, 8)) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "party";
-      const img = document.createElement("img");
-      img.alt = "";
-      flag(img, a);
-      chip.append(img, document.createTextNode(actorName(a)));
-      chip.onclick = protect(async () => { $("events").close(); await select(a, true); });
-      parties.append(chip);
-    }
-    if (ev.regional_actor) parties.append(`Regional initiative of ${state.territories[ev.regional_actor]?.name || ev.regional_actor}`);
-    const text = document.createElement("p");
-    text.className = "text";
-    text.textContent = ev.text;
-    for (const change of ev.identity_changes || []) {
-      const img = document.createElement("img"); img.width = 48; img.alt = "Flag adopted in this event";
-      flag(img, change.actor, change.revision); text.append(" ", img);
-    }
-    card.append(head, parties, text);
-    if (ev.effects?.length) {
-      const effects = document.createElement("p");
-      const arrow = { severe_decline: "⇊", decline: "↓", growth: "↑", strong_growth: "⇈" };
-      for (const x of ev.effects)
-        for (const [label, value] of [["economy", x.economy], ["stability", x.stability]]) {
-          if (!arrow[value]) continue;
-          const badge = document.createElement("span");
-          badge.className = `badge effect effect-${value}`;
-          badge.textContent = `${actorName(x.actor)} ${label} ${arrow[value]}`;
-          effects.append(badge);
-        }
-      card.append(effects);
-    }
-    const links = document.createElement("div");
-    links.className = "chips";
-    const chipRow = (label, entries) => {
-      if (!entries.length) return;
-      const small = document.createElement("small");
-      small.textContent = label;
-      links.append(small);
-      for (const [name, onclick] of entries) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "chip";
-        b.textContent = name;
-        b.onclick = onclick;
-        links.append(b);
-      }
-    };
-    chipRow("Where:", ev.regions.filter((r) => state.territories[r]).slice(0, 8).map((r) => [state.territories[r].name, () => { $("events").close(); zoomToRegions([r]); }]));
-    chipRow("Wars:", ev.conflicts.filter((c) => state.conflicts[c]).map((c) => [state.conflicts[c].name || c, () => { $("events").close(); showOnMap("conflict", c); }]));
-    chipRow("Caused by:", ev.causes.map((c) => ["earlier event", protect(() => focusEvent(c, true))]));
-    if (links.childElementCount) card.append(links);
-    if (ev.location.length) {
-      const show = document.createElement("button");
-      show.type = "button";
-      show.className = "show-on-map";
-      show.textContent = "Show on map";
-      show.onclick = () => showEventOnMap(ev);
-      card.append(show);
-    }
-    list.append(card);
-  }
+  list.append(...(appended || eventsItems).map(eventCard));
   $("events-more").hidden = eventsNext === null;
+}
+function eventCard(ev) {
+  const card = document.createElement("article");
+  card.className = "agreement event-card";
+  card.dataset.id = ev.id;
+  const head = cardHead(month(ev.turn - 1), [ev.major ? ["major", "major"] : null, [EVENT_CATEGORIES[ev.category] || ev.category, ""], ev.on_map ? ["on the map", ""] : null, ev.breaches ? ["breached a treaty", "blocked"] : null, ev.blocked_by ? ["held back by a treaty", "blocked"] : null]);
+  const parties = partyChips([...new Set([ev.actor, ...ev.actors])], "events", 8);
+  if (ev.regional_actor) parties.append(`Regional initiative of ${state.territories[ev.regional_actor]?.name || ev.regional_actor}`);
+  const text = document.createElement("p");
+  text.className = "text";
+  text.textContent = ev.text;
+  flagThumbs(ev.identity_changes, text, " ");
+  card.append(head, parties, text);
+  if (ev.effects?.length) {
+    const effects = document.createElement("p");
+    const arrow = { severe_decline: "⇊", decline: "↓", growth: "↑", strong_growth: "⇈" };
+    for (const x of ev.effects)
+      for (const [label, value] of [["economy", x.economy], ["stability", x.stability]]) {
+        if (!arrow[value]) continue;
+        const badge = document.createElement("span");
+        badge.className = `badge effect effect-${value}`;
+        badge.textContent = `${actorName(x.actor)} ${label} ${arrow[value]}`;
+        effects.append(badge);
+      }
+    card.append(effects);
+  }
+  const links = document.createElement("div");
+  links.className = "chips";
+  chipRow(links, "Where:", ev.regions.filter((r) => state.territories[r]).slice(0, 8).map((r) => [state.territories[r].name, () => { $("events").close(); zoomToRegions([r]); }]));
+  chipRow(links, "Wars:", ev.conflicts.filter((c) => state.conflicts[c]).map((c) => [state.conflicts[c].name || c, () => { $("events").close(); showOnMap("conflict", c); }]));
+  chipRow(links, "Caused by:", ev.causes.map((c) => ["earlier event", protect(() => focusEvent(c, true))]));
+  if (links.childElementCount) card.append(links);
+  if (ev.location.length) card.append(button("Show on map", "show-on-map", () => showEventOnMap(ev)));
+  return card;
 }
 function showEventOnMap(ev) {
   $("events").close();
@@ -937,15 +905,18 @@ function showEventOnMap(ev) {
   if (found?.events.some((e) => e.id === ev.id)) found.marker.openPopup();
   else L.popup({ maxWidth: 300 }).setLatLng(points[0]).setContent(eventPopup([ev])).openOn(map);
 }
+function resetEventFilters() {
+  $("events-scope").value = "all";
+  $("events-search").value = "";
+  $("events-major").checked = false;
+  eventsCategories.clear();
+}
 // Scrolls to an event, loading older pages of all events when it is not listed yet.
 async function focusEvent(id, older) {
   const card = () => [...$("events-list").querySelectorAll(".event-card")].find((c) => c.dataset.id === id);
   if (!card() && older) {
     eventsTab = "all";
-    $("events-scope").value = "all";
-    $("events-search").value = "";
-    $("events-major").checked = false;
-    eventsCategories.clear();
+    resetEventFilters();
     await fetchEvents(false);
     for (let pages = 0; !card() && eventsNext !== null && pages < 50; pages++) await fetchEvents(true);
   }
@@ -958,14 +929,13 @@ async function focusEvent(id, older) {
 async function openEvents(id, tab = eventsTab) {
   map.closePopup();
   eventsTab = tab;
-  if (id) { $("events-scope").value = "all"; $("events-search").value = ""; $("events-major").checked = false; eventsCategories.clear(); }
+  if (id) resetEventFilters();
   await fetchEvents(false);
   if (!$("events").open) $("events").showModal();
   if (id) await focusEvent(id, true);
 }
 $("events-open").onclick = protect(() => openEvents());
-$("events-close").onclick = () => $("events").close();
-$("events").addEventListener("click", (e) => { if (e.target === $("events")) $("events").close(); });
+wireDialog("events");
 $("events-scope").onchange = protect(() => fetchEvents(false));
 $("events-major").onchange = protect(() => fetchEvents(false));
 let eventsSearchTimer;

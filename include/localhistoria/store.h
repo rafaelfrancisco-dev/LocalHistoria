@@ -7,7 +7,7 @@ class Store {
 
   public:
     // Events rolled back as infeasible stay in the audit but never reach history as if they happened.
-    static constexpr const char *happened = "json_extract(document,'$.blocked_by') IS NOT 'infeasible'";
+    static inline const std::string happened = "json_extract(document,'$.blocked_by') IS NOT 'infeasible'";
     explicit Store(const std::string &path, bool readOnly = false);
     ~Store();
     Store(const Store &) = delete;

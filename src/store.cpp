@@ -17,7 +17,7 @@ Store::Store(const std::string &p, bool readOnly) {
     // Model-written national histories, rewritten at most yearly; a cache outside turn transactions.
     sql("CREATE TABLE IF NOT EXISTS chronicles(actor TEXT PRIMARY KEY,document TEXT);");
     sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots TEXT,PRIMARY KEY(campaign,month));");
-    sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
+    sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE INDEX IF NOT EXISTS event_turn ON events(turn); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
         "INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs(id "
         "INTEGER PRIMARY KEY AUTOINCREMENT,key TEXT UNIQUE,payload TEXT,status TEXT NOT NULL,error "
@@ -171,7 +171,7 @@ CountryContext Store::campaignContext(const WorldState &w,const std::string &act
     Json::Value regions(Json::arrayValue),entities(Json::arrayValue);
     for(auto &id:c.facts["territories"].getMemberNames())regions.append(id);
     for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);
-    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE "+std::string(happened)+" ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
+    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE "+happened+" ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
     c.facts["related_history"]=Json::arrayValue;
     for(auto &row:older)c.facts["related_history"].append(parse(row["document"].asString()));
     return c;
@@ -194,7 +194,7 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
     Json::Value out(Json::arrayValue);
     // The latest 40, returned oldest first.
     for (auto &row : query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e JOIN event_links l ON l.event=e.id "
-                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND "+std::string(happened)+" ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
+                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND "+happened+" ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
                            {actor, std::to_string(afterTurn)})) {
         auto document = parse(row["document"].asString());
         Json::Value event;
@@ -211,7 +211,7 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
     // A later event citing one as its cause renews its time on the map.
     std::map<std::string, int> cited;
     for (auto &row : query("SELECT l.target,MAX(e.turn) AS turn FROM event_links l JOIN events e ON e.id=l.event WHERE l.kind='causes' AND " +
-                           std::string(happened) + " GROUP BY l.target"))
+                           happened + " GROUP BY l.target"))
         cited[row["target"].asString()] = row["turn"].asInt();
     auto lowered = [](std::string v) {
         for (auto &ch : v) ch = char(std::tolower(static_cast<unsigned char>(ch)));
@@ -223,12 +223,6 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
     auto needle = lowered(filter.get("q", "").asString());
     bool onMapOnly = filter.get("on_map", false).asBool(), majorOnly = filter.get("major", false).asBool();
     unsigned limit = std::clamp(filter.get("limit", 50).asUInt(), 1u, 500u);
-    auto point = [](const Json::Value &v) {
-        Json::Value p;
-        p["lat"] = v["latitude"];
-        p["lon"] = v["longitude"];
-        return p;
-    };
     // Where an event without places happened: the acting nation's most populous region.
     std::map<std::string, std::string> heartland;
     for (auto &id : w.territories.getMemberNames()) {
@@ -298,7 +292,6 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
                 item["major"] = false;
                 item["category"] = x["actor"] == w.player ? "player" : "nation";
             }
-            // War tolls repeat monthly, so only the latest stays on the map; wars keep the events that shaped them there while open.
             int active = std::max(turn, cited.contains(item["id"].asString()) ? cited[item["id"].asString()] : turn);
             // Only major events reach the map: for a few months, and while a war they shaped is open.
             bool onMap = w.turn - active < eventMapMonths;
@@ -320,7 +313,11 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             std::set<std::pair<double, double>> seen;
             auto place = [&](const Json::Value &v) {
                 if (!v["latitude"].isNumeric() || !v["longitude"].isNumeric() || item["location"].size() >= 4) return;
-                if (seen.insert({v["latitude"].asDouble(), v["longitude"].asDouble()}).second) item["location"].append(point(v));
+                if (!seen.insert({v["latitude"].asDouble(), v["longitude"].asDouble()}).second) return;
+                Json::Value p;
+                p["lat"] = v["latitude"];
+                p["lon"] = v["longitude"];
+                item["location"].append(p);
             };
             for (auto &r : item["regions"]) place(w.territories[r.asString()]);
             for (auto &e : item["entities"]) place(w.entities[e.asString()]);
