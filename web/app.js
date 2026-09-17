@@ -66,9 +66,33 @@ function list() {
     img.alt = "";
     flag(img, c.code);
     b.append(img, document.createTextNode(c.name));
+    if (state?.player === c.code) {
+      const you = document.createElement("small");
+      you.className = "you";
+      you.textContent = "YOU";
+      b.append(you);
+    }
     b.onclick = protect(() => select(c.code, true));
     $("countries").append(b);
   }
+}
+function styleFor(f) {
+  const isSelected = f.properties.code === selected;
+  const isPlayer = state && f.properties.code === state.player;
+  return {
+    color: isPlayer && !isSelected ? "#dcbb7b" : "#a0b5b2",
+    weight: isSelected || isPlayer ? 2 : 0.6,
+    dashArray: isPlayer && !isSelected ? "4 3" : null,
+    fillColor: isSelected
+      ? "#d9b875"
+      : f.properties.playable
+        ? "#537d83"
+        : "#39464d",
+    fillOpacity: isSelected ? 0.9 : 0.65,
+  };
+}
+function restyleMap() {
+  layers?.eachLayer((l) => l.setStyle(styleFor(l.feature)));
 }
 function renderStats() {
   $("stats").replaceChildren();
@@ -101,17 +125,8 @@ function renderStats() {
 async function select(code, zoom = false) {
   selected = code;
   list();
+  restyleMap();
   layers?.eachLayer((l) => {
-    l.setStyle({
-      fillColor:
-        l.feature.properties.code === code
-          ? "#d9b875"
-          : l.feature.properties.playable
-            ? "#537d83"
-            : "#39464d",
-      fillOpacity: l.feature.properties.code === code ? 0.9 : 0.65,
-      weight: l.feature.properties.code === code ? 2 : 0.6,
-    });
     if (l.feature.properties.code === code) selectedLayer = l;
   });
   if (code !== state?.player) $("target").value = code;
@@ -158,7 +173,11 @@ async function load() {
   $("llama-endpoint").value = j.llama_endpoint;
   $("date").textContent = month(state?.turn || 0);
   $("controls").hidden = !state;
+  $("playing-as").hidden = !state;
   if (state) {
+    flag($("playing-as-flag"), state.player);
+    $("playing-as-name").textContent =
+      countries.find((c) => c.code === state.player)?.name || state.player;
     $("player-label").textContent =
       "Playing as " +
       countries.find((c) => c.code === state.player)?.name +
@@ -208,6 +227,8 @@ async function load() {
       $("journal").textContent = "Your story starts in January 2026.";
     renderStats();
   }
+  list();
+  restyleMap();
   return j;
 }
 function setBusy(value) {
@@ -328,12 +349,7 @@ protect(async () => {
   );
   const geo = await (await fetch("/world.geojson")).json();
   layers = L.geoJSON(geo, {
-    style: (f) => ({
-      color: "#a0b5b2",
-      weight: 0.6,
-      fillColor: f.properties.playable ? "#537d83" : "#39464d",
-      fillOpacity: 0.65,
-    }),
+    style: styleFor,
     onEachFeature: (f, l) => {
       const label = document.createElement("span");
       label.textContent =

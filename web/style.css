@@ -47,8 +47,21 @@ h2 {
   margin: 14px 0;
 }
 header p {
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+#playing-as-flag {
+  width: 18px;
+  height: 13px;
+  object-fit: cover;
+}
+#playing-as-name {
+  color: var(--accent);
+  font-weight: 600;
 }
 #model-settings {
   display: flex;
@@ -111,6 +124,12 @@ aside {
 .country.selected {
   background: #344b53;
   color: var(--accent);
+}
+.country .you {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-left: 6px;
 }
 .country img {
   width: 23px;
