@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
                           c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;for(auto k:{"gdp_usd","occupation_gdp"})c.facts["regional_identity"].removeMember(k);
                           c.facts["governing_authority"]=w.actors[a];c.facts["governing_authority"].removeMember("identity_revisions");c.facts["governing_authority"]["status"]=nationalStatus(w,a);
                           c.facts["politics"]=regionalState(w,r);c.facts["related_history"]=Json::arrayValue;
-                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
+                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) AND "+std::string(Store::happened)+" ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
                           c.reference=store.background(r);refs[r]=c.reference;
                       }
                       refs[a]=store.background(a);independentContexts.push_back(c);
@@ -736,9 +736,35 @@ int main(int argc, char **argv) {
             double west=number("west",-180),east=number("east",180),south=number("south",-90),north=number("north",90),zoom=number("zoom",2);
             if(west>east||south>north)throw ValidationError("Invalid viewport bounds");
             auto wanted=req->getParameter("id");
+            // Destroyed and inactive entities, such as faded event sites, leave the map unless asked for.
+            bool inactive=req->getParameter("include_inactive")=="1";
             for(auto &id:w.entities.getMemberNames()) {auto e=w.entities[id];double x=e["longitude"].asDouble(),y=e["latitude"].asDouble();
+                if(wanted.empty()&&!inactive&&(e["status"]=="destroyed"||e["status"]=="inactive"))continue;
                 if((!wanted.empty()&&id==wanted)||(wanted.empty()&&x>=west&&x<=east&&y>=south&&y<=north&&(zoom>=4||e["kind"]!="city"))) {e["id"]=id;j.append(e);if(j.size()>=200)break;}}
             reply(cb,j);
+        },{Get});
+        route("/api/v1/events", [&](auto req,auto,auto cb) {
+            std::lock_guard l(mutex);auto w=decode(store.campaign());
+            Json::Value filter;
+            auto scope=req->getParameter("scope");if(scope.empty())scope="all";
+            if(scope!="all"&&scope!="actor")throw ValidationError("scope must be all or actor");
+            filter["scope"]=scope;
+            if(scope=="actor"){auto a=req->getParameter("actor");if(!w.hasActor(a))throw ValidationError("Unknown actor");filter["actor"]=a;}
+            static const std::set<std::string> known{"player","nation","regional","world","war","construction"};
+            filter["categories"]=Json::arrayValue;
+            for(auto categories=req->getParameter("category");!categories.empty();) {
+                auto comma=categories.find(',');auto c=categories.substr(0,comma);
+                if(!known.contains(c))throw ValidationError("Unknown event category: "+c);
+                filter["categories"].append(c);categories=comma==std::string::npos?"":categories.substr(comma+1);
+            }
+            auto q=req->getParameter("q");if(q.size()>200)throw ValidationError("Search is too long");filter["q"]=q;
+            filter["on_map"]=req->getParameter("on_map")=="1";filter["major"]=req->getParameter("major")=="1";
+            auto integer=[&](const char *key,int fallback,int low,int high){auto p=req->getParameter(key);if(p.empty())return fallback;if(!std::regex_match(p,std::regex("[0-9]{1,6}")))throw ValidationError(std::string("Invalid ")+key);return std::clamp(std::stoi(p),low,high);};
+            filter["before_turn"]=integer("before_turn",w.turn+1,0,w.turn+1);
+            filter["limit"]=integer("limit",filter["on_map"].asBool()?500:50,1,filter["on_map"].asBool()?500:100);
+            auto j=w.campaignId.empty()?Json::Value():store.eventLog(w,filter);
+            if(j.isNull()){j["events"]=Json::arrayValue;j["more"]=false;}
+            j["turn"]=w.turn;reply(cb,j);
         },{Get});
         route("/api/v1/prepare", [&](auto,auto b,auto cb) {
             std::lock_guard l(mutex);auto w=decode(store.campaign());if(w.player.empty())throw ValidationError("Start a campaign first");

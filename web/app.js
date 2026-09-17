@@ -277,6 +277,7 @@ async function load() {
   $("controls").hidden = !state;
   $("playing-as").hidden = !state;
   $("diplomacy-open").hidden = !state;
+  $("events-open").hidden = !state;
   if (state) {
     flag($("playing-as-flag"), state.player);
     $("playing-as-name").textContent =
@@ -325,6 +326,7 @@ async function load() {
   list();
   restyleMap();
   if ($("diplomacy").open) renderDiplomacy();
+  if ($("events").open) protect(() => fetchEvents(false))();
   if (selected && state?.actors?.[selected]) { $("country-name").textContent = state.actors[selected].name; flag($("flag"), selected); }
   if (state) await refreshCampaignMap();
   return j;
@@ -346,7 +348,7 @@ function logText(r) {
   }
   if (r.kind === "adjudicate") {
     const lines = [...(a.events || []), ...(a.world_events || [])]
-      .map((e) => e.text)
+      .map((e) => e.description ?? e.text)
       .filter(Boolean);
     return "Adjudicated the month: " + (lines.length ? lines.join(" ") : "no outcomes");
   }
@@ -550,8 +552,9 @@ async function refreshEntities() {
   entityLayers.clearLayers();
   for (const e of entities) {
     const label=document.createElement("div");
-    label.textContent=`${e.name} · ${e.kind} · ${e.actor} · ${e.status} · ${e.id} · region ${e.region} · origin ${e.origin_event}`;
-    L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff"}).bindPopup(label).addTo(entityLayers);
+    const status=e.status==="under_construction"?`under construction until ${month(e.completes_turn-1)}`:e.kind==="event_site"&&e.expires_turn!==undefined?`fades at the end of ${month(e.expires_turn-1)}`:e.status;
+    label.textContent=`${e.name} · ${kindLabel(e.kind)} · ${actorName(e.actor)} · ${status} · ${state.territories[e.region]?.name||e.region}`;
+    L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff",dashArray:e.status==="under_construction"?"2 3":null}).bindPopup(label).addTo(entityLayers);
   }
 }
 map.on("moveend",protect(refreshEntities));
@@ -577,6 +580,7 @@ async function refreshCampaignMap() {
   }}).addTo(map);
   mapControls.addOverlay(layers,"Territories and occupation");
   await refreshEntities();
+  await refreshEventMarkers();
 }
 // Map mode: political ownership, or wars, fronts, occupations and the selected country's treaties.
 function readPreference(key, fallback) {
@@ -751,6 +755,223 @@ $("diplomacy-close").onclick = () => $("diplomacy").close();
 $("diplomacy").addEventListener("click", (e) => { if (e.target === $("diplomacy")) $("diplomacy").close(); });
 $("diplomacy-mine").onchange = renderDiplomacy;
 for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.onclick = () => { diplomacyTab = tab.dataset.tab; renderDiplomacy(); };
+// Events: markers for what is still on the map, and a menu of every event.
+const EVENT_CATEGORIES = { player: "Your actions", nation: "Other nations", regional: "Regional", world: "World developments", war: "War tolls", construction: "Construction" };
+const eventLayers = L.layerGroup().addTo(map);
+mapControls.addOverlay(eventLayers, "Events");
+let eventMarkers = new Map(), eventMarkerRequest = 0;
+const locationKey = (p) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
+function eventPopup(events) {
+  const box = document.createElement("div");
+  box.className = "event-popup";
+  for (const ev of events.slice(0, 8)) {
+    const p = document.createElement("p");
+    const small = document.createElement("small");
+    small.textContent = `${month(ev.turn - 1)} · ${EVENT_CATEGORIES[ev.category] || ev.category} · ${actorName(ev.actor)}`;
+    const text = document.createElement("span");
+    text.textContent = ev.text.length > 240 ? ev.text.slice(0, 240) + "…" : ev.text;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = "Open in events";
+    open.onclick = protect(() => openEvents(ev.id, ev.on_map ? "map" : "all"));
+    p.append(small, text, document.createElement("br"), open);
+    box.append(p);
+  }
+  if (events.length > 8) box.append(`+${events.length - 8} more in the Events menu`);
+  return box;
+}
+async function refreshEventMarkers() {
+  if (!state) return;
+  const request = ++eventMarkerRequest;
+  const { events } = await api("events?on_map=1");
+  if (request !== eventMarkerRequest) return;
+  eventLayers.clearLayers();
+  const groups = new Map();
+  for (const ev of events)
+    for (const p of ev.location) {
+      const key = locationKey(p);
+      if (!groups.has(key)) groups.set(key, { p, events: [] });
+      groups.get(key).events.push(ev);
+    }
+  eventMarkers = new Map();
+  for (const [key, { p, events: here }] of groups) {
+    const icon = L.divIcon({ className: "", iconSize: [20, 20], html: `<div class="event-marker" style="--marker:${state.actors[here[0].actor]?.color || "#dcbb7b"}"><span>${here.length > 1 ? here.length : ""}</span></div>` });
+    const marker = L.marker([p.lat, p.lon], { icon, keyboard: true, title: `${here.length} event${here.length > 1 ? "s" : ""}` }).bindPopup(() => eventPopup(here), { maxWidth: 300 });
+    marker.addTo(eventLayers);
+    eventMarkers.set(key, { marker, events: here });
+  }
+}
+let eventsTab = "map", eventsItems = [], eventsNext = null, eventsRequest = 0;
+const eventsCategories = new Set();
+async function fetchEvents(append) {
+  if (!state) return;
+  const params = new URLSearchParams({ limit: "50" });
+  const scope = $("events-scope").value;
+  const who = scope === "player" ? state.player : scope === "selected" ? selected : null;
+  if (who && state.actors[who]) { params.set("scope", "actor"); params.set("actor", who); }
+  // The map only ever shows major events; the full history can include routine outcomes.
+  if (eventsTab === "map") params.set("on_map", "1");
+  else if ($("events-major").checked) params.set("major", "1");
+  if (eventsCategories.size) params.set("category", [...eventsCategories].join(","));
+  if ($("events-search").value.trim()) params.set("q", $("events-search").value.trim());
+  if (append && eventsNext !== null) params.set("before_turn", eventsNext);
+  // Filters change faster than responses arrive; only the latest request may render.
+  const request = ++eventsRequest;
+  const j = await api("events?" + params);
+  if (request !== eventsRequest) return;
+  eventsItems = append ? eventsItems.concat(j.events) : j.events;
+  eventsNext = j.more ? j.next_before_turn : null;
+  renderEvents();
+}
+function renderEvents() {
+  for (const tab of document.querySelectorAll("#events [role=tab]")) tab.setAttribute("aria-selected", tab.dataset.tab === eventsTab);
+  $("events-major-label").hidden = eventsTab === "map";
+  $("events-scope").options[1].textContent = `Selected country (${state?.actors?.[selected]?.name || "none"})`;
+  $("events-categories").replaceChildren(...Object.entries(EVENT_CATEGORIES).map(([id, text]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = text;
+    b.setAttribute("aria-pressed", eventsCategories.has(id));
+    b.onclick = protect(async () => { eventsCategories.has(id) ? eventsCategories.delete(id) : eventsCategories.add(id); await fetchEvents(false); });
+    return b;
+  }));
+  const list = $("events-list");
+  list.replaceChildren();
+  if (!eventsItems.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = eventsTab === "map" ? "No major events are on the map right now." : "No events match.";
+    list.append(p);
+  }
+  for (const ev of eventsItems) {
+    const card = document.createElement("article");
+    card.className = "agreement event-card";
+    card.dataset.id = ev.id;
+    const head = document.createElement("div");
+    head.className = "agreement-head";
+    const h = document.createElement("h3");
+    h.textContent = month(ev.turn - 1);
+    const badges = document.createElement("span");
+    for (const [text, cls] of [ev.major ? ["major", "major"] : null, [EVENT_CATEGORIES[ev.category] || ev.category, ""], ev.on_map ? ["on the map", ""] : null, ev.breaches ? ["breached a treaty", "blocked"] : null, ev.blocked_by ? ["held back by a treaty", "blocked"] : null].filter(Boolean)) {
+      const badge = document.createElement("span");
+      badge.className = "badge " + cls;
+      badge.textContent = text;
+      badges.append(badge);
+    }
+    head.append(h, badges);
+    const parties = document.createElement("div");
+    parties.className = "parties";
+    for (const a of [...new Set([ev.actor, ...ev.actors])].slice(0, 8)) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "party";
+      const img = document.createElement("img");
+      img.alt = "";
+      flag(img, a);
+      chip.append(img, document.createTextNode(actorName(a)));
+      chip.onclick = protect(async () => { $("events").close(); await select(a, true); });
+      parties.append(chip);
+    }
+    if (ev.regional_actor) parties.append(`Regional initiative of ${state.territories[ev.regional_actor]?.name || ev.regional_actor}`);
+    const text = document.createElement("p");
+    text.className = "text";
+    text.textContent = ev.text;
+    for (const change of ev.identity_changes || []) {
+      const img = document.createElement("img"); img.width = 48; img.alt = "Flag adopted in this event";
+      flag(img, change.actor, change.revision); text.append(" ", img);
+    }
+    card.append(head, parties, text);
+    if (ev.effects?.length) {
+      const effects = document.createElement("p");
+      const arrow = { severe_decline: "⇊", decline: "↓", growth: "↑", strong_growth: "⇈" };
+      for (const x of ev.effects)
+        for (const [label, value] of [["economy", x.economy], ["stability", x.stability]]) {
+          if (!arrow[value]) continue;
+          const badge = document.createElement("span");
+          badge.className = `badge effect effect-${value}`;
+          badge.textContent = `${actorName(x.actor)} ${label} ${arrow[value]}`;
+          effects.append(badge);
+        }
+      card.append(effects);
+    }
+    const links = document.createElement("div");
+    links.className = "chips";
+    const chipRow = (label, entries) => {
+      if (!entries.length) return;
+      const small = document.createElement("small");
+      small.textContent = label;
+      links.append(small);
+      for (const [name, onclick] of entries) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip";
+        b.textContent = name;
+        b.onclick = onclick;
+        links.append(b);
+      }
+    };
+    chipRow("Where:", ev.regions.filter((r) => state.territories[r]).slice(0, 8).map((r) => [state.territories[r].name, () => { $("events").close(); zoomToRegions([r]); }]));
+    chipRow("Wars:", ev.conflicts.filter((c) => state.conflicts[c]).map((c) => [state.conflicts[c].name || c, () => { $("events").close(); showOnMap("conflict", c); }]));
+    chipRow("Caused by:", ev.causes.map((c) => ["earlier event", protect(() => focusEvent(c, true))]));
+    if (links.childElementCount) card.append(links);
+    if (ev.location.length) {
+      const show = document.createElement("button");
+      show.type = "button";
+      show.className = "show-on-map";
+      show.textContent = "Show on map";
+      show.onclick = () => showEventOnMap(ev);
+      card.append(show);
+    }
+    list.append(card);
+  }
+  $("events-more").hidden = eventsNext === null;
+}
+function showEventOnMap(ev) {
+  $("events").close();
+  if (!map.hasLayer(eventLayers)) map.addLayer(eventLayers);
+  const points = ev.location.map((p) => [p.lat, p.lon]);
+  if (points.length > 1) map.fitBounds(points, { maxZoom: 6, padding: [30, 30] });
+  else map.setView(points[0], Math.max(map.getZoom(), 5));
+  const found = eventMarkers.get(locationKey(ev.location[0]));
+  if (found?.events.some((e) => e.id === ev.id)) found.marker.openPopup();
+  else L.popup({ maxWidth: 300 }).setLatLng(points[0]).setContent(eventPopup([ev])).openOn(map);
+}
+// Scrolls to an event, loading older pages of all events when it is not listed yet.
+async function focusEvent(id, older) {
+  const card = () => [...$("events-list").querySelectorAll(".event-card")].find((c) => c.dataset.id === id);
+  if (!card() && older) {
+    eventsTab = "all";
+    $("events-scope").value = "all";
+    $("events-search").value = "";
+    $("events-major").checked = false;
+    eventsCategories.clear();
+    await fetchEvents(false);
+    for (let pages = 0; !card() && eventsNext !== null && pages < 50; pages++) await fetchEvents(true);
+  }
+  const found = card();
+  if (!found) return status("That event is no longer in the saved history.");
+  found.scrollIntoView({ block: "center" });
+  found.classList.add("flash");
+  setTimeout(() => found.classList.remove("flash"), 1500);
+}
+async function openEvents(id, tab = eventsTab) {
+  map.closePopup();
+  eventsTab = tab;
+  if (id) { $("events-scope").value = "all"; $("events-search").value = ""; $("events-major").checked = false; eventsCategories.clear(); }
+  await fetchEvents(false);
+  if (!$("events").open) $("events").showModal();
+  if (id) await focusEvent(id, true);
+}
+$("events-open").onclick = protect(() => openEvents());
+$("events-close").onclick = () => $("events").close();
+$("events").addEventListener("click", (e) => { if (e.target === $("events")) $("events").close(); });
+$("events-scope").onchange = protect(() => fetchEvents(false));
+$("events-major").onchange = protect(() => fetchEvents(false));
+let eventsSearchTimer;
+$("events-search").oninput = () => { clearTimeout(eventsSearchTimer); eventsSearchTimer = setTimeout(protect(() => fetchEvents(false)), 250); };
+$("events-more").onclick = protect(() => fetchEvents(true));
+for (const tab of document.querySelectorAll("#events [role=tab]")) tab.onclick = protect(async () => { eventsTab = tab.dataset.tab; await fetchEvents(false); });
 const prepare=document.createElement("button");prepare.id="prepare";prepare.textContent="Prepare campaign references";
 $("controls").prepend(prepare);
 prepare.onclick=protect(async()=>{

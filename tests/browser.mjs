@@ -108,6 +108,33 @@ try {
     console.error("ERRORS", errors);
     throw e;
   }
+  // Events menu: the player's events by default, category filters, and markers on the map.
+  await page.locator("#events-open").click();
+  await page.locator("#events").waitFor({ state: "visible" });
+  await page.waitForFunction(() => document.querySelectorAll("#events-list .event-card").length > 0);
+  assert.match(await page.locator("#events-list").innerText(), /Invest in the national railway network[\s\S]*/);
+  assert.ok((await page.locator("#events-list .event-card", { hasText: "on the map" }).count()) > 0);
+  assert.match(await page.locator("#events-list").innerText(), /major/i);
+  assert.doesNotMatch(await page.locator("#events-list").innerText(), /Open trade talks with Spain/);
+  await page.getByRole("tab", { name: "All events" }).click();
+  await page.waitForFunction(() => document.querySelector("#events [data-tab=all]").getAttribute("aria-selected") === "true" && !document.querySelector("#events-major-label").hidden);
+  await page.locator("#events-major").uncheck();
+  await page.waitForFunction(() => document.querySelector("#events-list").innerText.includes("Open trade talks with Spain"));
+  const playerCards = await page.locator("#events-list .event-card").count();
+  await page.locator("#events-scope").selectOption("all");
+  await page.waitForFunction((n) => document.querySelectorAll("#events-list .event-card").length >= n, playerCards);
+  await page.locator("#events-categories .chip", { hasText: "Other nations" }).click();
+  await page.waitForFunction(() => document.querySelector("#events-categories .chip[aria-pressed=true]") && !document.querySelector("#events-list").innerText.includes("railway"));
+  assert.ok((await page.locator("#events-list .event-card").count()) > 0);
+  await page.locator("#events-categories .chip", { hasText: "Other nations" }).click();
+  await page.locator("#events-search").fill("railway");
+  await page.waitForFunction(() => document.querySelectorAll("#events-list .event-card").length === 1);
+  await page.locator("#events-list .event-card").first().locator(".show-on-map").click();
+  await page.waitForFunction(() => !document.querySelector("#events").open && eventLayers.getLayers().length > 0 && document.querySelector(".event-popup"));
+  assert.match(await page.locator(".event-popup").first().innerText(), /railway/);
+  await page.locator(".event-popup button").first().click();
+  await page.waitForFunction(() => document.querySelector("#events").open && document.querySelector("#events-list .event-card.flash"));
+  await page.locator("#events-close").click();
   await page.locator("#search").fill("Spain");
   await page.getByRole("button", { name: "Spain", exact: true }).click();
   await page.waitForFunction(
@@ -162,7 +189,7 @@ try {
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
   await page.evaluate(()=>{entityLayers.getLayers().find(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")).openPopup();});
-  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port.*under_construction.*origin t3-fixture/);
+  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port · port · Portugal · under construction until/);
   await page.reload();
   await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
   assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");

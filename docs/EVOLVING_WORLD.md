@@ -54,9 +54,21 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month.
 - **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished.
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
+- **Event sites.** An `event_site` marks where a notable incident happened. It is active at once with `expires_turn` three months ahead (`eventMapMonths`), and `resolve` makes it `inactive` when that month arrives, without a journal line. A later feasible event renews it for another three months when it involves the site or cites the site's originating event as a cause. Only active event sites carry `expires_turn`; sites saved before expiry existed keep none until an event touches them, so replay is unchanged.
 - **New states.** At most one new state per month, and it must receive territory in the same event.
 
-An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history.
+An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
+
+Events also record the wars (`conflicts`) and treaties (`commitments`) their operations opened, escalated or ended.
+
+**Significance.** Each outcome and world event carries `significance`, `routine` or `major`, which the model decides last. Major means international headlines: a disaster, revolt, coup, election, turning point in a war, new state or treaty. C++ records `major` on the event:
+- Events whose operations changed the map or a war are always major. That covers occupation, handover or restored control, wars opened, escalated or ended, new states, identity changes, treaties other than trade agreements and `other`, ended commitments, event sites, destroyed entities, and treaty breaches.
+- Model-declared major events are capped at three a month, keeping those with the strongest effects.
+- Routine world events are dropped, so background developments exist only for what historians would record.
+- Blocked and rolled-back events are never major.
+- Events saved before significance existed count as major only for a breach, a new flag or a severe effect.
+
+**Events on the map.** The map derives event markers from saved history without changing state. Only major events appear. A major event is on the map for three months after the latest of its own month and the month of the last feasible event citing it as a cause, and for as long as a war it shaped is open. War tolls are routine (fronts already show in the Wars & treaties map mode), and of construction only finished cities are major. Markers sit at the event's regions and entities, or at the acting nation's most populous region.
 
 Adjacency is the `region_neighbors` table (`tools/region_neighbors.py`): regions that touch, or lie within 0.05° across a narrow strait. The adjudication prompt receives:
 

@@ -52,7 +52,7 @@ int main(){try{
  check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
  auto &developments=schema["properties"]["world_events"];
  check(developments["maxItems"].asInt()==2&&!developments["items"]["properties"].isMember("operations")&&developments["items"]["properties"]["actor"]["enum"]==parse(R"(["far","neighbor"])"),"World events are narrative and never the player's decisions");
- auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[]}]})"),{});
+ auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[],"significance":"major"},{"actor":"far","causes":[],"description":"Markets steady","significance":"routine"}]})"),{});
  auto invented=compileOperations(opsBase.state,parse(R"({"events":[],"world_events":[{"actor":"old-state","causes":[],"description":"Old builds a fortress"},{"actor":"neighbor","causes":[],"description":"Neighbor takes West","operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})"),{});
  check(invented.events.empty()&&invented.changes.empty(),"Invented player decisions and map changes are dropped");
  check(split2.events.size()==2&&!split2.events[0]["background"].asBool()&&split2.events[1]["background"].asBool(),"Outcomes then world events");
@@ -60,7 +60,7 @@ int main(){try{
  auto ops=parse(R"({"events":[{"description":"West Secedes!","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[
   {"action":"create_actor","actor_id":"west-rep","name":"West Republic","color":"#00aa00"},{"action":"transfer_territory","region":"west","to":"west-rep"},
   {"action":"build","kind":"port","name":"Harbor","actor":"old-state","region":"east"},{"action":"build","kind":"port","name":"Harbor","actor":"old-state","region":"east"},
-  {"action":"open_conflict","actors":["old-state","west-rep"],"text":"Dispute"}]},{"description":"West secedes","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})");
+  {"action":"open_conflict","actors":["old-state","west-rep"],"text":"Dispute"}]},{"description":"West secedes","actor":"neighbor","blocked_by":"none","background":true,"significance":"major","causes":[],"operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})");
  auto compiled=compileOperations(opsBase.state,ops,adjacency);check(compiled.events[0]["id"]=="t1-west-secedes"&&compiled.events[1]["id"]=="t1-west-secedes-2","Event IDs");
  auto seceded=applyDelta(opsBase,compiled,geo);
  check(seceded.state.territories["west"]["owner"]=="west-republic"&&seceded.state.territories["west"]["controller"]=="neighbor","Secession and bordering occupation");
@@ -117,10 +117,10 @@ int main(){try{
  auto binding=operationSchema(treaty.state,encode(treaty.state),{{"far","Wait"},{"neighbor","Wait"}})["properties"]["events"]["prefixItems"];
  check(binding[0]["properties"]["blocked_by"]["enum"].size()==1&&binding[1]["properties"]["blocked_by"]["enum"][1]=="treaty-9","Only an actor's own commitments can block it");
  rejects([&]{compile(R"({"events":[{"description":"Ghost","actor":"nobody","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");});
- auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[]})"));
+ auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[],"significance":"major"})"));
  check(compileOperations(opsBase.state,noisy,adjacency).events.size()==3,"Background events capped");
  // Wars and treaties get historians' names, kinds and intensity; effects are validated and recorded on events.
- check(outcomes["prefixItems"][0]["required"].size()==7&&outcomes["prefixItems"][0]["properties"]["effects"]["maxItems"]==3,"Events carry effects");
+ check(outcomes["prefixItems"][0]["required"].size()==8&&outcomes["prefixItems"][0]["properties"]["effects"]["maxItems"]==3,"Events carry effects");
  auto named=compile(R"({"events":[{"description":"War is declared","actor":"old-state","blocked_by":"none","background":false,"causes":[],"effects":[{"actor":"old-state","economy":"decline","stability":"growth"},{"actor":"ghost","economy":"decline","stability":"decline"},{"actor":"neighbor","economy":"none","stability":"none"}],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"kind":"war","intensity":"high","name":"March War","text":"War over the March"},{"action":"add_commitment","actors":["neighbor","far"],"kind":"defence_pact","name":"Defence Pact","text":"Mutual defence"}]},
   {"description":"Another war","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"open_conflict","actors":["neighbor","old-state"],"kind":"skirmish","name":"March War","text":"Again"}]}]})");
  auto namedWorld=applyDelta(opsBase,named,geo);
@@ -135,5 +135,45 @@ int main(){try{
  auto unnamed=d;unnamed.changes=Json::arrayValue;Json::Value bare;bare["kind"]="conflict";bare["id"]="c9";bare["before"]=Json::nullValue;bare["after"]=parse(R"({"actors":["old-state","neighbor"],"status":"open","text":"War"})");bare["event"]="t1-change";bare["rationale"]="x";unnamed.changes.append(bare);
  rejects([&]{applyDelta(base,unnamed,geo);});
  auto legacy=base;legacy.state.conflicts["c9"]=bare["after"];applyDelta(legacy,WorldDelta{},geo); // Entries from before names stay valid.
+ // Event sites appear at once and fade after a few months unless a later event involves them or cites their incident.
+ auto site=compile(R"({"events":[{"description":"Flood strikes West","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"build","kind":"event_site","name":"West flood","actor":"old-state","region":"west"}]}]})");
+ auto siteWorld=applyDelta(opsBase,site,geo);auto siteId=site.changes[0]["id"].asString();
+ check(siteWorld.state.entities[siteId]["status"]=="active"&&siteWorld.state.entities[siteId]["expires_turn"]==1+eventMapMonths,"Event sites start active with an expiry");
+ auto noExpiry=site;noExpiry.changes[0]["after"].removeMember("expires_turn");rejects([&]{applyDelta(opsBase,noExpiry,geo);});
+ auto portExpiry=site;portExpiry.changes[0]["after"]["kind"]="port";rejects([&]{applyDelta(opsBase,portExpiry,geo);});
+ auto aged=siteWorld.state;for(int n=0;n<eventMapMonths-1;++n)aged=resolve(aged).state;
+ check(aged.entities[siteId]["status"]=="active","Event site lasts its months");
+ auto faded=resolve(aged);check(faded.state.entities[siteId]["status"]=="inactive"&&!faded.state.entities[siteId].isMember("expires_turn")&&faded.events.empty(),"Event site fades quietly");
+ auto cited=compileOperations(aged,parse(std::string(R"({"events":[{"description":"Flood relief","actor":"neighbor","blocked_by":"none","background":false,"causes":[")")+site.events[0]["id"].asString()+R"("],"operations":[]}]})"),adjacency);
+ check(cited.changes.size()==1&&cited.changes[0]["after"]["expires_turn"]==aged.turn+eventMapMonths&&cited.events[0]["entities"][0]==siteId,"Citing an incident renews its site");
+ auto touched=compileOperations(aged,parse(std::string(R"({"events":[{"description":"Memorial closed","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"set_entity_status","entity":")")+siteId+R"(","status":"inactive"}]}]})"),adjacency);
+ check(touched.changes.size()==1&&touched.changes[0]["after"]["status"]=="inactive"&&!touched.changes[0]["after"].isMember("expires_turn"),"An inactive site loses its expiry");
+ // Significance: map and war changes are major whatever the model says; the model's own headlines are capped at three a month; routine world events are dropped.
+ check(split2.events.size()==2,"Routine world developments are dropped");
+ auto headlines=parse(R"({"events":[]})");
+ for(auto text:{"Talks","Summit","Protest","Visit","Election"})headlines["events"].append(parse(std::string(R"({"description":")")+text+R"(","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[],"significance":"major"})"));
+ headlines["events"][4]["effects"]=parse(R"([{"actor":"neighbor","economy":"none","stability":"severe_decline"}])");
+ auto capped=compileOperations(opsBase.state,headlines,adjacency);int majors=0;for(auto &e:capped.events)majors+=e["major"].asBool();
+ check(majors==3&&capped.events[4]["major"].asBool()&&!capped.events[3]["major"].asBool(),"Model-declared headlines are capped, weightiest first");
+ check(named.events[0]["major"].asBool()&&!reform.events[0]["major"].asBool()&&site.events[0]["major"].asBool()&&!orphan.events[0]["major"].asBool(),"Map and war changes are major");
+ // Events link the wars and treaties they shape.
+ check(named.events[0]["conflicts"]==parse(R"(["c1-1"])")&&named.events[0]["commitments"]==parse(R"(["k1-2"])")&&ended.events[0]["conflicts"]==parse(R"(["c1-1"])")&&reform.events[0]["conflicts"].empty(),"Events record their wars and treaties");
+ {
+  // The event log: categories, places, scope and what is still on the map.
+  Store log(":memory:");auto start=opsBase.state;start.turn=0;log.create(start,false);
+  auto world=parse(R"({"events":[{"description":"Flood strikes West","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"build","kind":"event_site","name":"West flood","actor":"old-state","region":"west"}]},{"description":"Island reform","actor":"far","blocked_by":"none","background":false,"causes":[],"operations":[]},{"description":"Orphan","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"create_actor","actor_id":"z","name":"Zed","color":"#00aa00"}]}],"world_events":[{"actor":"neighbor","causes":[],"description":"Harvest festival","significance":"major"}]})");
+  auto first=resolve(start);auto delta=compileOperations(first.state,world,adjacency);auto month=applyDelta(first,delta,geo);
+  Json::Value r;r["delta"]=encode(delta);log.commit(log.submit(0,"log-1","{}")["id"].asString(),month,{},r);
+  auto current=month.state;
+  auto all=log.eventLog(current,parse(R"({"scope":"all"})"))["events"];
+  check(all.size()==3&&all[0]["category"]=="player"&&all[1]["category"]=="nation"&&all[2]["category"]=="world"&&all[0]["on_map"].asBool()&&all[0]["location"].size()==1,("Event log: "+dump(all)).c_str());
+  check(!all[1]["location"].empty(),"Events without places sit in the actor's heartland");
+  check(!all[1]["major"].asBool()&&!all[1]["on_map"].asBool()&&all[2]["major"].asBool()&&log.eventLog(current,parse(R"({"major":true})"))["events"].size()==2&&log.eventLog(current,parse(R"({"on_map":true})"))["events"].size()==2,"Only major events reach the map");
+  check(log.eventLog(current,parse(R"({"scope":"actor","actor":"far"})"))["events"].size()==1&&log.eventLog(current,parse(R"({"categories":["world"]})"))["events"].size()==1&&log.eventLog(current,parse(R"({"q":"harvest"})"))["events"].size()==1,"Event log filters");
+  for(int n=0;n<eventMapMonths;++n){auto next=resolve(current);log.commit(log.submit(current.turn,"log-quiet-"+std::to_string(n),"{}")["id"].asString(),next,{},{});current=next.state;}
+  check(log.eventLog(current,parse(R"({"on_map":true})"))["events"].empty()&&log.eventLog(current,parse(R"({})"))["events"].size()==3,"Old events leave the map but stay in the log");
+  check(log.campaignContext(current,"old-state").facts["related_history"].size()==1,"Rolled-back events stay out of history");
+  auto paged=log.eventLog(current,parse(R"({"limit":1,"before_turn":1})"));check(paged["events"].empty()&&!paged["more"].asBool(),"Paging before the first month is empty");
+ }
  std::cout<<"World deltas: occupation, secession, entity placement, holes, construction schedule, reach, pacing, annexation, conflicts, reload, replay, old history and atomic rollback passed\n";
 }catch(const std::exception&e){std::cerr<<e.what()<<"\n";return 1;}}

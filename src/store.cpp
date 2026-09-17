@@ -1,4 +1,5 @@
 #include "localhistoria/store.h"
+#include <algorithm>
 #include <memory>
 namespace lh {
 Store::Store(const std::string &p, bool readOnly) {
@@ -170,7 +171,7 @@ CountryContext Store::campaignContext(const WorldState &w,const std::string &act
     Json::Value regions(Json::arrayValue),entities(Json::arrayValue);
     for(auto &id:c.facts["territories"].getMemberNames())regions.append(id);
     for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);
-    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
+    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE "+std::string(happened)+" ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
     c.facts["related_history"]=Json::arrayValue;
     for(auto &row:older)c.facts["related_history"].append(parse(row["document"].asString()));
     return c;
@@ -193,14 +194,140 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
     Json::Value out(Json::arrayValue);
     // The latest 40, returned oldest first.
     for (auto &row : query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e JOIN event_links l ON l.event=e.id "
-                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
+                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND "+std::string(happened)+" ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
                            {actor, std::to_string(afterTurn)})) {
         auto document = parse(row["document"].asString());
         Json::Value event;
         event["turn"] = row["turn"];
-        for (auto k : {"actor", "description", "effects"})
-            if (document.isMember(k)) event[k] = document[k];
+        event["actor"] = document["actor"];
+        // Saved events hold their outcome as text; the chronicle prompt calls it a description.
+        event["description"] = document.isMember("text") ? document["text"] : document["description"];
+        if (document.isMember("effects")) event["effects"] = document["effects"];
         out.append(event);
+    }
+    return out;
+}
+Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
+    // A later event citing one as its cause renews its time on the map.
+    std::map<std::string, int> cited;
+    for (auto &row : query("SELECT l.target,MAX(e.turn) AS turn FROM event_links l JOIN events e ON e.id=l.event WHERE l.kind='causes' AND " +
+                           std::string(happened) + " GROUP BY l.target"))
+        cited[row["target"].asString()] = row["turn"].asInt();
+    auto lowered = [](std::string v) {
+        for (auto &ch : v) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        return v;
+    };
+    std::set<std::string> categories;
+    for (auto &c : filter["categories"]) categories.insert(c.asString());
+    auto who = filter["scope"] == "actor" ? filter["actor"].asString() : std::string();
+    auto needle = lowered(filter.get("q", "").asString());
+    bool onMapOnly = filter.get("on_map", false).asBool(), majorOnly = filter.get("major", false).asBool();
+    unsigned limit = std::clamp(filter.get("limit", 50).asUInt(), 1u, 500u);
+    auto point = [](const Json::Value &v) {
+        Json::Value p;
+        p["lat"] = v["latitude"];
+        p["lon"] = v["longitude"];
+        return p;
+    };
+    // Where an event without places happened: the acting nation's most populous region.
+    std::map<std::string, std::string> heartland;
+    for (auto &id : w.territories.getMemberNames()) {
+        auto &t = w.territories[id];
+        auto owner = t["owner"].asString();
+        if (t["kind"] == "residual" || owner != t["controller"].asString() || !t["latitude"].isNumeric()) continue;
+        if (!heartland.contains(owner) || t["population"].asInt64() > w.territories[heartland[owner]]["population"].asInt64()) heartland[owner] = id;
+    }
+    Json::Value out;
+    out["events"] = Json::arrayValue;
+    out["more"] = false;
+    auto rows = query("SELECT turn,events FROM turns WHERE turn<? ORDER BY turn DESC",
+                      {std::to_string(filter.get("before_turn", w.turn + 1).asInt())});
+    for (auto &row : rows) {
+        // Pages hold whole months, so paging by turn never skips an event.
+        if (out["events"].size() >= limit) {
+            out["more"] = true;
+            break;
+        }
+        int turn = row["turn"].asInt();
+        // Only feasible events reach a month's events, and structured documents add their places and links.
+        std::map<std::string, Json::Value> documents;
+        for (auto &d : query("SELECT id,document FROM events WHERE turn=?", {std::to_string(turn)}))
+            documents[d["id"].asString()] = parse(d["document"].asString());
+        for (auto &x : parse(row["events"].asString())) {
+            auto action = x["action"].asString(), target = x["target"].asString();
+            Json::Value item;
+            item["turn"] = turn;
+            item["text"] = x["text"];
+            item["actor"] = x["actor"];
+            item["id"] = documents.contains(target) ? target : "t" + std::to_string(turn) + "-" + action + "-" + target;
+            for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes"}) item[k] = Json::arrayValue;
+            item["actors"].append(x["actor"]);
+            if (documents.contains(target)) {
+                auto &d = documents[target];
+                for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes", "effects", "breaches", "blocked_by",
+                               "regional_actor", "initiative_type", "identity_changes"})
+                    if (d.isMember(k)) item[k] = d[k];
+                // Events saved before significance existed count as major only for a breach, a new flag or a severe effect.
+                bool major = d.get("major", false).asBool();
+                if (!d.isMember("major")) {
+                    major = d.isMember("breaches") || (d["identity_changes"].isArray() && !d["identity_changes"].empty());
+                    for (auto &e : d["effects"])
+                        for (auto k : {"economy", "stability"}) major = major || e[k] == "severe_decline" || e[k] == "strong_growth";
+                }
+                item["major"] = major;
+                item["category"] = d["regional_actor"].isString() ? "regional"
+                                   : d["background"].asBool()   ? "world"
+                                   : x["actor"] == w.player     ? "player"
+                                                                : "nation";
+            } else if (action == "war_toll") {
+                // Fronts already show on the Wars & treaties map; the monthly toll is routine.
+                item["major"] = false;
+                item["category"] = "war";
+                item["conflicts"].append(target);
+                if (w.conflicts.isMember(target)) {
+                    item["actors"] = w.conflicts[target]["actors"];
+                    if (w.conflicts[target]["affected_regions"].isArray()) item["regions"] = w.conflicts[target]["affected_regions"];
+                }
+            } else if (action == "completion") {
+                item["category"] = "construction";
+                // A finished city is years of work; units, bases and ports are routine.
+                item["major"] = w.entities[target]["kind"] == "city";
+                item["entities"].append(target);
+                if (w.entities.isMember(target)) item["regions"].append(w.entities[target]["region"]);
+            } else {
+                item["major"] = false;
+                item["category"] = x["actor"] == w.player ? "player" : "nation";
+            }
+            // War tolls repeat monthly, so only the latest stays on the map; wars keep the events that shaped them there while open.
+            int active = std::max(turn, cited.contains(item["id"].asString()) ? cited[item["id"].asString()] : turn);
+            // Only major events reach the map: for a few months, and while a war they shaped is open.
+            bool onMap = w.turn - active < eventMapMonths;
+            for (auto &c : item["conflicts"]) onMap = onMap || w.conflicts[c.asString()]["status"] == "open";
+            onMap = onMap && item["major"].asBool();
+            item["on_map"] = onMap;
+            if (majorOnly && !item["major"].asBool()) continue;
+            if (onMapOnly && !onMap) continue;
+            if (!categories.empty() && !categories.contains(item["category"].asString())) continue;
+            if (!needle.empty() && lowered(item["text"].asString()).find(needle) == std::string::npos) continue;
+            if (!who.empty()) {
+                bool related = false;
+                for (auto &a : item["actors"]) related = related || a == who;
+                for (auto &r : item["regions"])
+                    related = related || w.territories[r.asString()]["owner"] == who || w.territories[r.asString()]["controller"] == who;
+                if (!related) continue;
+            }
+            item["location"] = Json::arrayValue;
+            std::set<std::pair<double, double>> seen;
+            auto place = [&](const Json::Value &v) {
+                if (!v["latitude"].isNumeric() || !v["longitude"].isNumeric() || item["location"].size() >= 4) return;
+                if (seen.insert({v["latitude"].asDouble(), v["longitude"].asDouble()}).second) item["location"].append(point(v));
+            };
+            for (auto &r : item["regions"]) place(w.territories[r.asString()]);
+            for (auto &e : item["entities"]) place(w.entities[e.asString()]);
+            if (item["location"].empty() && heartland.contains(x["actor"].asString())) place(w.territories[heartland[x["actor"].asString()]]);
+            out["events"].append(item);
+        }
+        out["next_before_turn"] = turn;
     }
     return out;
 }

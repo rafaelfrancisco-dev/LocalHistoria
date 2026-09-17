@@ -215,9 +215,12 @@ int main(int argc, char **argv) {
             check(chronicles.chronicle("PT")["summary"] == "S" && chronicles.chronicle("ES").isNull(), "Chronicle save and load");
             for (int n = 1; n <= 3; ++n) {
                 std::string id = "e" + std::to_string(n), actor = n == 2 ? "ES" : "PT";
-                chronicles.execute("INSERT INTO events VALUES(?,?,?)", {id, std::to_string(n), R"({"actor":")" + actor + R"(","description":"D)" + std::to_string(n) + R"(","effects":[],"operations":[1]})"});
+                chronicles.execute("INSERT INTO events VALUES(?,?,?)", {id, std::to_string(n), R"({"actor":")" + actor + R"(","text":"D)" + std::to_string(n) + R"(","effects":[],"operations":[1]})"});
                 chronicles.execute("INSERT INTO event_links VALUES(?,'actors',?)", {id, actor});
             }
+            // A rolled-back event never happened, so it never reaches a chronicle.
+            chronicles.execute("INSERT INTO events VALUES('e4',4,?)", {R"({"actor":"PT","text":"Rolled back","blocked_by":"infeasible"})"});
+            chronicles.execute("INSERT INTO event_links VALUES('e4','actors','PT')");
             auto since = chronicles.chronicleEvents("PT", 1);
             check(since.size() == 1 && since[0]["description"] == "D3" && since[0]["turn"] == 3 && !since[0].isMember("operations"),
                   "Chronicle events filter by actor and turn");

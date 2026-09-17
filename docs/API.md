@@ -13,7 +13,11 @@ All routes except the SVG flag endpoint use JSON at `http://127.0.0.1:8080/api/v
 | `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
 | `/history?code=PT` | GET | Cached reference only, no network |
 | `/history` | POST | `{code:"PT"}` explicitly downloads/refreshes reference in worker; returns volatile job ID |
+| `/entities` | GET | Campaign entities in a viewport (`west,east,south,north,zoom`; cities only from zoom 4), at most 200. Destroyed and inactive entities, such as faded event sites, are left out unless `include_inactive=1` |
+| `/events` | GET | Every event that happened, newest month first: see below |
 | `/replay` | GET | Initial state, current campaign and every saved turn with state, every actor's actions, events, frozen references and the accepted delta |
+
+`GET /events` accepts `scope=all|actor` with `actor=<id>`, `category` (comma list of `player`, `nation`, `regional`, `world`, `war`, `construction`), `q` (text search), `major=1`, `on_map=1` (always major), `before_turn` and `limit` (at most 100, or 500 with `on_map`). It returns `{events, more, next_before_turn, turn}`. Pages hold whole months: pass `next_before_turn` as `before_turn` for older events. Each event has `turn`, `id`, `text`, `actor`, `category`, `major`, `actors`, `regions`, `entities`, `conflicts`, `commitments`, `causes`, `on_map`, `location` (up to four `{lat, lon}` points: its regions and entities, or else the actor's most populous region) and, when present, `effects`, `breaches`, `blocked_by`, `regional_actor`, `initiative_type` and `identity_changes`. An actor scope matches events it acts in, takes part in, or whose regions it owns or controls. Events rolled back as infeasible are never listed.
 
 Example action list:
 

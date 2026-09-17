@@ -29,6 +29,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
     result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
    existing=result['events'];result['events']=[next((e for e in existing if e['actor']==i['actor'] and (e['description']==i['action'] or fixture)),{'actor':i['actor'],'blocked_by':'none','description':i['action'],'causes':[],'operations':[]}) for i in value['intentions']]
    for i,e in zip(value['intentions'],result['events']):
+    if 'railway' in i['action']:e['significance']='major'
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
     if 'war-fixture' in i['action']:

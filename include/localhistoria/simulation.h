@@ -34,13 +34,15 @@ struct Resolution {
     std::vector<ResolvedEvent> events;
 };
 constexpr size_t maxActions = 8, maxTargets = 4, maxActionBytes = 500;
+// Months an event stays on the map, and an event site stays active, unless a later related event renews it.
+constexpr int eventMapMonths = 3;
 Json::Value encode(const WorldState &);
 WorldState decode(const Json::Value &);
 Json::Value encode(const TurnOrders &);
 Json::Value encode(const std::vector<ResolvedEvent> &);
 TurnOrders parseOrders(const Json::Value &);
 void validate(const WorldState &, const std::string &, const TurnOrders &);
-// Advances one month: construction that is due completes; everything else is adjudicated.
+// Advances one month: construction that is due completes and expired event sites fade; everything else is adjudicated.
 Resolution resolve(const WorldState &);
 CountryContext context(const WorldState &, const std::string &, const Json::Value &,
                        const Json::Value &);

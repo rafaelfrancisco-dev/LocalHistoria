@@ -280,12 +280,14 @@ a {
 .stat.wide strong {
   font-size: 17px;
 }
-#diplomacy-open {
+#diplomacy-open,
+#events-open {
   margin: 0;
   padding: 4px 10px;
   font-size: 12px;
 }
-dialog#diplomacy {
+dialog#diplomacy,
+dialog#events {
   width: min(760px, calc(100vw - 32px));
   max-height: min(85vh, 900px);
   padding: 0 20px 20px;
@@ -294,7 +296,8 @@ dialog#diplomacy {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
-dialog#diplomacy::backdrop {
+dialog#diplomacy::backdrop,
+dialog#events::backdrop {
   background: rgb(5 12 16 / 70%);
 }
 .dialog-head {
@@ -411,7 +414,8 @@ label.filter input {
   letter-spacing: 0;
   color: var(--muted);
 }
-#diplomacy-list .empty {
+#diplomacy-list .empty,
+#events-list .empty {
   color: var(--muted);
 }
 .map-modes {
@@ -569,7 +573,8 @@ footer {
   .notice {
     padding: 10px 15px;
   }
-  dialog#diplomacy {
+  dialog#diplomacy,
+  dialog#events {
     padding: 0 16px 16px;
   }
   .map-legend {
@@ -578,6 +583,101 @@ footer {
   .panel {
     grid-column: auto;
   }
+}
+.event-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 12px 0 6px;
+}
+.event-filters label[hidden] {
+  display: none;
+}
+.event-filters label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.event-filters select,
+.event-filters input {
+  width: auto;
+  margin: 0;
+}
+#events-categories {
+  margin-bottom: 8px;
+}
+#events-categories .chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.event-card .agreement-head h3 {
+  font-size: 15px;
+}
+.event-card.flash {
+  background: rgb(220 187 123 / 12%);
+}
+.event-card .text {
+  color: var(--text);
+}
+.badge.effect-decline,
+.badge.effect-severe_decline,
+.badge.blocked {
+  background: #7d3d35;
+  color: #f5d6cf;
+}
+.badge.major {
+  background: var(--accent);
+  color: #18252a;
+  font-weight: 650;
+}
+.badge.effect-growth,
+.badge.effect-strong_growth {
+  background: #2f5c4c;
+  color: #d3efe2;
+}
+.badge.effect {
+  text-transform: none;
+  margin: 0 6px 0 0;
+}
+#events-more {
+  margin-top: 10px;
+}
+.event-marker {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  transform: rotate(45deg);
+  border: 2px solid #f5ead2;
+  background: var(--marker, #dcbb7b);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 60%);
+}
+.event-marker span {
+  transform: rotate(-45deg);
+  color: #fff;
+  font: 700 10px/1 system-ui, sans-serif;
+  text-shadow: 0 0 2px #000;
+}
+.event-popup {
+  max-width: 280px;
+  max-height: 260px;
+  overflow: auto;
+}
+.event-popup p {
+  margin: 0 0 8px;
+}
+.event-popup small {
+  display: block;
+  color: #555;
+}
+.event-popup button {
+  color: var(--text);
+  margin: 2px 0 0;
+  padding: 2px 8px;
+  font-size: 11px;
 }
 /* Use a local text label for the optional layer chooser. */
 .leaflet-control-layers-toggle { background-image: none !important; width: 70px !important; }

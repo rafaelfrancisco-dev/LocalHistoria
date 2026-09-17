@@ -143,6 +143,12 @@ Resolution resolve(const WorldState &w) {
     r.state.turn++;
     for (auto &id : r.state.entities.getMemberNames()) {
         auto &e = r.state.entities[id];
+        // An event site no later event renewed leaves the map without a journal line.
+        if (e["status"] == "active" && e.isMember("expires_turn") && e["expires_turn"].isInt() && e["expires_turn"].asInt() <= r.state.turn) {
+            e["status"] = "inactive";
+            e.removeMember("expires_turn");
+            continue;
+        }
         if (e["status"] != "under_construction" || !e["completes_turn"].isInt() || e["completes_turn"].asInt() > r.state.turn)
             continue;
         e["status"] = "active";
