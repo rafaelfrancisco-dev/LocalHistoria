@@ -119,7 +119,8 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
             require(!e.isMember("regional_actor")||w.territories.isMember(key),"Unknown regional attribution");
             w.activity[key]=w.turn;w.activity[e["actor"].asString()]=w.turn;
         }
-        r.events.push_back({e["actor"].asString(),e.get("initiative_type","development").asString(),e["id"].asString(),e["text"].asString()});
+        // A rolled-back event stays in the audit but never reaches the journal, narration or later prompts as if it happened.
+        if(e["blocked_by"]!="infeasible")r.events.push_back({e["actor"].asString(),e.get("initiative_type","development").asString(),e["id"].asString(),e["text"].asString()});
     }
     for(auto kind:{"conflicts","commitments"}) {
         auto collection=kind==std::string("conflicts")?w.conflicts:w.commitments;
@@ -157,6 +158,11 @@ static void collectEventIds(const Json::Value &v,std::set<std::string> &ids) {
         if(v["related_history"].isArray())for(auto &e:v["related_history"])if(e["id"].isString())ids.insert(e["id"].asString());
         for(auto &k:v.getMemberNames())collectEventIds(v[k],ids);
     } else if(v.isArray())for(auto &x:v)collectEventIds(x,ids);
+}
+std::string actionOpening(const std::string &text) {
+    size_t at=0;
+    for(int words=0;words<6;++words){at=text.find(' ',text.find_first_not_of(' ',at));if(at==std::string::npos)return text;}
+    return text.substr(0,at)+"…";
 }
 static Json::Value enumeration(const std::set<std::string> &values) {
     Json::Value j;j["type"]="string";j["enum"]=Json::arrayValue;
@@ -216,7 +222,7 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     for(auto k:{"actor","blocked_by","causes","description","effects","operations"})event["required"].append(k);
     // Denials must cite a real commitment, so a small model cannot invent prerequisites; physical limits are checked by C++.
     event["properties"]["blocked_by"]=enumeration(commitments);event["properties"]["blocked_by"]["enum"].insert(0,"none");
-    event["properties"]["actor"]=actor;event["properties"]["description"]=string(400);
+    event["properties"]["actor"]=actor;event["properties"]["description"]=string(300);
     event["properties"]["causes"]=parse(R"({"type":"array","maxItems":4})");
     // Economic and stability consequences are qualitative; C++ turns them into bounded numbers.
     auto effect=parse(R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
@@ -225,11 +231,15 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     if(causes.empty())event["properties"]["causes"]["maxItems"]=0;else event["properties"]["causes"]["items"]=enumeration(causes);
     event["properties"]["operations"]=parse(R"({"type":"array","maxItems":5})");event["properties"]["operations"]["items"]["anyOf"]=ops;
     Json::Value schema;schema["type"]="object";schema["additionalProperties"]=false;schema["required"].append("events");schema["required"].append("world_events");
-    // One outcome per action, in order, each opening with that action's exact text: a small model otherwise skips
-    // this month's actions and re-adjudicates history instead.
+    // One outcome per action, in order, opening with that action's first words: without them a small model repeats one
+    // outcome for all of a nation's actions. The whole text kept it on track too, but cost dozens of generated tokens per event.
     auto &outcomes=schema["properties"]["events"];outcomes["type"]="array";outcomes["prefixItems"]=Json::arrayValue;
     for(auto &[a,text]:std::vector(actions.begin(),actions.begin()+std::min<size_t>(actions.size(),37))) {
-        auto item=event;item["required"].insert(0,"action");item["properties"]["action"]["const"]=text;item["properties"]["actor"]=Json::objectValue;item["properties"]["actor"]["const"]=a;
+        auto item=event;item["required"].insert(0,"action");item["properties"]["action"]["const"]=actionOpening(text);
+        item["properties"]["actor"]=Json::objectValue;item["properties"]["actor"]["const"]=a;
+        // Only a commitment the actor is party to can hold it back; otherwise a small model cites any treaty it sees.
+        std::set<std::string> binding;for(auto &id:commitments)for(auto &party:w.commitments[id]["actors"])if(party==a)binding.insert(id);
+        item["properties"]["blocked_by"]=enumeration(binding);item["properties"]["blocked_by"]["enum"].insert(0,"none");
         outcomes["prefixItems"].append(item);
     }
     outcomes["minItems"]=outcomes["maxItems"]=Json::UInt(outcomes["prefixItems"].size());
@@ -252,7 +262,7 @@ bool reaches(const WorldState &w,const Adjacency &adjacency,const std::string &a
     for(auto &id:w.entities.getMemberNames()){auto &e=w.entities[id];if(e["actor"]==a&&e["status"]=="active"&&(e["kind"]=="army"||e["kind"]=="fleet")&&near(e["region"].asString()))return true;}
     return false;
 }
-// A physically unreachable outcome this month: the event is kept as a narrative failure, the turn continues.
+// A physically unreachable operation this month: it is dropped and the rest of its event and the turn continue.
 struct Infeasible : ValidationError { using ValidationError::ValidationError; };
 static double kilometres(const Json::Value &a,const Json::Value &b) {
     const double rad=M_PI/180;double la1=a["latitude"].asDouble()*rad,la2=b["latitude"].asDouble()*rad,dl=(b["longitude"].asDouble()-a["longitude"].asDouble())*rad;
@@ -306,9 +316,13 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         std::set<std::string> actors,regions,entities,createdHere;
         std::vector<Json::Value> seenOps;
         std::string blocked=e["blocked_by"].asString(),breaches;
+        // A commitment binds only its parties.
+        if(w.commitments.isMember(blocked)&&std::find(w.commitments[blocked]["actors"].begin(),w.commitments[blocked]["actors"].end(),Json::Value(ev))==w.commitments[blocked]["actors"].end())blocked="none";
         // Treaties can be broken: a cited commitment only blocks an event whose outcome changes nothing; otherwise the breach is recorded.
         if(blocked!="none"&&!e["operations"].empty()&&w.commitments.isMember(blocked)){breaches=blocked;blocked="none";}
         auto snapshot=std::make_tuple(pending,index,created,newActors,taken,aliases,names);
+        // Why operations were dropped: kept for the audit, never in the event text players and later prompts read.
+        Json::Value dropped(Json::arrayValue);
         try {
         for(auto &o:e["operations"]) {
             if(blocked!="none")break;
@@ -317,6 +331,9 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             if(std::find(seenOps.begin(),seenOps.end(),o)!=seenOps.end())continue;
             seenOps.push_back(o);
             auto name=o["action"].asString();auto why=name+": "+text.substr(0,300);
+            // An impossible operation is dropped on its own; the rest of the event still happens.
+            auto before=std::make_tuple(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere);
+            try {
             auto str=[&](const char *k){if(!o[k].isString()||o[k].asString().empty())throw Infeasible("incomplete "+name);return o[k].asString();};
             auto region=[&]{auto r=str("region");if(!w.territories.isMember(r))throw Infeasible("unknown region");return r;};
             auto party=[&](const char *k){
@@ -458,12 +475,19 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 }
                 regions.insert(r);for(auto k:{"owner","controller"})if(!t[k].asString().empty())actors.insert(t[k].asString());
             } else throw Infeasible("unknown operation "+name);
+            } catch(const Infeasible &x) {
+                std::tie(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere)=before;
+                Json::Value d;d["action"]=name;d["reason"]=x.what();dropped.append(d);
+            }
         }
+        // Nothing was breached if every operation was dropped.
+        if(!breaches.empty()&&dropped.size()==seenOps.size())breaches.clear();
         for(auto &a:createdHere){bool land=false;for(auto &c:pending)land=land||(c.kind=="territory"&&c.after["owner"]==a);if(!land)throw Infeasible("a new state needs territory");}
         } catch(const Infeasible &x) {
             std::tie(pending,index,created,newActors,taken,aliases,names)=snapshot;
             actors.clear();regions.clear();entities.clear();
-            blocked="infeasible";text="Could not happen this month ("+std::string(x.what())+"): "+text;
+            blocked="infeasible";
+            Json::Value d;d["action"]="event";d["reason"]=x.what();dropped.append(d);
         }
         if(!regional.empty()) {
             regions.insert(regional);
@@ -475,7 +499,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         }
         actors.insert(ev);
         if(!breaches.empty()&&blocked=="none")text+=" This breached the commitment: "+w.commitments[breaches]["text"].asString();
-        Json::Value event;event["id"]=id;event["actor"]=ev;if(blocked!="none")event["blocked_by"]=blocked;if(!breaches.empty()&&blocked=="none")event["breaches"]=breaches;event["text"]=text.substr(0,2000);event["background"]=e["background"];event["causes"]=e["causes"];
+        Json::Value event;event["id"]=id;event["actor"]=ev;if(blocked!="none")event["blocked_by"]=blocked;if(!breaches.empty()&&blocked=="none")event["breaches"]=breaches;event["text"]=text.substr(0,2000);if(!dropped.empty())event["dropped_operations"]=dropped;event["background"]=e["background"];event["causes"]=e["causes"];
         for(auto [key,values]:std::initializer_list<std::pair<const char*,std::set<std::string>*>>{{"actors",&actors},{"regions",&regions},{"entities",&entities}}) {
             event[key]=Json::arrayValue;for(auto &v:*values)event[key].append(v);
         }

@@ -34,10 +34,11 @@ The model does not write deltas directly. Asking a 4B model for exact `before`/`
   - An event may have no operations: reforms, trade, research and negotiations are recorded as history.
   - At most three background events are kept.
 - **Operations.** Each is named by `action`: `build`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict` (with `kind`, `name` and starting `intensity`), `set_conflict_intensity` (parties only), `resolve_conflict`, `add_commitment` (with `kind` and `name`), `resolve_commitment`. Alliances and treaties are commitments; armies and fleets are entities.
-- **Effects.** Each event lists up to three `effects`: `{actor, economy, stability}`, each one of `severe_decline`, `decline`, `none`, `growth`, `strong_growth`. Invalid or unknown effects are dropped; infeasible or blocked events have none.
+- **Effects.** Each event lists up to three `effects`: `{actor, economy, stability}`, each one of `severe_decline`, `decline`, `none`, `growth`, `strong_growth`. Invalid or unknown effects are dropped; blocked or rolled-back events have none. An event keeps its effects when only some of its operations were dropped.
 - **Schema constraints.**
   - Region, entity, event-actor, conflict, commitment and cause references are restricted to IDs present in the supplied facts.
-  - `blocked_by` accepts only `none` or an open commitment ID, so a denial cannot cite an invented rule.
+  - `blocked_by` accepts only `none` or an open commitment the event's actor is party to, so a denial cannot cite an invented rule or someone else's treaty. C++ also ignores a commitment cited by a non-party, and records no breach when every operation of the event was dropped.
+  - Each outcome is pinned to its action's actor and order and opens with the action's first six words (`action`). Without an opening the model repeated one outcome for all of a nation's actions; repeating the whole text cost dozens of tokens per event.
 - **IDs and placement.**
   - C++ assigns entity IDs (`e<TURN>-<name slug>`) and places new or moved entities at the region's verified interior point.
   - Conflict and commitment IDs are also assigned by C++.
@@ -55,7 +56,7 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
 - **New states.** At most one new state per month, and it must receive territory in the same event.
 
-An event that breaks a limit is rolled back as a whole. It is kept as `blocked_by: "infeasible"` with the text "Could not happen this month (reason): …", and the rest of the month proceeds.
+An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history.
 
 Adjacency is the `region_neighbors` table (`tools/region_neighbors.py`): regions that touch, or lie within 0.05° across a narrow strait. The adjudication prompt receives:
 

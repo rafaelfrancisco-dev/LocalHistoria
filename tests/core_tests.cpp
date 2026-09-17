@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
             Json::Value input;input["intentions"][0]["actor"]="PT";input["intentions"][0]["action"]="Wait";
             judge.adjudicate(w, input, {});
             auto audit = judge.takeAudit();
-            check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == (ctx == 32768) && seen["max_tokens"].asInt() == (ctx == 32768 ? 2560 : 2048) && seen.isMember("thinking_budget_tokens") == (ctx == 32768) &&
+            check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == (ctx == 32768) && seen["max_tokens"].asInt() == (ctx == 32768 ? 2048 + 384 : 2048) && seen.isMember("thinking_budget_tokens") == (ctx == 32768) &&
                       audit[0]["context_limit"].asInt() == ctx,
                   "Thinking budget follows context size");
         }
@@ -176,6 +176,28 @@ int main(int argc, char **argv) {
         check(recorded["excerpt"].asString().size() <= 3000 &&
                   recorded["history_excerpt"].asString().size() <= 3000,
               "Bounded reference excerpts");
+        auto recent = fetchHistory("PT", [](auto host, auto, auto, double) {
+            if (host == "https://query.wikidata.org")
+                return parse(R"({"results":{"bindings":[{"item":{"value":"http://www.wikidata.org/entity/Q45"}}]}})");
+            if (host == "https://www.wikidata.org")
+                return parse(R"({"entities":{"Q45":{"sitelinks":{"enwiki":{"title":"Portugal"}}}}})");
+            Json::Value page;page["latest"]["id"]=1;
+            std::string html="<p>Portugal is a country on the Iberian Peninsula in south-western Europe.</p><h2 id=\"History\">History</h2>";
+            for(int n=0;n<400;++n)html+="<p>Founding era paragraph "+std::to_string(n)+".</p>";
+            html+="<p>In 2024 a new government took office.<sup class=\"mw-ref\">[ 12 ]</sup></p><h2 id=\"Geography\">Geography</h2><p>Mountains.</p>";
+            page["html"]=html;return page;
+        });
+        auto recentText = recent["history_excerpt"].asString();
+        check(recent["history_scope"] == "recent" && recentText.size() <= 3000 + 3 && recentText.rfind("…", 0) == 0 &&
+                  recentText.find("In 2024 a new government took office.") != std::string::npos && recentText.find("[") == std::string::npos &&
+                  recentText.find("Mountains") == std::string::npos && recentText.find("paragraph 0.") == std::string::npos,
+              "History excerpt keeps the most recent part of the section");
+        auto brief = briefReference(parse(R"({"available":true,"title":"T","excerpt":"Uma frase curta sobre a nação","history_excerpt":"Founded long ago, then reformed in 2024"})"), 12, 0);
+        check(brief["excerpt"] == "Uma frase…" && !brief.isMember("history_excerpt") && brief["title"] == "T" &&
+                  briefReference(brief, 3, 3)["excerpt"].asString().size() <= 6,
+              "Brief references cut at words");
+        check(briefReference(parse(R"({"history_excerpt":"Founded long ago, then reformed in 2024"})"), 10, 20)["history_excerpt"] == "…reformed in 2024",
+              "Brief history keeps its most recent end");
         check(recorded["history_excerpt"].asString().find("History") != std::string::npos,
               "Separate history extraction");
         std::cout << checks << " checks passed\n";

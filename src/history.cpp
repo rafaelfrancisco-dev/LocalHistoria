@@ -69,6 +69,24 @@ std::string introduction(const std::string &html) {
     }
     return "No substantial introduction available.";
 }
+// The closing part of the History section: recent history grounds present-day decisions better than origins.
+std::string recentHistory(const std::string &html, size_t limit) {
+    auto heading = html.find("id=\"History\"");
+    if (heading == std::string::npos || html.find('>', heading) == std::string::npos)
+        return "History section unavailable in this article.";
+    auto start = html.find('>', heading) + 1;
+    auto next = html.find("<h2", start);
+    auto end = next == std::string::npos ? html.size() : next;
+    // Take the section's tail before extracting text, so huge articles stay bounded.
+    auto from = end - start > 600000 ? end - 600000 : start;
+    auto text = std::regex_replace(plainText(html.substr(from, end - from), 400000),
+                                   std::regex(R"( ?\[ ?[0-9a-z]{1,4} ?\])"), "");
+    while (!text.empty() && text.back() == ' ') text.pop_back();
+    if (text.size() <= limit) return text;
+    auto cut = text.find(' ', text.size() - limit);
+    if (cut == std::string::npos) return text.substr(text.size() - limit);
+    return "…" + text.substr(cut + 1);
+}
 } // namespace
 Json::Value fetchRegionalHistory(const std::string &name,const std::string &country,Transport get) {
     Json::Value unavailable;unavailable["available"]=false;
@@ -135,12 +153,10 @@ Json::Value fetchHistory(const std::string &code, Transport get) {
             "https://en.wikipedia.org/wiki/" + drogon::utils::urlEncode(title.asString());
         out["revision"] = article["latest"]["id"];
         out["excerpt"] = introduction(html);
-        auto history = html.find("id=\"History\"");
-        out["history_excerpt"] =
-            history == std::string::npos
-                ? "History section unavailable in this article."
-                : plainText(html.substr(html.find('>', history) + 1, 30000), 3000);
-        out["kind"] = "Bounded article introduction and history section; formatting removed";
+        out["history_excerpt"] = recentHistory(html, 3000);
+        // Marks caches that hold the end of the history section rather than its opening.
+        out["history_scope"] = "recent";
+        out["kind"] = "Bounded article introduction and the most recent part of its history section; formatting removed";
     } catch (const std::exception &e) {
         out["available"] = false;
         out["reason"] = e.what();

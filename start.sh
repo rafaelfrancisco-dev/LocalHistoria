@@ -71,7 +71,7 @@ else
         --alias local --host 127.0.0.1 --port "$MODEL_PORT" \
         --ctx-size "$CTX_SIZE" --parallel 1 --jinja \
         --cache-ram 1024 --ctx-checkpoints 8 \
-        --chat-template-kwargs '{"enable_thinking":true}' >logs/llama.log 2>&1 &
+        --no-mmproj --reasoning on >logs/llama.log 2>&1 &
     MODEL_PID=$!
     # The first launch downloads the model, which can take several minutes.
     printf "Waiting for the model to load"

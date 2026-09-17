@@ -44,6 +44,8 @@ void validate(const WorldState &, const std::string &, const TurnOrders &);
 Resolution resolve(const WorldState &);
 CountryContext context(const WorldState &, const std::string &, const Json::Value &,
                        const Json::Value &);
+// A reference cut at word boundaries: the introduction keeps its start and the history its most recent end; history 0 removes it.
+Json::Value briefReference(const Json::Value &, size_t excerpt, size_t history);
 std::string dump(const Json::Value &);
 Json::Value parse(const std::string &);
 } // namespace lh

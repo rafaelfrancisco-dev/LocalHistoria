@@ -116,7 +116,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
 Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     Json::Value input;
     input["facts"] = c.facts;
-    input["reference_only"] = c.reference;
+    input["reference_only"] = briefReference(c.reference, 1200, 1200);
     auto schema = parse(R"({"type":"object","additionalProperties":false,"required":["actions"],"properties":{"actions":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})");
     int count=c.facts.get("action_count",3).asInt();
     schema["properties"]["actions"]["maxItems"]=count;
@@ -138,7 +138,7 @@ std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e) { return
 std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e,const CountryContext &c) {
     Json::Value in;
     in["authoritative_events"] = encode(e);
-    in["facts"]=c.facts;for(auto k:{"territories","occupied_by_others","occupying","entities"})in["facts"].removeMember(k);in["reference_only"]=c.reference;
+    in["facts"]=c.facts;for(auto k:{"territories","occupied_by_others","occupying","entities"})in["facts"].removeMember(k);
     auto j = completion(
         in,
         parse(
@@ -166,7 +166,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     }
     static const std::string instruction=
         "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's actions (intentions) against the facts. "
-        "Return events: exactly one per action, in the given order, each starting with that action's text; describe what actually happened to that action this month. "
+        "Return events: exactly one per action, in the given order, each opening with that action's first words; describe what actually happened to that action this month. "
         "Then world_events: at most two brief unplanned developments (public mood, economy, weather, incidents) involving other listed nations, or none; they change nothing on the map. "
         "History (past_events, related_history) already happened in earlier months: never repeat or re-adjudicate it; use it only as context and for causes. "
         "Each event has the acting actor, blocked_by (none, or the ID of an open commitment that prevents the action, in which case it has no operations; a nation that knowingly breaks a treaty acts anyway), causes (earlier event IDs from related_history, or []), "
@@ -187,8 +187,8 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "Grant R independence as NAME (by its owner) -> create_actor + transfer_territory to it. Sign an alliance with X -> add_commitment. Reform education -> no operations.";
     Json::Value response;
     try {
-        // Enough reasoning to consider every action, bounded so a month stays around a minute or two.
-        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 256 * actions.size(), 512, 2048), 0.6,
+        // Enough reasoning to weigh every action; generation is the slowest part of a month, so keep it tight.
+        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 128 * actions.size(), 384, 1024), 0.6,
                               "adjudicate");
     } catch (const ValidationError &) {
         // A reasoning run can exhaust its budget before answering; retry once without thinking.
@@ -197,7 +197,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     if(!response["events"].isArray()||response["events"].size()!=actions.size())throw ValidationError("Every intention requires an outcome");
     for(Json::ArrayIndex i=0;i<response["events"].size();++i){
         auto &event=response["events"][i];auto &intent=input["intentions"][i];
-        if(event["actor"]!=intent["actor"]||(event.isMember("action")&&event["action"]!=intent["action"]))throw ValidationError("Outcome attribution mismatch");
+        if(event["actor"]!=intent["actor"]||(event.isMember("action")&&event["action"]!=actionOpening(intent["action"].asString())))throw ValidationError("Outcome attribution mismatch");
         if(intent["regional_actor"].isString()&&(event["operations"].size()!=1||event["operations"][0]["action"]!="regional_initiative"||event["operations"][0]["region"]!=intent["regional_actor"]))throw ValidationError("Regional outcome requires its bounded agenda operation");
         for(auto k:{"initiative_type","regional_actor"}){event.removeMember(k);if(intent.isMember(k))event[k]=intent[k];}
     }

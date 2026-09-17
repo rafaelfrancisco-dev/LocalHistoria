@@ -10,8 +10,10 @@ llama serve \
   --alias local --host 127.0.0.1 --port 8081 \
   --ctx-size 32768 --parallel 1 --jinja \
   --cache-ram 1024 --ctx-checkpoints 8 \
-  --chat-template-kwargs '{"enable_thinking":true}'
+  --no-mmproj --reasoning on
 ```
+
+`--no-mmproj` skips the image projector that `-hf` otherwise downloads and loads; the game sends text only. `--reasoning on` replaces the deprecated `--chat-template-kwargs '{"enable_thinking":true}'`.
 
 `-hf` makes llama.cpp itself download the default Q4_K_M file from the [unsloth GGUF repository](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF) on first launch and cache it under `~/.cache/huggingface`. Review the model license and publisher. To use a local file instead, replace `-hf …` with `-m path/to/Qwen3.5-4B-Q4_K_M.gguf`.
 
@@ -40,11 +42,22 @@ Measured on a 16 GB Apple silicon MacBook Pro, llama.cpp build 11011, with `vmma
 
 The app reads the real context size from `/props` and needs at least 8,192 tokens. Below 16,384 tokens it disables reasoning (see below). One slot (`--parallel 1`) is assumed; the app sends one request at a time.
 
+## Speed
+
+On a 16 GB M1 Pro, the 4B Q4_K_M model reads prompts at about 350 tokens/s and writes about 34 tokens/s, so a month's time is mostly generated tokens, then prompt tokens. `llama bench -p 4096 -n 128` found no gain from flash attention (`-fa`) or a larger micro-batch (`-ub 1024` or `2048`, slightly slower). Context size and KV cache type do not change speed either: work scales with the tokens actually used, Qwen3.5's hybrid layers keep the cache small, and a quantized cache is not faster on Metal. So the app keeps requests short:
+
+- References keep the **end** of each article's History section (the most recent period, up to 3,000 characters, citation markers removed). References cached before this was added are fetched again once.
+- Each AI decision reads up to 1,200 characters of the introduction and the most recent 1,200 of the history.
+- Adjudication reads each actor's introduction cut to 600 characters. It also reads the most recent 600 characters of history for nations at war, and for nations whose action this month is about war, military moves, borders, territory, independence, sanctions or treaties, plus the nations those actions name. Narration receives no reference.
+- Each adjudicated event opens with only the first six words of its action, not the whole text. Without any opening, the model repeated one outcome for all of a nation's actions.
+
+Measured on the same first month of a Brazil campaign: about 250 s before these changes (adjudication: 11.2K prompt tokens, 4.4K generated, 179 s) and 120–160 s after (6.6–8K prompt tokens, 2.1–3.1K generated, 87–123 s; generation length varies from run to run).
+
 ## Thinking
 
 The server enables thinking by default. The app sets `chat_template_kwargs.enable_thinking` per request:
 
-- **Adjudication** (deciding what happens) thinks, with a `thinking_budget_tokens` of 256 per action plus 256, bounded to 512–2,048. Unbounded, the 4B model spent over 4,000 tokens (2+ minutes) reasoning about a single construction order. If a reasoning run produces no valid answer, adjudication is retried once without thinking.
+- **Adjudication** (deciding what happens) thinks, with a `thinking_budget_tokens` of 128 per action plus 256, bounded to 384–1,024. Unbounded, the 4B model spent over 4,000 tokens (2+ minutes) reasoning about a single construction order. If a reasoning run produces no valid answer, adjudication is retried once without thinking.
 - **AI nations' actions** and **narration** do not think, to keep a month's turn short.
 
 ## Requests

@@ -48,7 +48,7 @@ int main(){try{
  m.turn=1;auto opsBase=resolve(m);opsBase.state.turn=1;
  auto facts=encode(opsBase.state);auto schema=operationSchema(opsBase.state,facts,{{"old-state","Build a port"},{"neighbor","Wait"}});
  auto &outcomes=schema["properties"]["events"];
- check(outcomes["minItems"].asInt()==2&&outcomes["maxItems"].asInt()==2&&!outcomes.isMember("items")&&outcomes["prefixItems"][0]["properties"]["action"]["const"]=="Build a port"&&outcomes["prefixItems"][1]["properties"]["actor"]["const"]=="neighbor","One outcome per action");
+ check(outcomes["minItems"].asInt()==2&&outcomes["maxItems"].asInt()==2&&!outcomes.isMember("items")&&outcomes["prefixItems"][0]["properties"]["action"]["const"]=="Build a port"&&actionOpening("Venezuela mobilizes the National Guard in Zulia and Lara")=="Venezuela mobilizes the National Guard in…"&&outcomes["prefixItems"][0]["properties"]["actor"]["const"]=="old-state"&&outcomes["prefixItems"][1]["properties"]["actor"]["const"]=="neighbor","One outcome per action");
  check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
  auto &developments=schema["properties"]["world_events"];
  check(developments["maxItems"].asInt()==2&&!developments["items"]["properties"].isMember("operations")&&developments["items"]["properties"]["actor"]["enum"]==parse(R"(["far","neighbor"])"),"World events are narrative and never the player's decisions");
@@ -67,10 +67,12 @@ int main(){try{
  check(seceded.state.entities["e1-harbor"]["origin_event"]=="t1-west-secedes"&&seceded.state.entities.size()==1&&seceded.state.conflicts.size()==1,"Deduplicated construction");
  check(seceded.state.entities["e1-harbor"]["status"]=="under_construction"&&seceded.state.entities["e1-harbor"]["completes_turn"]==1+constructionMonths("port"),"Construction takes months");
  auto later=resolve(seceded.state);for(int n=1;n<constructionMonths("port");++n)later=resolve(later.state);check(later.state.entities["e1-harbor"]["status"]=="active"&&later.events.size()==1,"Construction completes");
- auto infeasible=[&](const WorldDelta &x,Json::ArrayIndex index=0){return x.events[index]["blocked_by"]=="infeasible"&&x.events[index]["text"].asString().rfind("Could not happen this month",0)==0;};
+ // An impossible operation is dropped with its reason kept for the audit; the event text never mentions it.
+ auto infeasible=[&](const WorldDelta &x,Json::ArrayIndex index=0){return !x.events[index]["dropped_operations"].empty()&&x.events[index]["text"].asString().find("Could not happen")==std::string::npos;};
+ auto changed=[](const WorldDelta &x,const char *kind,const char *id){for(auto &c:x.changes)if(c["kind"]==kind&&c["id"]==id)return true;return false;};
  // Out of reach: Heart borders no land the aggressor controls.
  auto far=compile(R"({"events":[{"description":"Deep strike","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"occupy","region":"island","by":"old-state"}]}]})");
- check(infeasible(far)&&far.changes.empty(),"Unreachable region rejected with its whole event");
+ check(infeasible(far)&&far.events[0]["text"]=="Deep strike"&&!far.events[0].isMember("blocked_by")&&changed(far,"territory","march")&&!changed(far,"territory","island"),"Unreachable region dropped, the rest of its event holds");
  auto blitz=compile(R"({"events":[{"description":"Blitz","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"text":"War"}]},
   {"description":"Second front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]},
   {"description":"Third front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"heart","by":"old-state"}]}]})");
@@ -88,6 +90,8 @@ int main(){try{
  auto armed=opsBase;armed.state.entities["army-1"]=army;
  auto march=[&](const char *region){return compileOperations(armed.state,parse(std::string(R"({"events":[{"description":"March","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"move_entity","entity":"army-1","region":")")+region+R"("}]}]})"),adjacency);};
  check(!infeasible(march("march"))&&infeasible(march("heart")),"Army moves one region per month");
+ auto seized=compileOperations(armed.state,parse(R"({"events":[{"description":"Neighbor mobilizes","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"effects":[{"actor":"neighbor","economy":"decline","stability":"decline"}],"operations":[{"action":"open_conflict","actors":["neighbor","old-state"],"kind":"war","name":"West War","text":"War"},{"action":"move_entity","entity":"army-1","region":"march"}]}]})"),adjacency);
+ check(infeasible(seized)&&seized.events[0]["text"]=="Neighbor mobilizes"&&seized.events[0]["dropped_operations"][0]["action"]=="move_entity"&&changed(seized,"conflict","c1-1")&&!changed(seized,"entity","army-1")&&seized.events[0]["effects"].size()==1,"Valid operations survive a foreign unit order");
  armed.state.entities["army-1"]["status"]="under_construction";armed.state.entities["army-1"]["completes_turn"]=3;check(infeasible(march("march")),"Unfinished army cannot move");
  auto rush=compileOperations(armed.state,parse(R"({"events":[{"description":"Rush","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"set_entity_status","entity":"army-1","status":"active"}]}]})"),adjacency);
  check(infeasible(rush),"Construction cannot be completed by decree");
@@ -99,13 +103,19 @@ int main(){try{
  auto regionNamed=compile(R"({"events":[{"description":"Free West","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"create_actor","actor_id":"wr","name":"West Republic","color":"#00aa00"},{"action":"transfer_territory","region":"west","to":"West"}]}]})");
  check(applyDelta(opsBase,regionNamed,geo).state.territories["west"]["owner"]=="west-republic","Recipient named after its region resolves to the new state");
  auto orphan=compile(R"({"events":[{"description":"Orphan","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"create_actor","actor_id":"z","name":"Zed","color":"#00aa00"}]}]})");
- check(infeasible(orphan)&&orphan.changes.empty(),"New state needs land");
+ check(infeasible(orphan)&&orphan.events[0]["blocked_by"]=="infeasible"&&orphan.changes.empty()&&applyDelta(opsBase,orphan,geo).events.empty(),"New state needs land; the rolled-back event stays out of the journal");
  auto reform=compile(R"({"events":[{"description":"Education reform begins","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");
  check(reform.changes.empty()&&reform.events.size()==1&&!reform.events[0].isMember("blocked_by")&&applyDelta(opsBase,reform,geo).events.size()==1,"Narrative-only event");
  auto treaty=opsBase;treaty.state.commitments["treaty-9"]=parse(R"({"actors":["old-state","neighbor"],"status":"open","text":"No new states"})");
  auto refused=ops;refused["events"][0]["blocked_by"]="treaty-9";refused["events"][0]["operations"]=Json::arrayValue;auto denied=compileOperations(treaty.state,refused,adjacency);check(denied.events[0]["blocked_by"]=="treaty-9"&&denied.changes.size()==1,"Commitment block");
  auto broken=ops;broken["events"][0]["blocked_by"]="treaty-9";auto breach=compileOperations(treaty.state,broken,adjacency);
  check(!breach.events[0].isMember("blocked_by")&&breach.events[0]["breaches"]=="treaty-9"&&breach.events[0]["text"].asString().find("No new states")!=std::string::npos&&breach.changes.size()==compiled.changes.size(),"Treaty breach recorded");
+ auto outsider=compileOperations(treaty.state,parse(R"({"events":[{"description":"Far builds","actor":"far","blocked_by":"treaty-9","background":false,"causes":[],"operations":[{"action":"build","kind":"port","name":"Far port","actor":"far","region":"island"}]}]})"),adjacency);
+ check(!outsider.events[0].isMember("blocked_by")&&!outsider.events[0].isMember("breaches")&&outsider.events[0]["text"]=="Far builds","A treaty binds only its parties");
+ auto futile=compileOperations(treaty.state,parse(R"({"events":[{"description":"Futile grab","actor":"neighbor","blocked_by":"treaty-9","background":false,"causes":[],"operations":[{"action":"transfer_territory","region":"west","to":"neighbor"}]}]})"),adjacency);
+ check(!futile.events[0].isMember("breaches")&&futile.events[0]["text"]=="Futile grab","No breach when every operation was dropped");
+ auto binding=operationSchema(treaty.state,encode(treaty.state),{{"far","Wait"},{"neighbor","Wait"}})["properties"]["events"]["prefixItems"];
+ check(binding[0]["properties"]["blocked_by"]["enum"].size()==1&&binding[1]["properties"]["blocked_by"]["enum"][1]=="treaty-9","Only an actor's own commitments can block it");
  rejects([&]{compile(R"({"events":[{"description":"Ghost","actor":"nobody","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");});
  auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[]})"));
  check(compileOperations(opsBase.state,noisy,adjacency).events.size()==3,"Background events capped");

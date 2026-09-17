@@ -102,14 +102,13 @@ int main() {
                 R"([{"action":"create_actor","actor_id":"free","name":"Free","color":"#123456"},{"action":"transfer_territory","region":"r","to":"free"}])"),
             "r");
         auto blocked = compileOperations(w, illegal, {});
-        check(blocked.events[0]["blocked_by"] == "infeasible", "Region cannot secede by decree");
+        check(blocked.events[0]["dropped_operations"].size() == 2 && blocked.changes.size() == 1, "Region cannot secede by decree");
         for (
             auto op :
             {R"([{"action":"build","kind":"army","actor":"PT","name":"Army","region":"r"}])",
              R"([{"action":"add_commitment","actors":["PT","ES"],"text":"Treaty"}])",
              R"([{"action":"change_identity","actor":"PT","name":"New Republic","change_type":"rename","reason":"Demand"}])"})
-            check(compileOperations(w, event("PT", parse(op), "r"), {}).events[0]["blocked_by"] ==
-                      "infeasible",
+            check(compileOperations(w, event("PT", parse(op), "r"), {}).events[0]["dropped_operations"].size() == 1,
                   "Unauthorized regional national operation");
         auto changed = r.state;
         changed.territories["r"]["controller"] = "ES";
@@ -117,8 +116,7 @@ int main() {
         auto response = parse(
             R"([{"action":"respond_regional","region":"r","demand_id":"placeholder","response":"accepted"}])");
         response[0]["demand_id"] = r.state.regionalPolitics["r"]["demands"][0]["id"];
-        check(compileOperations(changed, event("PT", response), {}).events[0]["blocked_by"] ==
-                  "infeasible",
+        check(compileOperations(changed, event("PT", response), {}).events[0]["dropped_operations"].size() == 1,
               "Former authority cannot respond");
         auto accepted =
             applyDelta({changed, {}}, compileOperations(changed, event("ES", response), {}), {});

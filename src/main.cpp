@@ -81,6 +81,19 @@ static bool containsWord(const std::string &text, const std::string &word) {
     }
     return false;
 }
+// Wars, invasions, territory and treaties: actions whose outcome history can change.
+static bool consequential(const TurnOrders &orders) {
+    static const std::vector<std::string> stems{"invad", "invasion", "annex", "occup", "troop", "militar", "mobili", "armies", "fleet", "naval",
+        "border", "offensive", "attack", "bombard", "treaty", "treaties", "alliance", "allied", "accord", "agreement", "ceasefire", "cease-fire",
+        "peace", "armistice", "independen", "secession", "seced", "autonom", "sanction", "blockade", "embargo", "territor", "sovereign", "rebel", "insurg"};
+    static const std::vector<std::string> words{"war", "wars", "pact", "army", "navy", "coup", "cede", "union"};
+    for (auto &o : orders) {
+        auto text = lower(o.text);
+        for (auto &stem : stems) if (text.find(stem) != std::string::npos) return true;
+        for (auto &word : words) if (containsWord(text, word)) return true;
+    }
+    return false;
+}
 // Free text names nations and regions; resolve those names to IDs so the model sees the relevant map.
 static Mentions mentioned(const WorldState &w, const std::string &actor, const TurnOrders &orders) {
     Mentions m;
@@ -125,10 +138,12 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
     Json::Value input;
     input["facts"]["turn"] = w.turn;
     input["facts"]["actors"] = Json::objectValue;
-    std::set<std::string> acting, relevant;
+    std::set<std::string> acting, relevant, grounded;
     for (auto &[a, o] : intentions) {
         acting.insert(a);
         auto m = mentioned(w, a, o);
+        // The acting nation and the nations it names get recent history when the action is about war, land or treaties.
+        if (consequential(o)) { grounded.insert(a); grounded.insert(m.actors.begin(), m.actors.end()); }
         relevant.insert(m.regions.begin(), m.regions.end());
         // Nations an actor addresses without naming a region: the parts of them it borders, where an invasion or handover would begin.
         for (auto &target : m.actors)
@@ -142,7 +157,13 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
         facts["past_events"] = facts["recent_events"];
         facts.removeMember("recent_events");
         input["facts"]["actors"][a] = facts;
-        input["reference_only"][a] = c.reference;
+        // Each decision already read its reference; adjudication mostly needs the facts, and a shorter prompt is a faster month.
+        // Nations at war or in a war, land or treaty action this month also get the end of their history.
+        bool fighting = false;
+        for (auto &id : w.conflicts.getMemberNames())
+            if (w.conflicts[id]["status"] == "open")
+                for (auto &party : w.conflicts[id]["actors"]) fighting = fighting || party == a;
+        input["reference_only"][a] = briefReference(c.reference, 600, grounded.contains(a) || fighting ? 600 : 0);
         for (auto k : {"occupied_by_others", "occupying"})
             for (auto &id : c.facts[k].getMemberNames()) relevant.insert(id);
     }
@@ -278,7 +299,9 @@ int main(int argc, char **argv) {
             for(auto &n:reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player}))wanted.push_back(n["b"].asString());
             for(auto &key:wanted) {
                 if(preparing.size()>=8)break;
-                if(key.empty()||preparing.contains(key)||store.background(key).get("available",false).asBool()||retryAfter[key]>std::time(nullptr))continue;
+                // References cached before the history excerpt held recent history are fetched once more.
+                auto ready=[&](const Json::Value &r){return r.get("available",false).asBool()&&r.get("history_scope","")=="recent";};
+                if(key.empty()||preparing.contains(key)||ready(store.background(key))||retryAfter[key]>std::time(nullptr))continue;
                 auto cached=store.background(key);
                 if(cached["retrieved_at"].isIntegral()&&cached["retrieved_at"].asInt64()+3600>std::time(nullptr))continue;
                 bool regional=w.territories.isMember(key);

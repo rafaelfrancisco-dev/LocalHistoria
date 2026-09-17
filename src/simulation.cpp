@@ -18,6 +18,28 @@ Json::Value parse(const std::string &s) {
         throw ValidationError("Invalid JSON");
     return j;
 }
+Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t history) {
+    auto brief = reference;
+    if (!brief.isObject()) return brief;
+    auto cut = [&](const char *key, size_t limit) {
+        if (!brief[key].isString()) return;
+        auto text = brief[key].asString();
+        if (text.size() <= limit) return;
+        auto end = text.rfind(' ', limit);
+        // Without a space, step back to a UTF-8 lead byte so no character is split.
+        if (end == std::string::npos || end == 0) for (end = limit; end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80; --end) {}
+        brief[key] = text.substr(0, end) + "…";
+    };
+    cut("excerpt", excerpt);
+    // The history excerpt ends with the most recent period, so keep its end.
+    if (history == 0) brief.removeMember("history_excerpt");
+    else if (brief["history_excerpt"].isString() && brief["history_excerpt"].asString().size() > history) {
+        auto text = brief["history_excerpt"].asString();
+        auto start = text.find(' ', text.size() - history);
+        brief["history_excerpt"] = "…" + (start == std::string::npos ? text.substr(text.size() - history) : text.substr(start + 1));
+    }
+    return brief;
+}
 Json::Value encode(const WorldState &w) {
     Json::Value j;
     j["campaign_id"] = w.campaignId;
