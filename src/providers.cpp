@@ -37,7 +37,8 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
 LocalProvider::LocalProvider(std::string e, double t, Transport tr)
     : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)) {}
 Json::Value LocalProvider::completion(const Json::Value &input, const Json::Value &schema,
-                                      const std::string &instruction, unsigned reasoningBudget, double temperature) {
+                                      const std::string &instruction, unsigned reasoningBudget, double temperature,
+                                      const std::string &kind, const std::string &actor) {
     std::lock_guard lock(inference);
     auto endpoint = endpointValue();
     auto selected = input;
@@ -102,11 +103,15 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     record["prompt_tokens"]=tokens;record["output_reserve"]=b["max_tokens"];record["context_limit"]=contextLimit;record["thinking"]=thinking;
     record["model"]=props["model_alias"];record["build"]=props["build_info"];record["chat_template"]=props["chat_template"];
     record["latency_ms"]=Json::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count());
+    record["kind"]=kind;record["actor"]=actor;
     record["response"]=response;audit.append(record);
     auto s = response["choices"][0]["message"]["content"];
     if (!s.isString() || s.asString().size() > 16000)
         throw ValidationError("Invalid model response");
-    return parse(s.asString());
+    auto parsed = parse(s.asString());
+    // Set on the already-appended record so a live log can show the result without the raw transcript.
+    audit[audit.size() - 1]["answer"] = parsed;
+    return parsed;
 }
 Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     Json::Value input;
@@ -120,7 +125,8 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         "You represent the actor specified by initiative_type in this fictional monthly sandbox. Obey action_count. For independent_regional you represent only regional_identity, not its governing nation: propose civic initiatives, negotiations or autonomy demands; never national military orders, treaties or armed rebellion. For independent initiatives act from your own agenda, geography and history. Write concise actions (one sentence each) "
         "it plausibly takes this month, given its facts, commitments, conflicts and recent events. Each action must be achievable "
         "within a month or be a realistic step toward a longer goal, and fit the nation's status: its population, economy (GDP in real currency), stability and wars limit what it can afford and attempt. recent_events already happened: do not repeat them; "
-        "follow up, change course or respond to new developments. Refer to nations and regions by name.", 0, 0.7);
+        "follow up, change course or respond to new developments. Refer to nations and regions by name.", 0, 0.7,
+        "decide", c.actor);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} || !j["actions"].isArray())
         throw ValidationError("Invalid decision shape");
     auto o = parseOrders(j["actions"]);
@@ -138,7 +144,7 @@ std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e,const Cou
         parse(
             R"({"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","maxLength":2000}}})"),
         "Write a brief fictional monthly journal strictly reflecting these events. Do not invent "
-        "outcomes.", 0, 0.7);
+        "outcomes.", 0, 0.7, "narrate", c.actor);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"text"} ||
         !j["text"].isString() || j["text"].asString().size() > 2000 || j["text"].asString().empty())
         throw ValidationError("Invalid narration");
@@ -182,10 +188,11 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     Json::Value response;
     try {
         // Enough reasoning to consider every action, bounded so a month stays around a minute or two.
-        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 256 * actions.size(), 512, 2048), 0.6);
+        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 256 * actions.size(), 512, 2048), 0.6,
+                              "adjudicate");
     } catch (const ValidationError &) {
         // A reasoning run can exhaust its budget before answering; retry once without thinking.
-        response = completion(input, schema, instruction, 0, 0.6);
+        response = completion(input, schema, instruction, 0, 0.6, "adjudicate");
     }
     if(!response["events"].isArray()||response["events"].size()!=actions.size())throw ValidationError("Every intention requires an outcome");
     for(Json::ArrayIndex i=0;i<response["events"].size();++i){

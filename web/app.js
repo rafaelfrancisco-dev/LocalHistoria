@@ -334,11 +334,57 @@ function setBusy(value) {
   for (const id of ["turn", "new-game", "add-action"])
     $(id).disabled = value;
 }
-async function poll(id) {
+function actorName(code) {
+  return state?.actors?.[code]?.name || code;
+}
+// Renders one flushed model call as a single readable line, ahead of it being turned into map deltas.
+function logText(r) {
+  const a = r.answer || {};
+  if (r.kind === "decide") {
+    const actions = (a.actions || []).map((x) => x.text).filter(Boolean);
+    return actorName(r.actor) + ": " + (actions.length ? actions.join(" · ") : "no action taken");
+  }
+  if (r.kind === "adjudicate") {
+    const lines = [...(a.events || []), ...(a.world_events || [])]
+      .map((e) => e.text)
+      .filter(Boolean);
+    return "Adjudicated the month: " + (lines.length ? lines.join(" ") : "no outcomes");
+  }
+  if (r.kind === "narrate") return "Journal written.";
+  return "Model responded.";
+}
+function logLine(text) {
+  const log = $("turn-log");
+  const p = document.createElement("p");
+  p.textContent = text;
+  log.append(p);
+  log.scrollTop = log.scrollHeight;
+}
+async function poll(id, withLog) {
+  let since = 0;
+  const pull = async () => {
+    if (!withLog) return;
+    for (const r of await api("inference?job=" + encodeURIComponent(id) + "&since=" + since)) {
+      since = r.id;
+      logLine(logText(r));
+    }
+  };
+  if (withLog) {
+    $("turn-log").hidden = false;
+    $("turn-log").replaceChildren();
+  }
   for (let i = 0; i < 1200; i++) {
+    await pull();
     const j = await api("jobs?id=" + encodeURIComponent(id));
-    if (j.status === "complete") return j;
-    if (j.status !== "running") throw Error(j.error || j.status);
+    if (j.status === "complete") {
+      await pull();
+      if (withLog) $("turn-log").hidden = true;
+      return j;
+    }
+    if (j.status !== "running") {
+      if (withLog) $("turn-log").hidden = true;
+      throw Error(j.error || j.status);
+    }
     status("Working… " + id + " · the game remains responsive");
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -469,7 +515,7 @@ $("turn").onclick = protect(async () => {
     };
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));
     const job = await api("turns", pending);
-    const result = await poll(job.id);
+    const result = await poll(job.id, true);
     sessionStorage.removeItem("pendingTurn");
     setDraft([]);
     await load();
@@ -759,7 +805,7 @@ protect(async () => {
   if (job) {
     setBusy(true);
     try {
-      await poll(job.id);
+      await poll(job.id, true);
       sessionStorage.removeItem("pendingTurn");
       await load();
       status("Turn recovered and autosaved.");

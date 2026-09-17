@@ -27,7 +27,8 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Transport transport;
     mutable std::mutex inference, settings;
     Json::Value audit{Json::arrayValue};
-    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &, unsigned reasoningBudget, double temperature);
+    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &, unsigned reasoningBudget,
+                          double temperature, const std::string &kind = "", const std::string &actor = "");
 
   public:
     explicit LocalProvider(std::string endpoint, double timeout = 20,

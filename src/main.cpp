@@ -540,11 +540,14 @@ int main(int argc, char **argv) {
                               for (auto &a : actors) {
                                   auto c = contexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=3;c.facts["player_actions"]=encode(orders);
                                   intentions[a] = provider.decide(w, c).orders;
+                                  // Flushed as it lands so the client can show it before the month is adjudicated.
+                                  {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                               }
                               Json::Value independent(Json::arrayValue);
                               for(Json::ArrayIndex n=0;n<allocations.size();++n){
                                   auto slot=allocations[n];auto a=slot["actor"].asString(),r=slot["region"].asString();
                                   auto decision=provider.decide(w,independentContexts[n]);
+                                  {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                                   for(auto &o:decision.orders){slot["action"]=o.text;if(!r.empty()){o.targets.push_back(r);slot["regional_actor"]=r;}slot["actor_action_index"]=Json::UInt(intentions[a].size());intentions[a].push_back(o);independent.append(slot);}
                               }
                               auto result = resolve(w);
@@ -554,6 +557,7 @@ int main(int argc, char **argv) {
                               adjudication["facts"]["regional_politics"]=Json::objectValue;
                               for(auto &slot:allocations)if(slot["region"]!=""){auto r=slot["region"].asString();adjudication["facts"]["regional_politics"][r]=regionalState(w,r);}
                               auto delta=provider.adjudicate(result.state,adjudication,adjacency);
+                              {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                               result=applyDelta(result,delta,geography);
                               result=applyMonthlyStatus(result,delta,adjacency);
                               auto frozen=refs;frozen["delta"]=encode(delta);
@@ -632,7 +636,13 @@ int main(int argc, char **argv) {
               },
               {Get, Post});
         route("/api/v1/inference", [&](auto req,auto,auto cb) {
-            std::lock_guard l(mutex);auto rows=store.query("SELECT record FROM inference WHERE job=? ORDER BY id",{req->getParameter("job")});Json::Value records(Json::arrayValue);for(auto &row:rows)records.append(parse(row["record"].asString()));reply(cb,records);
+            std::lock_guard l(mutex);
+            // "since" (a previously seen row id) lets a live log poll for only what is new.
+            auto since=req->getParameter("since");if(since.empty())since="0";
+            auto rows=store.query("SELECT id,record FROM inference WHERE job=? AND id>? ORDER BY id",{req->getParameter("job"),since});
+            Json::Value records(Json::arrayValue);
+            for(auto &row:rows){auto record=parse(row["record"].asString());record["id"]=row["id"];records.append(record);}
+            reply(cb,records);
         },{Get});
         route("/api/v1/map", [&](auto,auto,auto cb) {
             std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j;j["geometry_url"]="/regions.geojson";j["territories"]=w.territories;j["turn"]=w.turn;reply(cb,j);

@@ -205,6 +205,28 @@ button.primary {
   color: #e5cf9f;
   min-height: 45px;
 }
+#turn-log {
+  padding: 4px 22px 12px;
+  background: #1a2b30;
+  color: #b8ccd2;
+  max-height: 16vh;
+  overflow-y: auto;
+  font-size: 0.85em;
+}
+#turn-log p {
+  margin: 4px 0;
+  padding-left: 1.3em;
+  text-indent: -1.3em;
+  animation: log-in 0.2s ease-out;
+}
+#turn-log p::before {
+  content: "› ";
+  color: #6f8e97;
+}
+@keyframes log-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 .journal {
   padding: 8px 24px 24px;
   max-height: 40vh;

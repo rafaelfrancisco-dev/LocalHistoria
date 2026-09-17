@@ -139,7 +139,7 @@ Every inference reads the context size from `/props` (at least 8,192 tokens), ap
 - `GET /api/v1/map`: immutable `geometry_url`, campaign `territories`, and `turn`; join features by permanent ID. The browser caches geometry and refreshes campaign properties.
 - `GET /api/v1/entities?west=...&east=...&south=...&north=...&zoom=...`: at most 200 entities; cities appear at zoom 4+. `?id=...` retrieves an individual entity regardless of viewport.
 - `GET /api/v1/prepare`: reference coverage; `POST` with `{}` starts explicit preparation and returns a pollable job.
-- `GET /api/v1/inference?job=...`: exact recorded model requests/results for a job.
+- `GET /api/v1/inference?job=...&since=...`: exact recorded model requests/results for a job, tagged `kind` (`decide`/`adjudicate`/`narrate`), `actor` and the parsed `answer`. Each request/adjudication/decision flushes as soon as it lands, before the month is committed, so a running turn can be polled for a live log; `since` (the highest `id` already seen) returns only what is new.
 - Replay exports include accepted deltas/context snapshots in each turn's `reference`, and only the geometry needed to validate changed entities.
 
 ## Measured model results
