@@ -28,6 +28,29 @@ It needs llama.cpp (`llama` or `llama-server`) on your PATH. Logs go to `logs/`.
 
 Open **http://127.0.0.1:8080** (use this address, not `localhost`). Run from the project root. CMake discovers installed dependencies. On Linux, install Drogon, JsonCpp, SQLite development packages, a C++20 compiler, CMake and Python 3, then use the same commands. Set `CMAKE_PREFIX_PATH` when configuring manually for a custom dependency prefix.
 
+### Windows
+
+Install [Visual Studio](https://visualstudio.microsoft.com/) with the **Desktop development with C++** workload (it bundles CMake and vcpkg) and Python 3. From a regular PowerShell prompt (no need for a "Developer" shell — `start.ps1` locates CMake and vcpkg itself):
+
+```powershell
+git clone <repo> LocalHistoria
+cd LocalHistoria
+$env:VCPKG_ROOT = "$env:ProgramFiles\Microsoft Visual Studio\18\Community\VC\vcpkg"  # adjust the "18" for your VS version
+cmake --preset windows      # first run also builds Drogon/JsonCpp/SQLite3 via vcpkg — expect 15-30 minutes
+cmake --build --preset windows --target localhistoria   # Release; Debug works but starts far slower (MSVC's checked iterators)
+ctest --preset windows --output-on-failure   # optional
+./build/Release/localhistoria.exe --llama-endpoint=http://127.0.0.1:8081
+```
+
+Or, as on macOS/Linux, start the model and the game together with one command (builds if needed, starts `llama-server.exe`, waits for it to load, opens the browser; Ctrl+C stops both):
+
+```powershell
+./start.ps1
+./start.ps1 -NoOpen config/local-model.json
+```
+
+See [model setup](docs/MODELS.md#windows) for pointing it at a llama.cpp build and enabling CUDA offload (`-dev CUDA0`). `vcpkg.json` pins the third-party dependency versions; `CMakePresets.json`'s `windows` preset wires up the vcpkg toolchain.
+
 The `--llama-endpoint=` flag is optional; it defaults to `http://127.0.0.1:8081`. You only need to give it once: the server saves the active endpoint (from the flag or the web UI's **Model endpoint** field) in the campaign save and reuses it on the next launch.
 
 The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are project-owned assets. The build imports the data on demand. It never reads Downloads or downloads models. Rebuild reference data explicitly (see [Evolving world](docs/EVOLVING_WORLD.md)) while the server is stopped.

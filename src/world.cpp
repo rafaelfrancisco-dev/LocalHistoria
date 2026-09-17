@@ -272,7 +272,7 @@ bool reaches(const WorldState &w,const Adjacency &adjacency,const std::string &a
 // A physically unreachable operation this month: it is dropped and the rest of its event and the turn continue.
 struct Infeasible : ValidationError { using ValidationError::ValidationError; };
 static double kilometres(const Json::Value &a,const Json::Value &b) {
-    const double rad=M_PI/180;double la1=a["latitude"].asDouble()*rad,la2=b["latitude"].asDouble()*rad,dl=(b["longitude"].asDouble()-a["longitude"].asDouble())*rad;
+    const double rad=3.14159265358979323846/180;double la1=a["latitude"].asDouble()*rad,la2=b["latitude"].asDouble()*rad,dl=(b["longitude"].asDouble()-a["longitude"].asDouble())*rad;
     return 6371*std::acos(std::clamp(std::sin(la1)*std::sin(la2)+std::cos(la1)*std::cos(la2)*std::cos(dl),-1.0,1.0));
 }
 WorldDelta compileOperations(const WorldState &w,const Json::Value &response,const Adjacency &adjacency) {

@@ -14,9 +14,14 @@
 #include <filesystem>
 #include <fstream>
 #include <queue>
-#include <sys/file.h>
 #include <thread>
+#ifdef _WIN32
+#include <io.h>
+#include <share.h>
+#else
+#include <sys/file.h>
 #include <unistd.h>
+#endif
 using namespace lh;
 using namespace drogon;
 class Worker {
@@ -265,9 +270,18 @@ int main(int argc, char **argv) {
         auto parent = std::filesystem::path(save).parent_path();
         if (!parent.empty())
             std::filesystem::create_directories(parent);
+#ifdef _WIN32
+        // Windows enforces the exclusive share mode at open time; there is no separate flock step,
+        // and the lock releases when this process exits and the descriptor closes.
+        int lockfd = -1;
+        _sopen_s(&lockfd, (save + ".lock").c_str(), _O_CREAT | _O_RDWR, _SH_DENYRW, _S_IREAD | _S_IWRITE);
+        if (lockfd < 0)
+            throw std::runtime_error("Save is already open by another server");
+#else
         int lockfd = open((save + ".lock").c_str(), O_CREAT | O_RDWR, 0600);
         if (lockfd < 0 || flock(lockfd, LOCK_EX | LOCK_NB) != 0)
             throw std::runtime_error("Save is already open by another server");
+#endif
         Store store(save), reference("data/world.sqlite", true);
         store.recover();
         Json::Value geography(Json::objectValue);

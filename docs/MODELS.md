@@ -23,6 +23,25 @@ llama serve \
 ./build/localhistoria --llama-endpoint=http://127.0.0.1:8081
 ```
 
+### Windows
+
+`./start.ps1` is the Windows sibling of `start.sh`: same overrides (`$env:MODEL`, `$env:MODEL_FILE`, `$env:MODEL_PORT`, `$env:CTX_SIZE`), plus `$env:LLAMA_DIR` (folder containing `llama-server.exe`) and `$env:LLAMA_DEVICE`. A prebuilt CUDA release of llama.cpp (e.g. `llama-b11017-bin-win-cuda-*-x64` from the [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases)) has no `llama` shim command, only `llama-server.exe`, and does not put itself on `PATH`, so point `LLAMA_DIR` at the extracted folder — `start.ps1` defaults it to a specific download path; set the env var if yours lives elsewhere:
+
+```powershell
+$env:LLAMA_DIR = "C:\path\to\llama-b11017-bin-win-cuda-13.4-x64"
+./start.ps1
+```
+
+To offload to a GPU, pass its device name from `--list-devices` (e.g. `llama-server.exe --list-devices`) via `-dev`; `start.ps1` does this for you with `$env:LLAMA_DEVICE`, defaulting to `CUDA0` (the first CUDA device). Set `$env:LLAMA_DEVICE = "none"` for a CPU-only run (llama.cpp's own value meaning "don't offload"; CPU-only builds have no CUDA device and should use this). llama-server logs to stderr, captured in `logs\llama.err.log`; confirm the context llama.cpp actually granted by requesting `/props` and reading `default_generation_settings.n_ctx` — on a card with only a few GB free, `--fit` (on by default) may trim context or keep part of the model on the CPU before it lets context size suffer, which is slower but not broken (below 16,384 it silently disables reasoning, see below).
+
+To run the pieces separately instead:
+
+```powershell
+./build/Release/localhistoria.exe --llama-endpoint=http://127.0.0.1:8081
+```
+
+Building the C++ server itself needs Visual Studio (Desktop C++ workload) and vcpkg for Drogon/JsonCpp/SQLite3; see the Windows section of the README. Build **Release**, not Debug: MSVC's Debug STL adds checked-iterator overhead to every container operation, which turns the startup load of region/geometry data from data/world.sqlite into a multi-minute stall instead of a few seconds — it looks like a hang, but it is not one.
+
 The `--llama-endpoint=` flag sets the model endpoint for this launch and saves it in the campaign save, so later launches need no flag. You can also change the endpoint any time from the **Model endpoint** field in the web UI (`POST /api/v1/model-config`), which is also kept across restarts. Either way, only a loopback endpoint of the form `http://127.0.0.1:<port>` is accepted.
 
 ## Context size and memory

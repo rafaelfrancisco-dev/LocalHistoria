@@ -15,3 +15,5 @@ __pycache__/
 *.sqlite-journal
 /data/.stats-imported
 /logs/
+/vcpkg_installed/
+/out/
