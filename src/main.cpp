@@ -2,6 +2,8 @@
 #include "localhistoria/providers.h"
 #include "localhistoria/store.h"
 #include <condition_variable>
+#include <algorithm>
+#include <cmath>
 #include <drogon/drogon.h>
 #include <fcntl.h>
 #include <filesystem>
@@ -93,6 +95,8 @@ int main(int argc, char **argv) {
             throw std::runtime_error("Save is already open by another server");
         Store store(save), reference("data/world.sqlite", true);
         store.recover();
+        Json::Value geography(Json::objectValue);
+        for(auto &r:reference.query("SELECT id,geometry FROM regions"))geography[r["id"].asString()]=parse(r["geometry"].asString());
         std::string endpoint = llamaFlagGiven
                                    ? validateEndpoint(llamaFlagValue)
                                    : validateEndpoint(store.setting("llama_endpoint",
@@ -184,8 +188,20 @@ int main(int argc, char **argv) {
                       if (!b["country"].isString())
                           throw ValidationError("country is required");
                       WorldState w;
-                      for (auto &c : reference.query("SELECT code FROM countries ORDER BY code"))
-                          w.countries[c["code"].asString()] = {};
+                      for (auto &c : reference.query("SELECT code,name FROM countries ORDER BY code")) {
+                          auto id=c["code"].asString();w.countries[id] = {};
+                          w.actors[id]["name"]=c["name"];
+                          unsigned hash=0;for(unsigned char ch:id)hash=hash*31+ch;
+                          char color[8];snprintf(color,sizeof(color),"#%06x",0x405050+(hash*7919)%0x909090);
+                          w.actors[id]["color"]=color;
+                      }
+                      for(auto &r:reference.query("SELECT id,name,affiliation,kind FROM regions")) {
+                          auto &t=w.territories[r["id"].asString()];t["name"]=r["name"];t["initial_affiliation"]=r["affiliation"];t["owner"]=r["affiliation"];t["controller"]=r["affiliation"];t["kind"]=r["kind"];
+                      }
+                      for(auto &r:reference.query("SELECT * FROM region_interiors")) {auto &t=w.territories[r["id"].asString()];t["longitude"]=r["longitude"];t["latitude"]=r["latitude"];}
+                      for(auto &c:reference.query("SELECT * FROM (SELECT c.*,r.affiliation,ROW_NUMBER() OVER(PARTITION BY r.affiliation ORDER BY population DESC,c.id) AS rank FROM region_cities c JOIN regions r ON r.id=c.region WHERE r.affiliation!='') WHERE rank<=3")) {
+                          auto &e=w.entities[c["id"].asString()];for(auto k:{"name","region","latitude","longitude"})e[k]=c[k];e["actor"]=c["affiliation"];e["kind"]="city";e["status"]="active";e["origin_event"]="initial";
+                      }
                       w.player = b["country"].asString();
                       if (!w.countries.contains(w.player))
                           throw ValidationError("Country is not playable");
@@ -227,8 +243,10 @@ int main(int argc, char **argv) {
                   std::lock_guard l(mutex);
                   auto code = req->getParameter("code");
                   auto rows = reference.query("SELECT * FROM countries WHERE code=?", {code});
-                  if (rows.empty())
-                      throw ValidationError("Unknown country");
+                  if (rows.empty()) {
+                      auto w=decode(store.campaign());if(!w.actors.isMember(code))throw ValidationError("Unknown country");
+                      Json::Value j=w.actors[code];j["cities"]=Json::arrayValue;j["background"]["available"]=false;j["background"]["reason"]="Fictional campaign actor";reply(cb,j);return;
+                  }
                   auto j = rows[0];
                   j["cities"] = reference.query("SELECT name,population,city_wikidata FROM cities "
                                                 "WHERE code=? ORDER BY population DESC LIMIT 15",
@@ -272,46 +290,102 @@ int main(int argc, char **argv) {
                   Json::Value refs(Json::objectValue);
                   std::set<std::string> actors;
                   for (auto &o : orders)
-                      if (!o.target.empty())
-                          actors.insert(o.target);
+                      if (w.countries.contains(o.target)) actors.insert(o.target);
+                      else if(w.territories.isMember(o.target)) {auto a=w.territories[o.target]["owner"].asString();if(!a.empty())actors.insert(a);}
+                      else if(w.entities.isMember(o.target))actors.insert(w.entities[o.target]["actor"].asString());
                   for (auto &o : w.offers) {
-                      actors.insert(o.substr(0, 2));
-                      actors.insert(o.substr(3));
+                      actors.insert(o.substr(0, o.find(':')));
+                      actors.insert(o.substr(o.find(':')+1));
+                  }
+                  // Ongoing disputes and commitments take priority; rotate neighbors deterministically.
+                  for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)if(v["status"]=="open")for(auto &a:v["actors"])actors.insert(a.asString());
+                  auto neighbors=reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player});
+                  for(Json::ArrayIndex n=0;n<neighbors.size()&&n<1;++n)actors.insert(neighbors[(n+w.turn)%neighbors.size()]["b"].asString());
+                  if(actors.empty() && !w.countries.empty()) {
+                      std::vector<std::string> rotation;for(auto &[a,c]:w.countries)if(a!=w.player)rotation.push_back(a);
+                      for(size_t n=0;n<rotation.size()&&actors.empty();++n)actors.insert(rotation[(w.turn+n)%rotation.size()]);
                   }
                   actors.erase(w.player);
                   refs[w.player] = store.background(w.player);
                   for (auto &a : actors)
                       refs[a] = store.background(a);
-                  auto recent = store.journal();
-                  if (recent.size() > 2)
-                      recent.resize(2);
+                  std::map<std::string,CountryContext> contexts;
+                  contexts[w.player]=store.campaignContext(w,w.player);
+                  for(auto &a:actors)contexts[a]=store.campaignContext(w,a);
                   try {
-                      worker.add([&, w, orders, id, actors, refs, recent] {
+                      worker.add([&, w, orders, id, actors, refs, contexts] {
                           bool committed = false;
                           try {
                               std::map<std::string, TurnOrders> intentions{{w.player, orders}};
                               for (auto &a : actors) {
-                                  auto c = context(w, a, recent, refs[a]);
+                                  auto c = contexts.at(a);
                                   intentions[a] = provider.decide(w, c).orders;
                               }
                               auto result = resolve(w, intentions);
+                              Json::Value adjudication;
+                              adjudication["facts"]["turn"]=result.state.turn;
+                              adjudication["facts"]["actors"]=Json::objectValue;
+                              auto post=encode(result.state);
+                              for(auto &[a,c]:contexts) {
+                                  auto facts=c.facts;facts["state"]=post["countries"][a];
+                                  for(auto k:{"territories","entities","available_targets","available_actions","objective"})facts.removeMember(k);
+                                  adjudication["facts"]["actors"][a]=facts;
+                                  adjudication["reference_only"][a]=c.reference;
+                              }
+                              adjudication["facts"]["territories"]=Json::objectValue;
+                              adjudication["facts"]["entities"]=Json::objectValue;
+                              // Only regions the intentions or open conflicts touch: a 4B model adjudicates far more reliably from a short, relevant prompt.
+                              std::set<std::string> relevant;
+                              for(auto &[a,o]:intentions)for(auto &order:o) {
+                                  if(w.territories.isMember(order.target))relevant.insert(order.target);
+                                  if(w.entities.isMember(order.target))relevant.insert(w.entities[order.target]["region"].asString());
+                              }
+                              for(auto &id:w.conflicts.getMemberNames())if(w.conflicts[id]["status"]=="open")for(auto &r:w.conflicts[id]["regions"])if(r.isString()&&w.territories.isMember(r.asString()))relevant.insert(r.asString());
+                              for(auto &id:relevant) {
+                                  auto t=w.territories[id];t.removeMember("longitude");t.removeMember("latitude");
+                                  adjudication["facts"]["territories"][id]=t;
+                              }
+                              for(auto &id:w.entities.getMemberNames())if(relevant.contains(w.entities[id]["region"].asString())) {
+                                  auto e=w.entities[id];e.removeMember("longitude");e.removeMember("latitude");
+                                  adjudication["facts"]["entities"][id]=e;
+                              }
+                              // Readable sentences: raw order names such as "conflict" mislead a small model into requiring a prior conflict.
+                              for(auto &[a,o]:intentions) {
+                                  adjudication["intentions"][a]=Json::arrayValue;
+                                  for(auto &order:o) {
+                                      static const std::map<std::string,std::string> labels{{"construction","Construction"},{"movement","Move forces or entity"},{"conflict","Military action"},{"territorial_diplomacy","Territorial diplomacy"}};
+                                      auto label=labels.contains(order.action)?labels.at(order.action):order.action;
+                                      std::string target=order.target;
+                                      if(w.territories.isMember(target))target=w.territories[target]["name"].asString()+" (region "+target+")";
+                                      else if(w.entities.isMember(target))target=w.entities[target]["name"].asString()+" (entity "+target+")";
+                                      adjudication["intentions"][a].append(label+(target.empty()?"":" targeting "+target)+(order.value.empty()?"":": "+order.value));
+                                  }
+                              }
+                              auto delta=provider.adjudicate(result.state,adjudication);
+                              result=applyDelta(result,delta,geography);
+                              auto frozen=refs;frozen["delta"]=encode(delta);
+                              frozen["contexts"]=adjudication;
                               Json::Value recorded;
                               for (auto &[a, o] : intentions)
                                   recorded[a] = encode(o);
                               {
                                   std::lock_guard l(mutex);
-                                  store.commit(id, result, recorded, refs, false);
+                                  store.recordInference(id,provider.takeAudit());
+                                  store.commit(id, result, recorded, frozen, false);
                                   committed = true;
                               }
                               try {
-                                  auto text = provider.narrate(result.events);
+                                  CountryContext narrationContext;
+                                  {std::lock_guard l(mutex);narrationContext=store.campaignContext(result.state,result.state.player);}
+                                  auto text = provider.narrate(result.events,narrationContext);
                                   std::lock_guard l(mutex);
                                   store.narrate(id, text, false);
-                              } catch (...) { /* Factual summary already committed. */
-                              }
+                                  store.recordInference(id,provider.takeAudit());
+                              } catch (...) { std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit()); }
                           } catch (const std::exception &e) {
                               if (!committed) {
                                   std::lock_guard l(mutex);
+                                  store.recordInference(id,provider.takeAudit());
                                   store.execute(
                                       "UPDATE jobs SET status='failed',error=? WHERE id=?",
                                       {e.what(), id});
@@ -345,7 +419,7 @@ int main(int argc, char **argv) {
                       }
                   }
                   auto id = "proposal-" + std::to_string(++auxiliaryId);
-                  auto c = context(w, w.player, {}, {});
+                  auto c = store.campaignContext(w, w.player);
                   worker.add([&, w, c, b, id] {
                       Json::Value j;
                       j["id"] = id;
@@ -361,6 +435,7 @@ int main(int argc, char **argv) {
                           j["error"] = e.what();
                       }
                       std::lock_guard l(mutex);
+                      store.recordInference(id,provider.takeAudit());
                       auxiliary[id] = j;
                   });
                   Json::Value j;
@@ -407,6 +482,30 @@ int main(int argc, char **argv) {
                   reply(cb, j, 202);
               },
               {Get, Post});
+        route("/api/v1/inference", [&](auto req,auto,auto cb) {
+            std::lock_guard l(mutex);auto rows=store.query("SELECT record FROM inference WHERE job=? ORDER BY id",{req->getParameter("job")});Json::Value records(Json::arrayValue);for(auto &row:rows)records.append(parse(row["record"].asString()));reply(cb,records);
+        },{Get});
+        route("/api/v1/map", [&](auto,auto,auto cb) {
+            std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j;j["geometry_url"]="/regions.geojson";j["territories"]=w.territories;j["turn"]=w.turn;reply(cb,j);
+        },{Get});
+        route("/api/v1/entities", [&](auto req,auto,auto cb) {
+            std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j(Json::arrayValue);
+            auto number=[&](const char *key,double fallback){auto p=req->getParameter(key);if(p.empty())return fallback;size_t end=0;double x=std::stod(p,&end);if(end!=p.size()||!std::isfinite(x))throw ValidationError("Invalid viewport");return x;};
+            double west=number("west",-180),east=number("east",180),south=number("south",-90),north=number("north",90),zoom=number("zoom",2);
+            if(west>east||south>north)throw ValidationError("Invalid viewport bounds");
+            auto wanted=req->getParameter("id");
+            for(auto &id:w.entities.getMemberNames()) {auto e=w.entities[id];double x=e["longitude"].asDouble(),y=e["latitude"].asDouble();
+                if((!wanted.empty()&&id==wanted)||(wanted.empty()&&x>=west&&x<=east&&y>=south&&y<=north&&(zoom>=4||e["kind"]!="city"))) {e["id"]=id;j.append(e);if(j.size()>=200)break;}}
+            reply(cb,j);
+        },{Get});
+        route("/api/v1/prepare", [&](auto,auto b,auto cb) {
+            std::lock_guard l(mutex);auto w=decode(store.campaign());if(w.player.empty())throw ValidationError("Start a campaign first");
+            std::set<std::string> actors{w.player};for(auto &r:reference.query("SELECT b FROM neighbors WHERE a=?",{w.player}))actors.insert(r["b"].asString());
+            for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)for(auto &a:v["actors"])actors.insert(a.asString());
+            if(b.isNull()){Json::Value coverage;for(auto &a:actors)coverage[a]=store.background(a);reply(cb,coverage);return;}
+            auto id="prepare-"+std::to_string(++auxiliaryId);Json::Value j;j["id"]=id;j["status"]="running";auxiliary[id]=j;
+            worker.add([&,actors,id]{for(auto &a:actors){auto result=fetchHistory(a);std::lock_guard l(mutex);store.cache(a,result);auxiliary[id]["coverage"][a]=result;}std::lock_guard l(mutex);auxiliary[id]["status"]="complete";});reply(cb,j,202);
+        },{Get,Post});
         route("/api/v1/replay",
               [&](auto, auto, auto cb) {
                   std::lock_guard l(mutex);
@@ -415,6 +514,12 @@ int main(int argc, char **argv) {
                   auto initial = store.query("SELECT state FROM initial_world WHERE id=1");
                   j["initial_state"] =
                       initial.empty() ? Json::Value() : parse(initial[0]["state"].asString());
+                  j["geography"] = Json::objectValue;
+
+                  for(auto &row:store.query("SELECT reference FROM turns")) {
+                      auto refs=parse(row["reference"].asString());
+                      for(auto &change:refs["delta"]["changes"])if(change["kind"]=="entity") {auto region=change["after"]["region"].asString();j["geography"][region]=geography[region];}
+                  }
                   j["turns"] = store.query("SELECT * FROM turns ORDER BY turn");
                   for (auto &t : j["turns"])
                       for (auto k : {"state", "intentions", "events", "reference"})

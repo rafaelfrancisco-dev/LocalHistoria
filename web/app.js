@@ -6,12 +6,12 @@ let countries = [],
   layers,
   selectedLayer = null,
   busy = false;
-const map = L.map("map", { worldCopyJump: false, minZoom: 1 }).setView(
+const map = L.map("map", { worldCopyJump: false, minZoom: 1, preferCanvas: true }).setView(
   [22, 8],
   2,
 );
 map.attributionControl.setPrefix(false);
-map.attributionControl.addAttribution("Supplied geography · fictional sandbox");
+map.attributionControl.addAttribution('Supplied outlines · <a href="https://www.geoboundaries.org/">geoBoundaries gbOpen</a> (modified, CC BY 4.0) · fictional sandbox');
 async function api(path, body) {
   const r = await fetch(
     "/api/v1/" + path,
@@ -62,6 +62,7 @@ function list() {
     const b = document.createElement("button");
     b.className = "country" + (selected === c.code ? " selected" : "");
     b.setAttribute("aria-pressed", selected === c.code);
+    b.setAttribute("aria-label", c.name);
     const img = document.createElement("img");
     img.alt = "";
     flag(img, c.code);
@@ -77,17 +78,18 @@ function list() {
   }
 }
 function styleFor(f) {
-  const isSelected = f.properties.code === selected;
-  const isPlayer = state && f.properties.code === state.player;
+  const owner = f.properties.owner ?? f.properties.code;
+  const isSelected = owner === selected;
+  const isPlayer = state && owner === state.player;
   return {
     color: isPlayer && !isSelected ? "#dcbb7b" : "#a0b5b2",
     weight: isSelected || isPlayer ? 2 : 0.6,
-    dashArray: isPlayer && !isSelected ? "4 3" : null,
+    dashArray: f.properties.controller && f.properties.controller !== owner ? "3 3" : null,
     fillColor: isSelected
       ? "#d9b875"
-      : f.properties.playable
+      : state?.actors?.[owner]?.color || (f.properties.playable
         ? "#537d83"
-        : "#39464d",
+        : "#39464d"),
     fillOpacity: isSelected ? 0.9 : 0.65,
   };
 }
@@ -127,7 +129,7 @@ async function select(code, zoom = false) {
   list();
   restyleMap();
   layers?.eachLayer((l) => {
-    if (l.feature.properties.code === code) selectedLayer = l;
+    if ((l.feature.properties.owner ?? l.feature.properties.code) === code) selectedLayer = l;
   });
   if (code !== state?.player) $("target").value = code;
   if (zoom && selectedLayer)
@@ -138,7 +140,7 @@ async function select(code, zoom = false) {
   flag($("flag"), code);
   $("country-description").textContent =
     "Sandbox actor · all statistics are fictional";
-  $("new-game").hidden = false;
+  $("new-game").hidden = !/^[A-Z]{2}$/.test(code);
   $("new-game").textContent = state
     ? "Start new campaign as " + detail.name
     : "Play as " + detail.name;
@@ -170,6 +172,11 @@ async function select(code, zoom = false) {
 async function load() {
   const j = await api("campaign");
   state = j.state;
+  if (state) {
+    for (const [code, actor] of Object.entries(state.actors || {}))
+      if (!countries.some(c => c.code === code)) countries.push({code, name:actor.name});
+    await refreshCampaignMap();
+  }
   $("llama-endpoint").value = j.llama_endpoint;
   $("date").textContent = month(state?.turn || 0);
   $("controls").hidden = !state;
@@ -279,6 +286,9 @@ $("add").onclick = protect(async () => {
     order = { action };
   if (!$("target").disabled) order.target = $("target").value;
   if (!$("value").disabled) order.value = $("value").value;
+  if (["construction","movement","conflict","territorial_diplomacy"].includes(action)) {
+    order.target=$("world-target").value;order.value=$("world-description").value;
+  }
   draft.push(order);
   $("draft").value = JSON.stringify(draft, null, 2);
 });
@@ -341,13 +351,53 @@ $("refresh").onclick = protect(async () => {
     $("refresh").disabled = false;
   }
 });
+const entityLayers = L.layerGroup().addTo(map);
+const mapControls = L.control.layers({}, {Entities:entityLayers}).addTo(map);
+let entityRequest = 0;
+async function refreshEntities() {
+  if (!state) return;
+  const request = ++entityRequest, b=map.getBounds();
+  const entities=await api(`entities?west=${b.getWest()}&east=${b.getEast()}&south=${b.getSouth()}&north=${b.getNorth()}&zoom=${map.getZoom()}`);
+  if (request !== entityRequest) return;
+  entityLayers.clearLayers();
+  for (const e of entities) {
+    const label=document.createElement("div");
+    label.textContent=`${e.name} · ${e.kind} · ${e.actor} · ${e.status} · ${e.id} · region ${e.region} · origin ${e.origin_event}`;
+    L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff"}).bindPopup(label).addTo(entityLayers);
+  }
+}
+map.on("moveend",protect(refreshEntities));
+let regionGeometry=null;
+async function refreshCampaignMap() {
+  const snapshot=await api("map");
+  if (!regionGeometry) regionGeometry=await (await fetch(snapshot.geometry_url)).json();
+  const geo={type:"FeatureCollection",features:regionGeometry.features.map(f=>({...f,properties:{...snapshot.territories[f.id],id:f.id}}))};
+  if (layers) {mapControls.removeLayer(layers);map.removeLayer(layers);}
+  layers=L.geoJSON(geo,{style:styleFor,onEachFeature:(f,l)=>{
+    const p=f.properties,label=document.createElement("span");
+    label.textContent=`${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
+    l.bindTooltip(label);
+    l.on("click",protect(async()=>{$("world-target").value=p.id;if(p.owner) await select(p.owner);status(label.textContent);}));
+  }}).addTo(map);
+  mapControls.addOverlay(layers,"Territories and occupation");
+  await refreshEntities();
+}
+const prepare=document.createElement("button");prepare.id="prepare";prepare.textContent="Prepare campaign references";
+$("controls").prepend(prepare);
+prepare.onclick=protect(async()=>{
+  prepare.disabled=true;
+  try { const job=await api("prepare",{});const result=await poll(job.id);
+    const rows=Object.entries(result.coverage||{});status(rows.map(([a,r])=>`${a}: ${r.available?"cached":r.reason||"unavailable"}`).join(" · "));
+  } finally {prepare.disabled=false;}
+});
 protect(async () => {
   countries = await api("countries");
   list();
   $("target").replaceChildren(
     ...countries.map((c) => new Option(c.name + " (" + c.code + ")", c.code)),
   );
-  const geo = await (await fetch("/world.geojson")).json();
+  const existing = await api("campaign");
+  const geo = existing.state ? {type:"FeatureCollection",features:[]} : await (await fetch("/world.geojson")).json();
   layers = L.geoJSON(geo, {
     style: styleFor,
     onEachFeature: (f, l) => {

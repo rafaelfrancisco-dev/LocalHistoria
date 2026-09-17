@@ -79,8 +79,10 @@
             Income arrives monthly. Costs use your starting treasury. Up to 8
             orders.
           </p>
+          <label for="world-target">Region, entity or actor ID</label><input id="world-target" placeholder="Select a region to copy its ID"/><label for="world-description">Intended outcome</label><input id="world-description" maxlength="500" placeholder="Describe construction, movement or diplomacy"/>
           <label for="action">Action</label
           ><select id="action">
+            <option value="construction">Construction intention</option><option value="movement">Movement intention</option><option value="conflict">Conflict intention</option><option value="territorial_diplomacy">Territorial diplomacy intention</option>
             <option value="economy">Invest in economy · 20</option>
             <option value="army">Invest in army · 15</option>
             <option value="navy">Invest in navy · 15</option>

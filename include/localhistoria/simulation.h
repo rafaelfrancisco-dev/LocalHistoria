@@ -16,6 +16,7 @@ struct CountryState {
 struct WorldState {
     int turn = 0;
     std::string player, campaignId;
+    Json::Value actors{Json::objectValue}, territories{Json::objectValue}, entities{Json::objectValue}, conflicts{Json::objectValue}, commitments{Json::objectValue};
     std::map<std::string, CountryState> countries;
     std::map<std::string, int> relations;
     std::set<std::string> alliances, offers;

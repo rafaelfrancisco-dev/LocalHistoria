@@ -319,3 +319,6 @@ footer {
     grid-column: auto;
   }
 }
+/* Use a local text label for the optional layer chooser. */
+.leaflet-control-layers-toggle { background-image: none !important; width: 70px !important; }
+.leaflet-control-layers-toggle::after { content: "Layers"; display: block; padding: 10px; color: #222; }

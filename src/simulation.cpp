@@ -22,6 +22,7 @@ std::string pairKey(std::string a, std::string b) { return a < b ? a + ":" + b :
 Json::Value encode(const WorldState &w) {
     Json::Value j;
     j["campaign_id"] = w.campaignId;
+    j["actors"] = w.actors; j["territories"] = w.territories; j["entities"] = w.entities; j["conflicts"] = w.conflicts; j["commitments"] = w.commitments;
     j["turn"] = w.turn;
     j["player"] = w.player;
     j["countries"] = Json::objectValue;
@@ -49,6 +50,13 @@ Json::Value encode(const WorldState &w) {
 WorldState decode(const Json::Value &j) {
     WorldState w;
     w.campaignId = j["campaign_id"].asString();
+    for (auto key : {"actors", "territories", "entities", "conflicts", "commitments"})
+        if (!j[key].isNull() && !j[key].isObject()) throw ValidationError("Invalid world collection");
+    if (j["actors"].isObject()) w.actors=j["actors"];
+    if (j["territories"].isObject()) w.territories=j["territories"];
+    if (j["entities"].isObject()) w.entities=j["entities"];
+    if (j["conflicts"].isObject()) w.conflicts=j["conflicts"];
+    if (j["commitments"].isObject()) w.commitments=j["commitments"];
     w.turn = j["turn"].asInt();
     w.player = j["player"].asString();
     for (auto &k : j["countries"].getMemberNames()) {
@@ -120,6 +128,12 @@ void validate(const WorldState &w, const std::string &a, const TurnOrders &o) {
     int total = 0;
     std::set<std::string> seen;
     for (auto &x : o) {
+        if (x.action == "construction" || x.action == "movement" || x.action == "conflict" || x.action == "territorial_diplomacy") {
+            if (x.value.empty() || x.value.size()>500 || (!w.territories.isMember(x.target) && !w.entities.isMember(x.target) && !w.countries.contains(x.target)))
+                throw ValidationError("World intention requires an existing target and 1-500 byte description");
+            if (!seen.insert(x.action+":"+x.target).second) throw ValidationError("Duplicate intention");
+            continue;
+        }
         bool diplomatic = x.action == "improve" || x.action == "offer" || x.action == "accept" ||
                           x.action == "reject";
         if (!diplomatic && x.action != "economy" && x.action != "army" && x.action != "navy" &&
@@ -173,6 +187,7 @@ Resolution resolve(const WorldState &w, const std::map<std::string, TurnOrders> 
             return std::tie(x.action, x.target, x.value) < std::tie(y.action, y.target, y.value);
         });
         for (auto &x : sorted) {
+            if (x.action == "construction" || x.action == "movement" || x.action == "conflict" || x.action == "territorial_diplomacy") continue;
             auto &c = r.state.countries.at(a);
             c.treasury -= cost(x.action);
             auto key = pairKey(a, x.target);
@@ -217,13 +232,13 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     f["state"] = encode(w)["countries"][a];
     f["relations"] = Json::objectValue;
     for (auto &[k, v] : w.relations)
-        if (k.substr(0, 2) == a || k.substr(3) == a)
+        if (k.substr(0, k.find(':')) == a || k.substr(k.find(':') + 1) == a)
             f["relations"][k] = v;
     for (auto &k : w.offers)
-        if (k.substr(0, 2) == a || k.substr(3) == a)
+        if (k.substr(0, k.find(':')) == a || k.substr(k.find(':') + 1) == a)
             f["offers"].append(k);
     for (auto &k : w.alliances)
-        if (k.substr(0, 2) == a || k.substr(3) == a)
+        if (k.substr(0, k.find(':')) == a || k.substr(k.find(':') + 1) == a)
             f["alliances"].append(k);
     f["recent_events"] = Json::arrayValue;
     for (const auto &month : recent) {
@@ -239,26 +254,17 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     f["objective"] = "Maintain stability and peaceful prosperity";
     f["available_actions"] = "economy 20, army/navy 15, improve 5, offer/accept/reject 0, posture "
                              "defensive/neutral/assertive, priority balanced/prosperity/welfare";
+    f["commitments"] = w.commitments;
+    f["territories"] = Json::objectValue;
+    for (auto &id : w.territories.getMemberNames())
+        if (w.territories[id]["owner"] == a || w.territories[id]["controller"] == a)
+            f["territories"][id] = w.territories[id];
+    f["entities"] = Json::objectValue;
+    for (auto &id : w.entities.getMemberNames())
+        if (w.entities[id]["actor"] == a) f["entities"][id] = w.entities[id];
+    f["conflicts"] = w.conflicts;
     Json::Value ref = reference;
-    if (ref.isObject()) {
-        for (auto key : {"excerpt", "history_excerpt"})
-            if (ref[key].isString()) {
-                auto text = ref[key].asString();
-                if (text.size() > 1000) {
-                    text.resize(1000);
-                    while (!text.empty() &&
-                           (static_cast<unsigned char>(text.back()) & 0xc0) == 0x80)
-                        text.pop_back();
-                    if (!text.empty() && static_cast<unsigned char>(text.back()) >= 0xc0)
-                        text.pop_back();
-                }
-                ref[key] = text;
-            }
-    }
-    if (dump(f).size() + dump(ref).size() > 5000)
-        ref = Json::nullValue;
-    if (dump(f).size() > 5000)
-        f["recent_events"] = Json::arrayValue;
+    if (ref.isNull()) { ref["available"]=false; ref["reason"]="Not prepared"; }
     return {a, f, ref};
 }
 } // namespace lh

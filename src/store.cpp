@@ -13,6 +13,7 @@ Store::Store(const std::string &p, bool readOnly) {
     if (readOnly)
         return;
     sqlite3_busy_timeout(db, 3000);
+    sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
         "INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs(id "
         "INTEGER PRIMARY KEY AUTOINCREMENT,key TEXT UNIQUE,payload TEXT,status TEXT NOT NULL,error "
@@ -78,7 +79,7 @@ void Store::create(const WorldState &w, bool replace) {
     sql("BEGIN IMMEDIATE");
     try {
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
-            "DELETE FROM initial_world;");
+            "DELETE FROM initial_world; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference;");
         execute("INSERT INTO campaign VALUES(1,?)", {dump(encode(w))});
         execute("INSERT INTO initial_world VALUES(1,?)", {dump(encode(w))});
         sql("COMMIT");
@@ -120,6 +121,17 @@ void Store::commit(const std::string &id, const Resolution &r, const Json::Value
         execute("INSERT INTO turns VALUES(?,?,?,?,?,?)",
                 {std::to_string(r.state.turn), id, dump(encode(r.state)), dump(i),
                  dump(encode(r.events)), dump(refs)});
+        for(auto &event:refs["delta"]["events"]) {
+            auto eid=event["id"].asString();
+            for(auto &cause:event["causes"]) {
+                if(!cause.isString() || query("SELECT id FROM events WHERE id=?",{cause.asString()}).empty())
+                    throw ValidationError("Unknown or forward event cause");
+            }
+            execute("INSERT INTO events VALUES(?,?,?)",{eid,std::to_string(r.state.turn),dump(event)});
+            execute("INSERT OR IGNORE INTO event_links VALUES(?,'actors',?)",{eid,event["actor"].asString()});
+            for(auto kind:{"actors","regions","entities","causes"})for(auto &target:event[kind])
+                execute("INSERT OR IGNORE INTO event_links VALUES(?,?,?)",{eid,kind,target.asString()});
+        }
         std::string summary;
         for (auto &e : r.events)
             summary += e.text + "\n";
@@ -147,6 +159,19 @@ Json::Value Store::journal() {
     for (auto &x : j)
         x["events"] = parse(x["events"].asString());
     return j;
+}
+CountryContext Store::campaignContext(const WorldState &w,const std::string &actor) {
+    auto c=context(w,actor,journal(),background(actor));
+    Json::Value regions(Json::arrayValue),entities(Json::arrayValue);
+    for(auto &id:c.facts["territories"].getMemberNames())regions.append(id);
+    for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);
+    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
+    c.facts["related_history"]=Json::arrayValue;
+    for(auto &row:older)c.facts["related_history"].append(parse(row["document"].asString()));
+    return c;
+}
+void Store::recordInference(const std::string &job,const Json::Value &records) {
+    for(auto &r:records)execute("INSERT INTO inference(job,record) VALUES(?,?)",{job,dump(r)});
 }
 Json::Value Store::background(const std::string &c) {
     auto j = query("SELECT document FROM background WHERE code=?", {c});

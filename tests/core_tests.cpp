@@ -90,7 +90,10 @@ int main(int argc, char **argv) {
                                           throw std::runtime_error("timeout");
                                       });
         rejects([&] { timeoutProvider.decide(offered.state, c); });
-        LocalProvider valid("http://127.0.0.1:8083", .1, [](auto, auto, auto b, double) {
+        LocalProvider valid("http://127.0.0.1:8083", .1, [](auto, auto path, auto b, double) {
+            if(path=="/props")return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+            if(path=="/apply-template")return parse(R"({"prompt":"fixture"})");
+            if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
             check(b["response_format"]["type"] == "json_schema" &&
                       !b["chat_template_kwargs"]["enable_thinking"].asBool(),
                   "Constrained request");

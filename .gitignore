@@ -10,3 +10,6 @@ __pycache__/
 .DS_Store
 /tests/artifacts/
 /uploads/
+
+/.venv-geography/
+*.sqlite-journal

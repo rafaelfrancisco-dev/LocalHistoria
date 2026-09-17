@@ -1,5 +1,5 @@
 #pragma once
-#include "simulation.h"
+#include "world.h"
 #include <functional>
 #include <mutex>
 namespace lh {
@@ -25,7 +25,8 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     std::string endpoint;
     double timeout;
     Transport transport;
-    mutable std::mutex inference;
+    mutable std::mutex inference, settings;
+    Json::Value audit{Json::arrayValue};
     Json::Value completion(const Json::Value &, const Json::Value &, const std::string &);
 
   public:
@@ -33,6 +34,9 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
                            Transport transport = httpJson);
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
+    std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);
+    WorldDelta adjudicate(const WorldState &, const Json::Value &);
+    Json::Value takeAudit();
     Decision propose(const WorldState &, const CountryContext &, const std::string &);
     void setEndpoint(const std::string &);
     std::string endpointValue() const;

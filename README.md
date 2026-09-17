@@ -1,3 +1,5 @@
+> Campaign geography, adjudication, historical preparation and current verification are described in [Evolving world](docs/EVOLVING_WORLD.md). This supersedes the original country-statistics-only behavior described below.
+
 # LocalHistoria
 
 A playable, local C++20/Drogon strategy sandbox. Choose one of 239 map actors, begin in **January 2026**, issue monthly orders, and build a fictional diplomatic history. All national statistics are deliberately invented and equal at the start. Country codes identify sandbox actors without asserting sovereignty. Combat and conquest are not implemented.

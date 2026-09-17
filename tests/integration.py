@@ -7,12 +7,24 @@ def port():
 class Mock(http.server.BaseHTTPRequestHandler):
  mode='valid'; requests=[]
  def log_message(self,*a):pass
+ def respond(self,result):
+  self.send_response(200);self.end_headers();self.wfile.write(json.dumps(result).encode())
+ def do_GET(self):self.respond({'default_generation_settings':{'n_ctx':8192}})
  def do_POST(self):
-  body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));Mock.requests.append(body)
+  body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+  if self.path=='/apply-template':self.respond({'prompt':json.dumps(body['messages'])});return
+  if self.path=='/tokenize':self.respond({'tokens':[0]*1000});return
+  Mock.requests.append(body)
   if Mock.mode=='slow':time.sleep(1.5)
   raw=body['messages'][1]['content']
   if Mock.mode=='malformed':
    result={'orders':[{'action':'invade'}]}
+  elif 'intentions' in json.loads(raw):
+   result={'events':[]}
+   value=json.loads(raw);intentions=value['intentions'];fixture=next((o for o in intentions.get('PT',[]) if o.endswith(': transfer-and-build-fixture')),None)
+   if fixture:
+    rid=fixture.split('(region ')[1].split(')')[0]
+    result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'background':False,'operations':[{'action':'transfer_territory','region':rid,'to':'ES'},{'action':'build','kind':'port','name':'Fixture port','actor':'ES','region':rid}]}]}
   elif 'authoritative_events' in raw:
    result={'text':'A quiet month of fictional administration.'}
   elif 'player_instruction' in raw:
@@ -97,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'action':'improve','target':'FR'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
-   assert Mock.requests and all(b['max_tokens']==768 and b['response_format']['type']=='json_schema' for b in Mock.requests)
+   assert Mock.requests and all(b['max_tokens'] in (768,2048) and b['response_format']['type']=='json_schema' for b in Mock.requests)
    print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, alliances, frozen references, restart and interrupted jobs',flush=True)
   finally:s.stop()
 

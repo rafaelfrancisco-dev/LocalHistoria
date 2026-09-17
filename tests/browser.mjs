@@ -98,7 +98,7 @@ try {
   await page.waitForFunction(
     () => document.querySelector("#country-name").textContent === "Spain",
   );
-  assert.ok((await page.locator("path.leaflet-interactive").count()) > 0);
+  assert.ok((await page.locator("canvas.leaflet-zoom-animated").count()) > 0);
   await page.waitForTimeout(500);
   const point = await page.evaluate(() => {
     const p = map.latLngToContainerPoint([39.5, -8]);
@@ -132,6 +132,20 @@ try {
     () => document.querySelector("#country-name").textContent === "Portugal",
   );
   await page.waitForTimeout(500);
+
+  const rid = await page.evaluate(() => Object.values(state.entities).find(e=>e.actor==="PT").region);
+  await page.locator("#draft").fill(JSON.stringify([{action:"territorial_diplomacy",target:rid,value:"transfer-and-build-fixture"}]));
+  await page.locator("#turn").click();
+  await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026");
+  await page.waitForFunction(id=>state.territories[id].owner==="ES",rid);
+  assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"ES");
+  await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
+  await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
+  await page.evaluate(()=>{entityLayers.getLayers().find(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")).openPopup();});
+  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port.*origin t3-fixture/);
+  await page.reload();
+  await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
+  assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");
 
   fs.mkdirSync("tests/artifacts", { recursive: true });
   await page.screenshot({

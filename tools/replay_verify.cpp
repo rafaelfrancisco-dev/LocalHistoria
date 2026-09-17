@@ -1,4 +1,4 @@
-#include "localhistoria/simulation.h"
+#include "localhistoria/world.h"
 #include <fstream>
 #include <iostream>
 using namespace lh;
@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
             for (auto &actor : turn["intentions"].getMemberNames())
                 intentions[actor] = parseOrders(turn["intentions"][actor]);
             auto result = resolve(world, intentions);
+            if(turn["reference"].isMember("delta"))result=applyDelta(result,parseDelta(turn["reference"]["delta"]),input["geography"]);
             if (encode(result.state) != turn["state"] || encode(result.events) != turn["events"])
                 throw std::runtime_error("Replay mismatch at turn " +
                                          std::to_string(result.state.turn));

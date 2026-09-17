@@ -21,6 +21,8 @@ class Store {
     void narrate(const std::string &job, const std::string &text, bool fallback);
     Json::Value job(const std::string &);
     Json::Value journal();
+    CountryContext campaignContext(const WorldState &, const std::string &);
+    void recordInference(const std::string &, const Json::Value &);
     Json::Value background(const std::string &);
     void cache(const std::string &, const Json::Value &);
     std::string setting(const std::string &key, const std::string &fallbackDefault);
