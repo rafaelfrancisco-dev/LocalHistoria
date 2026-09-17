@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LocalHistoria</title>
+    <link rel="stylesheet" href="/vendor/leaflet.css" />
+    <link rel="stylesheet" href="/style.css" />
+    <script defer src="/vendor/leaflet.js"></script>
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <small>A WORLD OF POSSIBILITIES</small>
+        <h1>LocalHistoria<span> / sandbox</span></h1>
+      </div>
+      <div>
+        <strong id="date">January 2026</strong>
+        <p id="mode">Offline diplomacy &amp; statecraft</p>
+      </div>
+    </header>
+    <div class="notice">
+      A fictional world, a shared starting point. All national statistics are
+      invented and balanced. Playable map actors do not assert sovereignty.
+    </div>
+    <main>
+      <aside aria-label="Countries">
+        <label for="search">Explore the world</label
+        ><input id="search" type="search" placeholder="Find a country…" />
+        <div id="countries"></div>
+      </aside>
+      <section class="workspace">
+        <div id="map" aria-label="Selectable world map"></div>
+        <div id="status" role="status" aria-live="polite">
+          Choose a country to begin.
+        </div>
+        <section class="journal">
+          <h2>Monthly journal</h2>
+          <div id="journal"><p>Your story starts in January 2026.</p></div>
+        </section>
+      </section>
+      <section class="panel">
+        <div class="country-title">
+          <img id="flag" alt="" hidden />
+          <h2 id="country-name">Choose your perspective</h2>
+        </div>
+        <p id="country-description">
+          Select a map region or use the searchable country list.
+        </p>
+        <button id="new-game" hidden>Play as this country</button>
+        <div id="stats"></div>
+        <details>
+          <summary>Cities &amp; reference sources</summary>
+          <p>City populations are reference records, never national totals.</p>
+          <div id="cities"></div>
+          <button id="refresh" hidden>
+            Download / refresh Wikipedia reference
+          </button>
+          <p id="background-notice"></p>
+          <a id="source" target="_blank" rel="noreferrer" hidden></a>
+          <p id="background"></p>
+        </details>
+        <section id="controls" hidden>
+          <h2>Your monthly orders</h2>
+          <p id="player-label"></p>
+          <div id="diplomacy"></div>
+          <p>
+            Income arrives monthly. Costs use your starting treasury. Up to 8
+            orders.
+          </p>
+          <label for="action">Action</label
+          ><select id="action">
+            <option value="economy">Invest in economy · 20</option>
+            <option value="army">Invest in army · 15</option>
+            <option value="navy">Invest in navy · 15</option>
+            <option value="improve">Improve relations · 5</option>
+            <option value="offer">Offer alliance · free</option>
+            <option value="accept">Accept incoming alliance · free</option>
+            <option value="reject">Reject incoming alliance · free</option>
+            <option value="posture">Change posture · free</option>
+            <option value="priority">
+              Set domestic priority · free
+            </option></select
+          ><label for="target">Diplomatic target</label
+          ><select id="target"></select
+          ><label for="value">Posture / priority</label
+          ><select id="value"></select
+          ><button id="add">Add order to draft</button
+          ><label for="instruction">Or describe your intentions</label
+          ><textarea
+            id="instruction"
+            rows="2"
+            maxlength="1000"
+            placeholder="Invest in economy and improve relations with ES"
+          ></textarea
+          ><button id="propose">Create proposal for review</button>
+          <p>
+            Proposals only update this editable draft. Review before submitting.
+          </p>
+          <label for="draft">Editable order draft (JSON)</label
+          ><textarea id="draft" rows="7" spellcheck="false">[]</textarea
+          ><button class="primary" id="turn">
+            Review complete — advance one month</button
+          ><a href="/api/v1/replay" target="_blank"
+            >Export campaign &amp; replay</a
+          >
+        </section>
+      </section>
+    </main>
+    <footer>
+      Local play · January 2026 onward · No combat or territorial conquest ·
+      <a href="/credits.html">Data &amp; credits</a>
+    </footer>
+  </body>
+</html>

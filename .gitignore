@@ -1,0 +1,12 @@
+/build/
+/saves/
+/cache/
+/models/
+/node_modules/
+*.gguf
+*.sqlite-wal
+*.sqlite-shm
+__pycache__/
+.DS_Store
+/tests/artifacts/
+/uploads/

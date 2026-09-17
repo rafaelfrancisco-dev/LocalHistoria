@@ -1,0 +1,7 @@
+# Preserve supplied datasets, vendored assets, and upstream notices byte for byte.
+/data/source/** -text
+/web/vendor/** -text
+/web/flags/** -text
+/licenses/** -text
+web/regions.geojson filter=lfs diff=lfs merge=lfs -text
+data/world.sqlite filter=lfs diff=lfs merge=lfs -text

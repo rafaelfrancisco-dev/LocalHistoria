@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "prettier": "^3.9.7"
+  },
+  "name": "localhistoria-browser-tests",
+  "private": true,
+  "scripts": {
+    "test": "python3 tests/integration.py"
+  }
+}
