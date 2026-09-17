@@ -121,10 +121,10 @@ int main(int argc, char **argv) {
                     try {
                         auto host = req->getHeader("host");
                         auto origin = req->getHeader("origin");
-                        if (host !=
-                                "127.0.0.1:" + std::to_string(config.get("port", 8080).asInt()) ||
+                        auto port = std::to_string(config.get("port", 8080).asInt());
+                        if ((host != "127.0.0.1:" + port && host != "localhost:" + port) ||
                             (!origin.empty() && origin != "http://" + host))
-                            throw ValidationError("Use the local 127.0.0.1 origin");
+                            throw ValidationError("Use the local 127.0.0.1 or localhost origin");
                         Json::Value body;
                         if (req->method() == Post) {
                             if (req->getHeader("content-type").find("application/json") != 0)
