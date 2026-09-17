@@ -61,12 +61,11 @@ int main(int argc, char **argv) {
         rejects([&] { resolve(poor, {{"PT", {{"economy", "", ""}}}}); });
         auto offered = resolve(w, {{"PT", {{"offer", "ES", ""}, {"improve", "ES", ""}}}});
         check(offered.state.offers.contains("PT:ES"), "Offer persisted");
-        check(scripted(w, "ES").empty(), "Same starting snapshot");
-        auto accepted = resolve(offered.state, {{"ES", scripted(offered.state, "ES")}});
+        auto accepted = resolve(offered.state, {{"ES", {{"accept", "PT", ""}}}});
         check(accepted.state.alliances.contains("ES:PT") && accepted.state.offers.empty(),
               "Acceptance lifecycle");
         auto noRelation = resolve(w, {{"PT", {{"offer", "FR", ""}}}});
-        auto rejected = resolve(noRelation.state, {{"FR", scripted(noRelation.state, "FR")}});
+        auto rejected = resolve(noRelation.state, {{"FR", {{"reject", "PT", ""}}}});
         check(rejected.state.offers.empty() && rejected.state.alliances.empty(),
               "Rejection lifecycle");
         rejects([&] { validate(offered.state, "PT", {{"offer", "ES", ""}}); });
@@ -81,26 +80,29 @@ int main(int argc, char **argv) {
         check(resolve(prioritized.state, {}).state.countries.at("PT").treasury == 121,
               "Prosperity administration");
         auto c = context(offered.state, "ES", {}, {});
-        int calls = 0;
-        LocalProvider malformed("http://127.0.0.1:8081", .1, [&](auto, auto, auto, double) {
-            calls++;
+        LocalProvider malformed("http://127.0.0.1:8081", .1, [](auto, auto, auto, double) {
             return parse(
                 R"({"choices":[{"message":{"content":"{\"orders\":[{\"action\":\"invade\"}]}"}}]})");
         });
-        auto d = malformed.decide(offered.state, c);
-        check(d.fallback && d.orders[0].action == "accept", "Malformed model fallback");
-        LocalProvider timeout("local", .1, [](auto, auto, auto, double) -> Json::Value {
-            throw std::runtime_error("timeout");
-        });
-        check(timeout.decide(offered.state, c).fallback, "Timeout fallback");
-        LocalProvider valid("local", .1, [](auto, auto, auto b, double) {
+        rejects([&] { malformed.decide(offered.state, c); });
+        LocalProvider timeoutProvider("http://127.0.0.1:8082", .1,
+                                      [](auto, auto, auto, double) -> Json::Value {
+                                          throw std::runtime_error("timeout");
+                                      });
+        rejects([&] { timeoutProvider.decide(offered.state, c); });
+        LocalProvider valid("http://127.0.0.1:8083", .1, [](auto, auto, auto b, double) {
             check(b["response_format"]["type"] == "json_schema" &&
                       !b["chat_template_kwargs"]["enable_thinking"].asBool(),
                   "Constrained request");
             return parse(
                 R"({"choices":[{"message":{"content":"{\"orders\":[{\"action\":\"accept\",\"target\":\"PT\"}]}"}}]})");
         });
-        check(!valid.decide(offered.state, c).fallback, "Valid model adapter");
+        auto validDecision = valid.decide(offered.state, c);
+        check(validDecision.orders.size() == 1 && validDecision.orders[0].action == "accept" &&
+                  validDecision.orders[0].target == "PT",
+              "Valid model adapter");
+        rejects([&] { LocalProvider bad(""); });
+        rejects([&] { LocalProvider bad("not-a-url"); });
         auto path = (std::filesystem::temp_directory_path() / "localhistoria-test.sqlite").string();
         std::filesystem::remove(path);
         {
@@ -116,7 +118,7 @@ int main(int argc, char **argv) {
             check(s.campaign()["turn"] == 0, "Atomic rollback");
             s.commit(id, r, {}, {});
             auto before = dump(s.campaign());
-            rejects([&] { timeout.narrate(r.events); });
+            rejects([&] { timeoutProvider.narrate(r.events); });
             check(dump(s.campaign()) == before, "Narration isolation");
             s.narrate(id, "Fictional narration", false);
             check(dump(s.campaign()) == before, "Narration never mutates state");
@@ -159,12 +161,6 @@ int main(int argc, char **argv) {
                             })["available"]
                    .asBool(),
               "Ambiguous mapping");
-        LocalProvider offline;
-        check(!offline.decide(w, context(w, "PT", {}, history)).fallback,
-              "Cache-only offline decision");
-        check(offline.propose(w, context(w, "PT", {}, {}), "Invest in economy").orders[0].action ==
-                  "economy",
-              "Offline proposal");
         std::ifstream fixture(std::string(FIXTURE_DIR) + "/portugal-page.json");
         std::string fixtureText((std::istreambuf_iterator<char>(fixture)), {});
         auto recorded = fetchHistory("PT", [&](auto host, auto, auto, double) {

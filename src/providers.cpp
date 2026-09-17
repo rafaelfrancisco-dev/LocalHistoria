@@ -1,8 +1,13 @@
 #include "localhistoria/providers.h"
-#include <algorithm>
 #include <drogon/drogon.h>
 #include <trantor/net/EventLoopThread.h>
 namespace lh {
+std::string validateEndpoint(const std::string &e) {
+    if (e.rfind("http://127.0.0.1:", 0) != 0 || e.size() <= 17 ||
+        e.find_first_not_of("0123456789", 17) != std::string::npos)
+        throw ValidationError("Model endpoint must be http://127.0.0.1:PORT");
+    return e;
+}
 Json::Value httpJson(const std::string &host, const std::string &path, const Json::Value &body,
                      double timeout) {
     // Dedicated transport loop keeps timeouts alive while the HTTP app shuts down.
@@ -31,11 +36,11 @@ Json::Value orderSchema() {
     return parse(
         R"({"type":"object","additionalProperties":false,"required":["orders"],"properties":{"orders":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["action"],"properties":{"action":{"type":"string","enum":["economy","army","navy","improve","offer","accept","reject","posture","priority"]},"target":{"type":"string"},"value":{"type":"string"}}}}}})");
 }
+LocalProvider::LocalProvider(std::string e, double t, Transport tr)
+    : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)) {}
 Json::Value LocalProvider::completion(const Json::Value &input, const Json::Value &schema,
                                       const std::string &instruction) {
     std::lock_guard lock(inference);
-    if (endpoint.empty())
-        throw std::runtime_error("Scripted mode");
     auto prompt = dump(input);
     if (prompt.size() > 6000)
         throw std::runtime_error("Context budget exceeded");
@@ -64,23 +69,18 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     return parse(s.asString());
 }
 Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
-    try {
-        Json::Value input;
-        input["facts"] = c.facts;
-        input["reference_only"] = c.reference;
-        auto j = completion(
-            input, orderSchema(),
-            "Choose legal intentions for this actor using starting facts. Respond only to existing "
-            "offers; new offers take effect next month. At most eight orders.");
-        if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
-            throw ValidationError("Invalid decision shape");
-        auto o = parseOrders(j["orders"]);
-        validate(w, c.actor, o);
-        return {o, false, "Local model"};
-    } catch (const std::exception &e) {
-        return {scripted(w, c.actor), enabled(),
-                enabled() ? std::string("Scripted fallback: ") + e.what() : "Scripted AI"};
-    }
+    Json::Value input;
+    input["facts"] = c.facts;
+    input["reference_only"] = c.reference;
+    auto j = completion(
+        input, orderSchema(),
+        "Choose legal intentions for this actor using starting facts. Respond only to existing "
+        "offers; new offers take effect next month. At most eight orders.");
+    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
+        throw ValidationError("Invalid decision shape");
+    auto o = parseOrders(j["orders"]);
+    validate(w, c.actor, o);
+    return {o, "Local model"};
 }
 std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e) {
     Json::Value in;
@@ -100,41 +100,25 @@ Decision LocalProvider::propose(const WorldState &w, const CountryContext &c,
                                 const std::string &t) {
     if (t.empty() || t.size() > 1000)
         throw ValidationError("Instruction must contain 1–1000 bytes");
-    try {
-        Json::Value in;
-        in["facts"] = c.facts;
-        in["player_instruction"] = t;
-        auto j = completion(in, orderSchema(),
-                            "Translate the player's instruction into proposed legal orders. These "
-                            "are proposals requiring player review.");
-        if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
-            throw ValidationError("Invalid proposal shape");
-        auto o = parseOrders(j["orders"]);
-        validate(w, c.actor, o);
-        return {o, false, "Model proposal — review required"};
-    } catch (...) {
-        std::string text = t;
-        std::transform(text.begin(), text.end(), text.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        TurnOrders o;
-        for (auto [word, action] : std::vector<std::pair<std::string, std::string>>{
-                 {"econom", "economy"}, {"army", "army"}, {"navy", "navy"}})
-            if (text.find(word) != std::string::npos)
-                o.push_back({action, "", ""});
-        for (auto &[code, state] : w.countries) {
-            std::string low = code;
-            std::transform(low.begin(), low.end(), low.begin(), ::tolower);
-            if (code != w.player && text.find("with " + low) != std::string::npos) {
-                if (text.find("relation") != std::string::npos)
-                    o.push_back({"improve", code, ""});
-                else if (text.find("alliance") != std::string::npos)
-                    o.push_back({"offer", code, ""});
-            }
-        }
-        validate(w, c.actor, o);
-        return {o, enabled(),
-                "Scripted keyword proposal — review carefully; unsupported instructions produce no "
-                "orders"};
-    }
+    Json::Value in;
+    in["facts"] = c.facts;
+    in["player_instruction"] = t;
+    auto j = completion(in, orderSchema(),
+                        "Translate the player's instruction into proposed legal orders. These "
+                        "are proposals requiring player review.");
+    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
+        throw ValidationError("Invalid proposal shape");
+    auto o = parseOrders(j["orders"]);
+    validate(w, c.actor, o);
+    return {o, "Model proposal — review required"};
+}
+void LocalProvider::setEndpoint(const std::string &e) {
+    auto v = validateEndpoint(e);
+    std::lock_guard lock(inference);
+    endpoint = v;
+}
+std::string LocalProvider::endpointValue() const {
+    std::lock_guard lock(inference);
+    return endpoint;
 }
 } // namespace lh

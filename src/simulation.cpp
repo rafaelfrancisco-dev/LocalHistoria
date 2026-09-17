@@ -209,18 +209,6 @@ Resolution resolve(const WorldState &w, const std::map<std::string, TurnOrders> 
                         "stability and prosperity adds one treasury."});
     return r;
 }
-TurnOrders scripted(const WorldState &w, const std::string &a) {
-    TurnOrders o;
-    for (auto &s : w.offers) {
-        if (s.substr(3) == a && o.size() < 8) {
-            auto from = s.substr(0, 2);
-            auto i = w.relations.find(pairKey(a, from));
-            o.push_back(
-                {i != w.relations.end() && i->second >= 10 ? "accept" : "reject", from, ""});
-        }
-    }
-    return o;
-}
 CountryContext context(const WorldState &w, const std::string &a, const Json::Value &recent,
                        const Json::Value &reference) {
     Json::Value f;

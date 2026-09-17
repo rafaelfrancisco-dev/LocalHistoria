@@ -1,7 +1,0 @@
-{
-  "port": 8080,
-  "save_path": "saves/campaign.sqlite",
-  "ai_enabled": false,
-  "llama_endpoint": "http://127.0.0.1:8081",
-  "timeout_seconds": 20
-}

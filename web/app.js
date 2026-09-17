@@ -155,7 +155,7 @@ async function select(code, zoom = false) {
 async function load() {
   const j = await api("campaign");
   state = j.state;
-  $("mode").textContent = j.ai_mode;
+  $("llama-endpoint").value = j.llama_endpoint;
   $("date").textContent = month(state?.turn || 0);
   $("controls").hidden = !state;
   if (state) {
@@ -226,6 +226,10 @@ async function poll(id) {
   throw Error("Job still running. Reload to resume monitoring.");
 }
 $("search").oninput = list;
+$("save-endpoint").onclick = protect(async () => {
+  await api("model-config", { llama_endpoint: $("llama-endpoint").value });
+  status("Model endpoint updated.");
+});
 $("new-game").onclick = protect(async () => {
   if (state && !confirm("Replace the active campaign and its saved journal?"))
     return;
@@ -273,11 +277,7 @@ $("turn").onclick = protect(async () => {
     sessionStorage.removeItem("pendingTurn");
     $("draft").value = "[]";
     await load();
-    status(
-      result.fallback
-        ? "Month complete · scripted fallback used for model decisions."
-        : "Month complete · autosaved.",
-    );
+    status("Month complete · autosaved.");
   } finally {
     setBusy(false);
   }

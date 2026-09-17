@@ -4,13 +4,14 @@ All routes use JSON at `http://127.0.0.1:8080/api/v1`. POST requires `Content-Ty
 
 | Route | Method | Behavior |
 |---|---|---|
-| `/campaign` | GET | State or null, latest 24 journal entries, running jobs, provider mode |
+| `/campaign` | GET | State or null, latest 24 journal entries, running jobs, current model endpoint |
 | `/campaign` | POST | `{country:"PT",confirm_replace:false}`; confirmation required for existing campaign |
 | `/countries` | GET | Country codes and names; no cities or national populations |
 | `/country?code=PT` | GET | Metadata, top 15 city records, cached reference |
 | `/proposals` | POST | `{campaign_id,expected_turn,text}`; returns a volatile job ID; result contains editable orders only |
 | `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders}`; returns persisted job ID, HTTP 202 |
-| `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; fallback flag/error; auxiliary jobs also contain results |
+| `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; error message on failure; auxiliary jobs also contain results |
+| `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
 | `/history?code=PT` | GET | Cached reference only, no network |
 | `/history` | POST | `{code:"PT"}` explicitly downloads/refreshes reference in worker; returns volatile job ID |
 | `/replay` | GET | Initial state, current campaign and every saved turn with state, resolved intentions, events and frozen references |

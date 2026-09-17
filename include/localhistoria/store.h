@@ -17,11 +17,13 @@ class Store {
     void recover();
     Json::Value submit(int turn, const std::string &key, const std::string &payload);
     void commit(const std::string &job, const Resolution &, const Json::Value &intentions,
-                const Json::Value &refs, bool fail = false, bool fallback = false);
+                const Json::Value &refs, bool fail = false);
     void narrate(const std::string &job, const std::string &text, bool fallback);
     Json::Value job(const std::string &);
     Json::Value journal();
     Json::Value background(const std::string &);
     void cache(const std::string &, const Json::Value &);
+    std::string setting(const std::string &key, const std::string &fallbackDefault);
+    void setSetting(const std::string &key, const std::string &value);
 };
 } // namespace lh

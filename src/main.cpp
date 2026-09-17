@@ -1,7 +1,6 @@
 #include "localhistoria/history.h"
 #include "localhistoria/providers.h"
 #include "localhistoria/store.h"
-#include <chrono>
 #include <condition_variable>
 #include <drogon/drogon.h>
 #include <fcntl.h>
@@ -58,9 +57,23 @@ class Worker {
 };
 int main(int argc, char **argv) {
     try {
+        std::string configPath, llamaFlagValue;
+        bool llamaFlagGiven = false;
+        const std::string prefix = "--llama-endpoint=";
+        for (int i = 1; i < argc; i++) {
+            std::string arg = argv[i];
+            if (arg.rfind(prefix, 0) == 0) {
+                llamaFlagValue = arg.substr(prefix.size());
+                llamaFlagGiven = true;
+            } else if (configPath.empty()) {
+                configPath = arg;
+            } else {
+                throw std::runtime_error("Unexpected argument: " + arg);
+            }
+        }
         Json::Value config;
-        if (argc > 1) {
-            std::ifstream f(argv[1]);
+        if (!configPath.empty()) {
+            std::ifstream f(configPath);
             if (!f)
                 throw std::runtime_error("Cannot read config");
             std::string s((std::istreambuf_iterator<char>(f)), {});
@@ -68,12 +81,8 @@ int main(int argc, char **argv) {
         }
         if (!config.isNull() && !config.isObject())
             throw ValidationError("Config must be an object");
-        auto modelEndpoint = config.get("llama_endpoint", "http://127.0.0.1:8081").asString();
-        if (modelEndpoint.rfind("http://127.0.0.1:", 0) != 0 ||
-            modelEndpoint.find_first_not_of("0123456789", 17) != std::string::npos)
-            throw ValidationError("Model endpoint must be http://127.0.0.1:PORT");
-        auto timeout = config.get("timeout_seconds", 20).asDouble();
-        if (timeout <= 0 || timeout > 60)
+        auto timeoutSeconds = config.get("timeout_seconds", 20).asDouble();
+        if (timeoutSeconds <= 0 || timeoutSeconds > 60)
             throw ValidationError("Timeout must be greater than zero and at most 60 seconds");
         std::string save = config.get("save_path", "saves/campaign.sqlite").asString();
         auto parent = std::filesystem::path(save).parent_path();
@@ -84,12 +93,14 @@ int main(int argc, char **argv) {
             throw std::runtime_error("Save is already open by another server");
         Store store(save), reference("data/world.sqlite", true);
         store.recover();
+        std::string endpoint = llamaFlagGiven
+                                   ? validateEndpoint(llamaFlagValue)
+                                   : validateEndpoint(store.setting("llama_endpoint",
+                                                                    "http://127.0.0.1:8081"));
+        if (llamaFlagGiven)
+            store.setSetting("llama_endpoint", endpoint);
         std::mutex mutex;
-        LocalProvider provider(
-            config.get("ai_enabled", false).asBool()
-                ? config.get("llama_endpoint", "http://127.0.0.1:8081").asString()
-                : "",
-            config.get("timeout_seconds", 20).asDouble());
+        LocalProvider provider(endpoint, timeoutSeconds);
         std::map<std::string, Json::Value> auxiliary;
         unsigned auxiliaryId = 0;
         Worker worker;
@@ -133,6 +144,8 @@ int main(int argc, char **argv) {
                                 fields = {{"campaign_id", "string"},
                                           {"expected_turn", "int"},
                                           {"text", "string"}};
+                            if (path == "/api/v1/model-config")
+                                fields = {{"llama_endpoint", "string"}};
                             if (path == "/api/v1/history")
                                 fields = {{"code", "string"}};
                             for (auto &key : body.getMemberNames()) {
@@ -184,11 +197,25 @@ int main(int argc, char **argv) {
                   j["journal"] = store.journal();
                   j["active_jobs"] =
                       store.query("SELECT id,status FROM jobs WHERE status='running'");
-                  j["ai_mode"] = provider.enabled() ? "Local model with scripted fallback"
-                                                    : "Scripted AI (offline)";
+                  j["llama_endpoint"] = provider.endpointValue();
                   reply(cb, j);
               },
               {Get, Post});
+        route("/api/v1/model-config",
+              [&](auto, auto b, auto cb) {
+                  if (!b["llama_endpoint"].isString())
+                      throw ValidationError("llama_endpoint is required");
+                  auto endpoint = validateEndpoint(b["llama_endpoint"].asString());
+                  provider.setEndpoint(endpoint);
+                  {
+                      std::lock_guard l(mutex);
+                      store.setSetting("llama_endpoint", endpoint);
+                  }
+                  Json::Value j;
+                  j["llama_endpoint"] = endpoint;
+                  reply(cb, j);
+              },
+              {Post});
         route("/api/v1/countries",
               [&](auto, auto, auto cb) {
                   std::lock_guard l(mutex);
@@ -263,26 +290,9 @@ int main(int argc, char **argv) {
                           bool committed = false;
                           try {
                               std::map<std::string, TurnOrders> intentions{{w.player, orders}};
-                              bool fallback = false;
-                              auto deadline =
-                                  std::chrono::steady_clock::now() + std::chrono::seconds(60);
-                              unsigned modelCalls = 0;
                               for (auto &a : actors) {
                                   auto c = context(w, a, recent, refs[a]);
-                                  Decision d;
-                                  if (provider.enabled() &&
-                                      (modelCalls >= 8 ||
-                                       std::chrono::steady_clock::now() +
-                                               std::chrono::duration<double>(timeout) >
-                                           deadline)) {
-                                      d = {scripted(w, a), true,
-                                           "Scripted fallback: turn inference budget"};
-                                  } else {
-                                      d = provider.decide(w, c);
-                                      ++modelCalls;
-                                  }
-                                  intentions[a] = d.orders;
-                                  fallback |= d.fallback;
+                                  intentions[a] = provider.decide(w, c).orders;
                               }
                               auto result = resolve(w, intentions);
                               Json::Value recorded;
@@ -290,16 +300,14 @@ int main(int argc, char **argv) {
                                   recorded[a] = encode(o);
                               {
                                   std::lock_guard l(mutex);
-                                  store.commit(id, result, recorded, refs, false, fallback);
+                                  store.commit(id, result, recorded, refs, false);
                                   committed = true;
                               }
-                              if (provider.enabled()) {
-                                  try {
-                                      auto text = provider.narrate(result.events);
-                                      std::lock_guard l(mutex);
-                                      store.narrate(id, text, false);
-                                  } catch (...) { /* Factual summary already committed. */
-                                  }
+                              try {
+                                  auto text = provider.narrate(result.events);
+                                  std::lock_guard l(mutex);
+                                  store.narrate(id, text, false);
+                              } catch (...) { /* Factual summary already committed. */
                               }
                           } catch (const std::exception &e) {
                               if (!committed) {
@@ -344,7 +352,6 @@ int main(int argc, char **argv) {
                       try {
                           auto p = provider.propose(w, c, b["text"].asString());
                           j["orders"] = encode(p.orders);
-                          j["fallback"] = p.fallback;
                           j["message"] = p.status;
                           j["expected_turn"] = w.turn;
                           j["campaign_id"] = w.campaignId;

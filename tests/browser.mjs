@@ -64,6 +64,10 @@ try {
   await page.waitForFunction(
     () => document.querySelector("#date").textContent === "February 2026",
   );
+  await page
+    .locator("#journal details")
+    .first()
+    .evaluate((d) => (d.open = true));
   assert.match(
     await page.locator("#journal").innerText(),
     /PT completed economy/,

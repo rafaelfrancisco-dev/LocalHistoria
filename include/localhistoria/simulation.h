@@ -43,7 +43,6 @@ Json::Value encode(const std::vector<ResolvedEvent> &);
 TurnOrders parseOrders(const Json::Value &);
 void validate(const WorldState &, const std::string &, const TurnOrders &);
 Resolution resolve(const WorldState &, const std::map<std::string, TurnOrders> &);
-TurnOrders scripted(const WorldState &, const std::string &);
 CountryContext context(const WorldState &, const std::string &, const Json::Value &,
                        const Json::Value &);
 std::string dump(const Json::Value &);

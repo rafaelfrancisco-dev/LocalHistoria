@@ -16,12 +16,12 @@ Store::Store(const std::string &p, bool readOnly) {
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
         "INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs(id "
         "INTEGER PRIMARY KEY AUTOINCREMENT,key TEXT UNIQUE,payload TEXT,status TEXT NOT NULL,error "
-        "TEXT DEFAULT '',fallback INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS turns(turn "
+        "TEXT DEFAULT ''); CREATE TABLE IF NOT EXISTS turns(turn "
         "INTEGER PRIMARY KEY,job INTEGER UNIQUE,state TEXT,intentions TEXT,events TEXT,reference "
         "TEXT); CREATE TABLE IF NOT EXISTS narration(job INTEGER PRIMARY KEY,text TEXT,fallback "
         "INTEGER); CREATE TABLE IF NOT EXISTS background(code TEXT PRIMARY KEY,document TEXT); "
         "CREATE TABLE IF NOT EXISTS initial_world(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT "
-        "NOT NULL);");
+        "NOT NULL); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);");
 }
 Store::~Store() { sqlite3_close(db); }
 void Store::sql(const std::string &s) {
@@ -107,7 +107,7 @@ Json::Value Store::submit(int turn, const std::string &key, const std::string &p
     return query("SELECT * FROM jobs WHERE key=?", {key})[0];
 }
 void Store::commit(const std::string &id, const Resolution &r, const Json::Value &i,
-                   const Json::Value &refs, bool fail, bool fallback) {
+                   const Json::Value &refs, bool fail) {
     sql("BEGIN IMMEDIATE");
     try {
         auto j = job(id);
@@ -124,8 +124,7 @@ void Store::commit(const std::string &id, const Resolution &r, const Json::Value
         for (auto &e : r.events)
             summary += e.text + "\n";
         execute("INSERT INTO narration VALUES(?,?,1)", {id, summary});
-        execute("UPDATE jobs SET status='complete',fallback=? WHERE id=?",
-                {fallback ? "1" : "0", id});
+        execute("UPDATE jobs SET status='complete' WHERE id=?", {id});
         sql("COMMIT");
     } catch (...) {
         sql("ROLLBACK");
@@ -136,7 +135,7 @@ void Store::narrate(const std::string &id, const std::string &t, bool f) {
     execute("UPDATE narration SET text=?,fallback=? WHERE job=?", {t, f ? "1" : "0", id});
 }
 Json::Value Store::job(const std::string &id) {
-    auto j = query("SELECT id,status,error,fallback FROM jobs WHERE id=?", {id});
+    auto j = query("SELECT id,status,error FROM jobs WHERE id=?", {id});
     if (j.empty())
         throw ValidationError("Unknown job");
     return j[0];
@@ -155,5 +154,13 @@ Json::Value Store::background(const std::string &c) {
 }
 void Store::cache(const std::string &c, const Json::Value &j) {
     execute("INSERT OR REPLACE INTO background VALUES(?,?)", {c, dump(j)});
+}
+std::string Store::setting(const std::string &key, const std::string &fallbackDefault) {
+    auto j = query("SELECT value FROM settings WHERE key=?", {key});
+    return j.empty() ? fallbackDefault : j[0]["value"].asString();
+}
+void Store::setSetting(const std::string &key, const std::string &value) {
+    execute("INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            {key, value});
 }
 } // namespace lh

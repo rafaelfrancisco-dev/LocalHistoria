@@ -8,7 +8,6 @@ using Transport = std::function<Json::Value(const std::string &, const std::stri
 Json::Value httpJson(const std::string &, const std::string &, const Json::Value &, double);
 struct Decision {
     TurnOrders orders;
-    bool fallback = false;
     std::string status;
 };
 class DecisionProvider {
@@ -21,20 +20,22 @@ class NarrationProvider {
     virtual ~NarrationProvider() = default;
     virtual std::string narrate(const std::vector<ResolvedEvent> &) = 0;
 };
+std::string validateEndpoint(const std::string &);
 class LocalProvider : public DecisionProvider, public NarrationProvider {
     std::string endpoint;
     double timeout;
     Transport transport;
-    std::mutex inference;
+    mutable std::mutex inference;
     Json::Value completion(const Json::Value &, const Json::Value &, const std::string &);
 
   public:
-    LocalProvider(std::string endpoint = "", double timeout = 20, Transport transport = httpJson)
-        : endpoint(std::move(endpoint)), timeout(timeout), transport(std::move(transport)) {}
+    explicit LocalProvider(std::string endpoint, double timeout = 20,
+                           Transport transport = httpJson);
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     Decision propose(const WorldState &, const CountryContext &, const std::string &);
-    bool enabled() const { return !endpoint.empty(); }
+    void setEndpoint(const std::string &);
+    std::string endpointValue() const;
 };
 Json::Value orderSchema();
 } // namespace lh
