@@ -98,31 +98,34 @@ function restyleMap() {
 }
 function renderStats() {
   $("stats").replaceChildren();
-  const c = state?.countries[selected];
-  if (!c) return;
-  for (const key of [
-    "treasury",
-    "income",
-    "stability",
-    "army",
-    "navy",
-    "posture",
-    "priority",
+  if (!state?.actors?.[selected]) return;
+  const territories = Object.values(state.territories);
+  const entities = Object.values(state.entities).filter(
+    (e) => e.actor === selected && e.status !== "destroyed",
+  );
+  const involved = (v) => v.status === "open" && v.actors.includes(selected);
+  const count = (kind, statuses = ["active"]) =>
+    entities.filter((e) => e.kind === kind && statuses.includes(e.status)).length;
+  const building = entities.filter((e) => e.status === "under_construction").length;
+  for (const [label, value] of [
+    ["regions", territories.filter((t) => t.owner === selected).length],
+    ["occupied by others", territories.filter((t) => t.owner === selected && t.controller !== selected).length],
+    ["occupying", territories.filter((t) => t.controller === selected && t.owner !== selected).length],
+    ["armies · fleets", count("army") + " · " + count("fleet")],
+    ["under construction", building],
+    ["conflicts · treaties", Object.values(state.conflicts).filter(involved).length + " · " + Object.values(state.commitments).filter(involved).length],
   ]) {
     const cell = document.createElement("div");
     cell.className = "stat";
     const strong = document.createElement("strong");
-    strong.textContent = c[key];
-    const label = document.createElement("span");
-    label.textContent = key;
-    cell.append(strong, label);
+    strong.textContent = value;
+    const span = document.createElement("span");
+    span.textContent = label;
+    cell.append(strong, span);
     $("stats").append(cell);
   }
-  const rel = state.relations[[state.player, selected].sort().join(":")] || 0;
   $("country-description").textContent =
-    selected === state.player
-      ? "Your country · fictional statistics"
-      : `Fictional statistics · relations with you: ${rel}`;
+    selected === state.player ? "Your nation" : "Another nation of this world";
 }
 async function select(code, zoom = false) {
   selected = code;
@@ -131,7 +134,6 @@ async function select(code, zoom = false) {
   layers?.eachLayer((l) => {
     if ((l.feature.properties.owner ?? l.feature.properties.code) === code) selectedLayer = l;
   });
-  if (code !== state?.player) $("target").value = code;
   if (zoom && selectedLayer)
     map.fitBounds(selectedLayer.getBounds(), { maxZoom: 5 });
   const detail = await api("country?code=" + encodeURIComponent(code));
@@ -139,7 +141,7 @@ async function select(code, zoom = false) {
   $("country-name").textContent = detail.name;
   flag($("flag"), code);
   $("country-description").textContent =
-    "Sandbox actor · all statistics are fictional";
+    "Sandbox actor";
   $("new-game").hidden = !/^[A-Z]{2}$/.test(code);
   $("new-game").textContent = state
     ? "Start new campaign as " + detail.name
@@ -186,25 +188,8 @@ async function load() {
     $("playing-as-name").textContent =
       countries.find((c) => c.code === state.player)?.name || state.player;
     $("player-label").textContent =
-      "Playing as " +
-      countries.find((c) => c.code === state.player)?.name +
-      " · treasury " +
-      state.countries[state.player].treasury;
-    $("diplomacy").replaceChildren();
-    for (const offer of state.offers) {
-      if (offer.includes(state.player)) {
-        const p = document.createElement("p");
-        p.textContent = "Pending alliance: " + offer.replace(":", " → ");
-        $("diplomacy").append(p);
-      }
-    }
-    for (const alliance of state.alliances) {
-      if (alliance.includes(state.player)) {
-        const p = document.createElement("p");
-        p.textContent = "Alliance: " + alliance.replace(":", " ↔ ");
-        $("diplomacy").append(p);
-      }
-    }
+      "Playing as " + (countries.find((c) => c.code === state.player)?.name || state.player);
+    renderActions();
     $("journal").replaceChildren();
     for (const entry of j.journal) {
       const box = document.createElement("article");
@@ -240,7 +225,7 @@ async function load() {
 }
 function setBusy(value) {
   busy = value;
-  for (const id of ["turn", "new-game", "propose", "add"])
+  for (const id of ["turn", "new-game", "add-action"])
     $(id).disabled = value;
 }
 async function poll(id) {
@@ -262,36 +247,108 @@ $("new-game").onclick = protect(async () => {
   if (state && !confirm("Replace the active campaign and its saved journal?"))
     return;
   await api("campaign", { country: selected, confirm_replace: !!state });
-  $("draft").value = "[]";
+  setDraft([]);
   await load();
-  status("Campaign started. Draft your first monthly orders.");
+  status("Campaign started. Write your first actions.");
 });
-$("action").onchange = () => {
-  const a = $("action").value;
-  const vals =
-    a === "posture"
-      ? ["defensive", "neutral", "assertive"]
-      : a === "priority"
-        ? ["balanced", "prosperity", "welfare"]
-        : [];
-  $("value").replaceChildren(...vals.map((v) => new Option(v, v)));
-  $("value").disabled = !vals.length;
-  $("target").disabled = !["improve", "offer", "accept", "reject"].includes(a);
+// Free-text actions, Pax Historia style: no fixed action types, optional map targets.
+let draft = [],
+  activeAction = 0;
+function readDraft() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("actionDraft") || "null");
+    if (saved?.campaign_id === state?.campaign_id && Array.isArray(saved.actions)) return saved.actions;
+  } catch {}
+  return [];
+}
+function setDraft(actions) {
+  draft = actions.length ? actions : [{ text: "", targets: [] }];
+  activeAction = Math.min(activeAction, draft.length - 1);
+  try {
+    sessionStorage.setItem("actionDraft", JSON.stringify({ campaign_id: state?.campaign_id, actions: draft }));
+  } catch {}
+}
+function targetName(id) {
+  return (
+    state.territories[id]?.name ||
+    state.entities[id]?.name ||
+    state.actors[id]?.name ||
+    id
+  );
+}
+function renderActions() {
+  if (!draft.length) setDraft(readDraft());
+  $("actions").replaceChildren();
+  draft.forEach((action, index) => {
+    const card = document.createElement("div");
+    card.className = "action-card" + (index === activeAction ? " active" : "");
+    const label = document.createElement("label");
+    label.htmlFor = "action-" + index;
+    label.textContent = "Action " + (index + 1);
+    const text = document.createElement("textarea");
+    text.id = "action-" + index;
+    text.rows = 3;
+    text.maxLength = 500;
+    text.placeholder = "What does your nation do this month?";
+    text.value = action.text;
+    text.oninput = () => {
+      action.text = text.value;
+      setDraft(draft);
+    };
+    text.onfocus = () => {
+      if (activeAction === index) return;
+      activeAction = index;
+      for (const [n, c] of [...$("actions").children].entries()) c.classList.toggle("active", n === index);
+    };
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    for (const id of action.targets) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = targetName(id) + " ×";
+      chip.setAttribute("aria-label", "Remove target " + targetName(id));
+      chip.onclick = () => {
+        action.targets = action.targets.filter((t) => t !== id);
+        setDraft(draft);
+        renderActions();
+      };
+      chips.append(chip);
+    }
+    const hint = document.createElement("small");
+    hint.textContent = action.targets.length ? "" : "Click a map region to add a target (optional)";
+    chips.append(hint);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "remove";
+    remove.textContent = "Remove";
+    remove.onclick = () => {
+      draft.splice(index, 1);
+      setDraft(draft);
+      renderActions();
+    };
+    card.append(label, text, chips, remove);
+    $("actions").append(card);
+  });
+  $("add-action").disabled = busy || draft.length >= 8;
+}
+function addTarget(id) {
+  const action = draft[activeAction];
+  if (!action || action.targets.includes(id)) return false;
+  if (action.targets.length >= 4) throw Error("An action can have at most four targets");
+  action.targets.push(id);
+  setDraft(draft);
+  renderActions();
+  return true;
+}
+$("add-action").onclick = () => {
+  if (draft.length >= 8) return;
+  draft.push({ text: "", targets: [] });
+  activeAction = draft.length - 1;
+  setDraft(draft);
+  renderActions();
+  $("action-" + activeAction).focus();
 };
-$("action").onchange();
-$("add").onclick = protect(async () => {
-  const draft = JSON.parse($("draft").value);
-  if (!Array.isArray(draft)) throw Error("Draft must be an array");
-  const action = $("action").value,
-    order = { action };
-  if (!$("target").disabled) order.target = $("target").value;
-  if (!$("value").disabled) order.value = $("value").value;
-  if (["construction","movement","conflict","territorial_diplomacy"].includes(action)) {
-    order.target=$("world-target").value;order.value=$("world-description").value;
-  }
-  draft.push(order);
-  $("draft").value = JSON.stringify(draft, null, 2);
-});
 $("turn").onclick = protect(async () => {
   if (busy) return;
   setBusy(true);
@@ -300,38 +357,17 @@ $("turn").onclick = protect(async () => {
       campaign_id: state.campaign_id,
       expected_turn: state.turn,
       idempotency_key: crypto.randomUUID(),
-      orders: JSON.parse($("draft").value),
+      orders: draft
+        .filter((a) => a.text.trim())
+        .map((a) => (a.targets.length ? { text: a.text.trim(), targets: a.targets } : { text: a.text.trim() })),
     };
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));
     const job = await api("turns", pending);
     const result = await poll(job.id);
     sessionStorage.removeItem("pendingTurn");
-    $("draft").value = "[]";
+    setDraft([]);
     await load();
     status("Month complete · autosaved.");
-  } finally {
-    setBusy(false);
-  }
-});
-$("propose").onclick = protect(async () => {
-  setBusy(true);
-  try {
-    const job = await api("proposals", {
-      campaign_id: state.campaign_id,
-      expected_turn: state.turn,
-      text: $("instruction").value,
-    });
-    const result = await poll(job.id);
-    if (
-      result.campaign_id !== state.campaign_id ||
-      result.expected_turn !== state.turn
-    )
-      throw Error("Proposal expired");
-    $("draft").value = JSON.stringify(result.orders, null, 2);
-    status(
-      result.message +
-        " · Review the draft, then explicitly advance the month.",
-    );
   } finally {
     setBusy(false);
   }
@@ -377,7 +413,7 @@ async function refreshCampaignMap() {
     const p=f.properties,label=document.createElement("span");
     label.textContent=`${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
     l.bindTooltip(label);
-    l.on("click",protect(async()=>{$("world-target").value=p.id;if(p.owner) await select(p.owner);status(label.textContent);}));
+    l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.owner) await select(p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
   }}).addTo(map);
   mapControls.addOverlay(layers,"Territories and occupation");
   await refreshEntities();
@@ -393,9 +429,6 @@ prepare.onclick=protect(async()=>{
 protect(async () => {
   countries = await api("countries");
   list();
-  $("target").replaceChildren(
-    ...countries.map((c) => new Option(c.name + " (" + c.code + ")", c.code)),
-  );
   const existing = await api("campaign");
   const geo = existing.state ? {type:"FeatureCollection",features:[]} : await (await fetch("/world.geojson")).json();
   layers = L.geoJSON(geo, {

@@ -54,11 +54,13 @@ try {
   });
   await page.locator("#new-game").click();
   await page.locator("#controls").waitFor({ state: "visible" });
-  await page.locator("#action").selectOption("economy");
-  await page.locator("#add").click();
-  assert.equal(
-    JSON.parse(await page.locator("#draft").inputValue())[0].action,
-    "economy",
+  await page.locator("#action-0").fill("Invest in the national railway network");
+  await page.locator("#add-action").click();
+  await page.locator("#action-1").fill("Open trade talks with Spain");
+  assert.equal(await page.locator(".action-card").count(), 2);
+  await page.reload();
+  await page.waitForFunction(
+    () => document.querySelector("#action-1")?.value === "Open trade talks with Spain",
   );
   await page.locator("#turn").click();
   await page.waitForFunction(
@@ -70,15 +72,9 @@ try {
     .evaluate((d) => (d.open = true));
   assert.match(
     await page.locator("#journal").innerText(),
-    /PT completed economy/,
+    /Invest in the national railway network/,
   );
-  await page.locator("#instruction").fill("Invest in army");
-  await page.locator("#propose").click();
-  await page.waitForFunction(() =>
-    document.querySelector("#draft").value.includes("army"),
-  );
-  assert.equal(await page.locator("#date").innerText(), "February 2026");
-  await page.locator("#draft").fill('[{"action":"navy"}]');
+  assert.equal(await page.locator("#action-0").inputValue(), "");
   await page.locator("#turn").click();
   await page.waitForFunction(
     () => document.querySelector("#date").textContent === "March 2026",
@@ -134,7 +130,12 @@ try {
   await page.waitForTimeout(500);
 
   const rid = await page.evaluate(() => Object.values(state.entities).find(e=>e.actor==="PT").region);
-  await page.locator("#draft").fill(JSON.stringify([{action:"territorial_diplomacy",target:rid,value:"transfer-and-build-fixture"}]));
+  await page.locator("#action-0").fill("Cede the region to Spain after building a port: transfer-and-build-fixture");
+  await page.evaluate((id) => { let target; layers.eachLayer((l) => { if (l.feature.id === id) target = l; }); target.fire("click"); }, rid);
+  // The earlier map click on Portugal already pinned a region to the action; remove it with its chip.
+  await page.waitForFunction(() => document.querySelectorAll(".action-card .chip").length === 2);
+  await page.locator(".action-card .chip").first().click();
+  await page.waitForFunction(() => document.querySelectorAll(".action-card .chip").length === 1);
   await page.locator("#turn").click();
   await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026");
   await page.waitForFunction(id=>state.territories[id].owner==="ES",rid);
@@ -142,7 +143,7 @@ try {
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
   await page.evaluate(()=>{entityLayers.getLayers().find(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")).openPopup();});
-  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port.*origin t3-fixture/);
+  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port.*under_construction.*origin t3-fixture/);
   await page.reload();
   await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
   assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");
@@ -155,7 +156,7 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   console.log(
-    "Browser passed: selection, structured orders, reviewed proposals, progress, events, reload; no external requests or JS errors.",
+    "Browser passed: selection, free-text action cards, draft persistence, map targets, progress, events, reload; no external requests or JS errors.",
   );
 } finally {
   await browser.close();

@@ -3,6 +3,7 @@
 #include "localhistoria/store.h"
 #include <condition_variable>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <drogon/drogon.h>
 #include <fcntl.h>
@@ -57,6 +58,137 @@ class Worker {
         cv.notify_one();
     }
 };
+const size_t maxAiActors = 4;
+struct Mentions {
+    std::set<std::string> actors, regions;
+};
+static std::string lower(const std::string &s) {
+    std::string o;
+    for (unsigned char c : s) o += char(std::tolower(c));
+    return o;
+}
+static bool containsWord(const std::string &text, const std::string &word) {
+    for (auto at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+        auto boundary = [&](size_t i) { return i >= text.size() || !std::isalnum(static_cast<unsigned char>(text[i])); };
+        if ((at == 0 || boundary(at - 1)) && boundary(at + word.size())) return true;
+    }
+    return false;
+}
+// Free text names nations and regions; resolve those names to IDs so the model sees the relevant map.
+static Mentions mentioned(const WorldState &w, const std::string &actor, const TurnOrders &orders) {
+    Mentions m;
+    std::string text;
+    for (auto &o : orders) {
+        text += lower(o.text) + "\n";
+        for (auto &t : o.targets) {
+            if (w.hasActor(t)) m.actors.insert(t);
+            else if (w.territories.isMember(t)) m.regions.insert(t);
+            else if (w.entities.isMember(t)) m.regions.insert(w.entities[t]["region"].asString());
+        }
+    }
+    for (auto &id : w.actors.getMemberNames()) {
+        auto name = lower(w.actors[id]["name"].asString());
+        if (name.size() >= 4 && containsWord(text, name)) m.actors.insert(id);
+    }
+    std::map<std::string, std::vector<std::string>> byName;
+    for (auto &id : w.territories.getMemberNames()) {
+        auto name = lower(w.territories[id]["name"].asString());
+        if (name.size() >= 4 && w.territories[id]["kind"] != "residual") byName[name].push_back(id);
+    }
+    for (auto &[name, ids] : byName) {
+        if (!containsWord(text, name)) continue;
+        std::vector<std::string> preferred;
+        for (auto &id : ids) {
+            auto owner = w.territories[id]["owner"].asString(), controller = w.territories[id]["controller"].asString();
+            if (owner == actor || controller == actor || m.actors.contains(owner) || m.actors.contains(controller)) preferred.push_back(id);
+        }
+        auto &chosen = preferred.empty() ? ids : preferred;
+        if (chosen.size() <= 3) m.regions.insert(chosen.begin(), chosen.end());
+    }
+    for (auto &id : m.regions)
+        if (w.territories.isMember(id)) {
+            auto owner = w.territories[id]["owner"].asString();
+            if (w.hasActor(owner)) m.actors.insert(owner);
+        }
+    m.actors.erase(actor);
+    return m;
+}
+static Json::Value adjudicationInput(const WorldState &w, const std::map<std::string, CountryContext> &contexts,
+                                     const std::map<std::string, TurnOrders> &intentions, const Adjacency &adjacency) {
+    Json::Value input;
+    input["facts"]["turn"] = w.turn;
+    input["facts"]["actors"] = Json::objectValue;
+    std::set<std::string> acting, relevant;
+    for (auto &[a, o] : intentions) {
+        acting.insert(a);
+        auto m = mentioned(w, a, o);
+        relevant.insert(m.regions.begin(), m.regions.end());
+        // Nations an actor addresses without naming a region: the parts of them it borders, where an invasion or handover would begin.
+        for (auto &target : m.actors)
+            for (auto &id : w.territories.getMemberNames())
+                if (w.territories[id]["controller"] == target && w.territories[id]["kind"] != "residual" && relevant.size() < 40 && reaches(w, adjacency, a, id))
+                    relevant.insert(id);
+    }
+    for (auto &[a, c] : contexts) {
+        auto facts = c.facts;
+        facts.removeMember("territories");
+        facts["past_events"] = facts["recent_events"];
+        facts.removeMember("recent_events");
+        input["facts"]["actors"][a] = facts;
+        input["reference_only"][a] = c.reference;
+        for (auto k : {"occupied_by_others", "occupying"})
+            for (auto &id : c.facts[k].getMemberNames()) relevant.insert(id);
+    }
+    for (auto &id : w.conflicts.getMemberNames())
+        if (w.conflicts[id]["status"] == "open")
+            for (auto &r : w.conflicts[id]["regions"])
+                if (r.isString()) relevant.insert(r.asString());
+    // Where the acting nations' armies and fleets stand, so movement has somewhere to go.
+    for (auto &id : w.entities.getMemberNames()) {
+        auto &e = w.entities[id];
+        if (acting.contains(e["actor"].asString()) && (e["kind"] == "army" || e["kind"] == "fleet") && e["status"] == "active")
+            relevant.insert(e["region"].asString());
+    }
+    input["facts"]["territories"] = Json::objectValue;
+    input["facts"]["entities"] = Json::objectValue;
+    for (auto &id : relevant) {
+        if (!w.territories.isMember(id)) continue;
+        auto t = w.territories[id];
+        for (auto k : {"longitude", "latitude", "initial_affiliation", "kind"}) t.removeMember(k);
+        t["within_reach_of"] = Json::arrayValue;
+        for (auto &a : acting)
+            if (reaches(w, adjacency, a, id)) t["within_reach_of"].append(a);
+        input["facts"]["territories"][id] = t;
+    }
+    for (auto &id : w.entities.getMemberNames())
+        if (relevant.contains(w.entities[id]["region"].asString())) {
+            auto e = w.entities[id];
+            for (auto k : {"longitude", "latitude", "origin_event"}) e.removeMember(k);
+            input["facts"]["entities"][id] = e;
+        }
+    // The player's actions come first so the model's bounded reasoning reaches them.
+    input["intentions"] = Json::arrayValue;
+    std::vector<std::string> order{w.player};
+    for (auto &[a, o] : intentions)
+        if (a != w.player) order.push_back(a);
+    for (auto &a : order) {
+        if (!intentions.contains(a)) continue;
+        for (auto &action : intentions.at(a)) {
+            std::string targets;
+            for (auto &t : action.targets) {
+                auto name = w.territories.isMember(t) ? w.territories[t]["name"].asString() + " (region " + t + ")"
+                          : w.entities.isMember(t)    ? w.entities[t]["name"].asString() + " (entity " + t + ")"
+                                                      : w.actors[t]["name"].asString() + " (actor " + t + ")";
+                targets += (targets.empty() ? "" : ", ") + name;
+            }
+            Json::Value item;
+            item["actor"] = a;
+            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")");
+            input["intentions"].append(item);
+        }
+    }
+    return input;
+}
 int main(int argc, char **argv) {
     try {
         std::string configPath, llamaFlagValue;
@@ -83,9 +215,10 @@ int main(int argc, char **argv) {
         }
         if (!config.isNull() && !config.isObject())
             throw ValidationError("Config must be an object");
-        auto timeoutSeconds = config.get("timeout_seconds", 20).asDouble();
-        if (timeoutSeconds <= 0 || timeoutSeconds > 60)
-            throw ValidationError("Timeout must be greater than zero and at most 60 seconds");
+        // Adjudication reasons before answering, which takes minutes on a small local model.
+        auto timeoutSeconds = config.get("timeout_seconds", 240).asDouble();
+        if (timeoutSeconds <= 0 || timeoutSeconds > 600)
+            throw ValidationError("Timeout must be greater than zero and at most 600 seconds");
         std::string save = config.get("save_path", "saves/campaign.sqlite").asString();
         auto parent = std::filesystem::path(save).parent_path();
         if (!parent.empty())
@@ -97,6 +230,8 @@ int main(int argc, char **argv) {
         store.recover();
         Json::Value geography(Json::objectValue);
         for(auto &r:reference.query("SELECT id,geometry FROM regions"))geography[r["id"].asString()]=parse(r["geometry"].asString());
+        Adjacency adjacency;
+        for(auto &r:reference.query("SELECT a,b FROM region_neighbors"))adjacency[r["a"].asString()].insert(r["b"].asString());
         std::string endpoint = llamaFlagGiven
                                    ? validateEndpoint(llamaFlagValue)
                                    : validateEndpoint(store.setting("llama_endpoint",
@@ -144,10 +279,6 @@ int main(int argc, char **argv) {
                                           {"expected_turn", "int"},
                                           {"idempotency_key", "string"},
                                           {"orders", "array"}};
-                            if (path == "/api/v1/proposals")
-                                fields = {{"campaign_id", "string"},
-                                          {"expected_turn", "int"},
-                                          {"text", "string"}};
                             if (path == "/api/v1/model-config")
                                 fields = {{"llama_endpoint", "string"}};
                             if (path == "/api/v1/history")
@@ -189,7 +320,7 @@ int main(int argc, char **argv) {
                           throw ValidationError("country is required");
                       WorldState w;
                       for (auto &c : reference.query("SELECT code,name FROM countries ORDER BY code")) {
-                          auto id=c["code"].asString();w.countries[id] = {};
+                          auto id=c["code"].asString();
                           w.actors[id]["name"]=c["name"];
                           unsigned hash=0;for(unsigned char ch:id)hash=hash*31+ch;
                           char color[8];snprintf(color,sizeof(color),"#%06x",0x405050+(hash*7919)%0x909090);
@@ -203,7 +334,7 @@ int main(int argc, char **argv) {
                           auto &e=w.entities[c["id"].asString()];for(auto k:{"name","region","latitude","longitude"})e[k]=c[k];e["actor"]=c["affiliation"];e["kind"]="city";e["status"]="active";e["origin_event"]="initial";
                       }
                       w.player = b["country"].asString();
-                      if (!w.countries.contains(w.player))
+                      if (!w.hasActor(w.player))
                           throw ValidationError("Country is not playable");
                       w.campaignId = utils::getUuid();
                       store.create(w, b.get("confirm_replace", false).isBool() &&
@@ -288,23 +419,15 @@ int main(int argc, char **argv) {
                                           b["idempotency_key"].asString(), payload);
                   auto id = job["id"].asString();
                   Json::Value refs(Json::objectValue);
-                  std::set<std::string> actors;
-                  for (auto &o : orders)
-                      if (w.countries.contains(o.target)) actors.insert(o.target);
-                      else if(w.territories.isMember(o.target)) {auto a=w.territories[o.target]["owner"].asString();if(!a.empty())actors.insert(a);}
-                      else if(w.entities.isMember(o.target))actors.insert(w.entities[o.target]["actor"].asString());
-                  for (auto &o : w.offers) {
-                      actors.insert(o.substr(0, o.find(':')));
-                      actors.insert(o.substr(o.find(':')+1));
-                  }
-                  // Ongoing disputes and commitments take priority; rotate neighbors deterministically.
-                  for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)if(v["status"]=="open")for(auto &a:v["actors"])actors.insert(a.asString());
+                  auto mentions=mentioned(w,w.player,orders);
+                  // AI nations that act this month: those the player addresses first, then ongoing disputes and one rotating neighbor.
+                  std::vector<std::string> candidates(mentions.actors.begin(),mentions.actors.end());
+                  for(auto collection:{w.conflicts,w.commitments})for(auto &v:collection)if(v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end())for(auto &a:v["actors"])candidates.push_back(a.asString());
                   auto neighbors=reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player});
-                  for(Json::ArrayIndex n=0;n<neighbors.size()&&n<1;++n)actors.insert(neighbors[(n+w.turn)%neighbors.size()]["b"].asString());
-                  if(actors.empty() && !w.countries.empty()) {
-                      std::vector<std::string> rotation;for(auto &[a,c]:w.countries)if(a!=w.player)rotation.push_back(a);
-                      for(size_t n=0;n<rotation.size()&&actors.empty();++n)actors.insert(rotation[(w.turn+n)%rotation.size()]);
-                  }
+                  if(!neighbors.empty())candidates.push_back(neighbors[w.turn%neighbors.size()]["b"].asString());
+                  if(neighbors.empty()&&w.actors.size()>1){auto names=w.actors.getMemberNames();candidates.push_back(names[w.turn%names.size()]);}
+                  std::set<std::string> actors;
+                  for(auto &a:candidates)if(a!=w.player&&w.hasActor(a)&&actors.size()<maxAiActors)actors.insert(a);
                   actors.erase(w.player);
                   refs[w.player] = store.background(w.player);
                   for (auto &a : actors)
@@ -321,47 +444,9 @@ int main(int argc, char **argv) {
                                   auto c = contexts.at(a);
                                   intentions[a] = provider.decide(w, c).orders;
                               }
-                              auto result = resolve(w, intentions);
-                              Json::Value adjudication;
-                              adjudication["facts"]["turn"]=result.state.turn;
-                              adjudication["facts"]["actors"]=Json::objectValue;
-                              auto post=encode(result.state);
-                              for(auto &[a,c]:contexts) {
-                                  auto facts=c.facts;facts["state"]=post["countries"][a];
-                                  for(auto k:{"territories","entities","available_targets","available_actions","objective"})facts.removeMember(k);
-                                  adjudication["facts"]["actors"][a]=facts;
-                                  adjudication["reference_only"][a]=c.reference;
-                              }
-                              adjudication["facts"]["territories"]=Json::objectValue;
-                              adjudication["facts"]["entities"]=Json::objectValue;
-                              // Only regions the intentions or open conflicts touch: a 4B model adjudicates far more reliably from a short, relevant prompt.
-                              std::set<std::string> relevant;
-                              for(auto &[a,o]:intentions)for(auto &order:o) {
-                                  if(w.territories.isMember(order.target))relevant.insert(order.target);
-                                  if(w.entities.isMember(order.target))relevant.insert(w.entities[order.target]["region"].asString());
-                              }
-                              for(auto &id:w.conflicts.getMemberNames())if(w.conflicts[id]["status"]=="open")for(auto &r:w.conflicts[id]["regions"])if(r.isString()&&w.territories.isMember(r.asString()))relevant.insert(r.asString());
-                              for(auto &id:relevant) {
-                                  auto t=w.territories[id];t.removeMember("longitude");t.removeMember("latitude");
-                                  adjudication["facts"]["territories"][id]=t;
-                              }
-                              for(auto &id:w.entities.getMemberNames())if(relevant.contains(w.entities[id]["region"].asString())) {
-                                  auto e=w.entities[id];e.removeMember("longitude");e.removeMember("latitude");
-                                  adjudication["facts"]["entities"][id]=e;
-                              }
-                              // Readable sentences: raw order names such as "conflict" mislead a small model into requiring a prior conflict.
-                              for(auto &[a,o]:intentions) {
-                                  adjudication["intentions"][a]=Json::arrayValue;
-                                  for(auto &order:o) {
-                                      static const std::map<std::string,std::string> labels{{"construction","Construction"},{"movement","Move forces or entity"},{"conflict","Military action"},{"territorial_diplomacy","Territorial diplomacy"}};
-                                      auto label=labels.contains(order.action)?labels.at(order.action):order.action;
-                                      std::string target=order.target;
-                                      if(w.territories.isMember(target))target=w.territories[target]["name"].asString()+" (region "+target+")";
-                                      else if(w.entities.isMember(target))target=w.entities[target]["name"].asString()+" (entity "+target+")";
-                                      adjudication["intentions"][a].append(label+(target.empty()?"":" targeting "+target)+(order.value.empty()?"":": "+order.value));
-                                  }
-                              }
-                              auto delta=provider.adjudicate(result.state,adjudication);
+                              auto result = resolve(w);
+                              auto adjudication=adjudicationInput(result.state,contexts,intentions,adjacency);
+                              auto delta=provider.adjudicate(result.state,adjudication,adjacency);
                               result=applyDelta(result,delta,geography);
                               auto frozen=refs;frozen["delta"]=encode(delta);
                               frozen["contexts"]=adjudication;
@@ -398,51 +483,6 @@ int main(int argc, char **argv) {
                       throw;
                   }
                   reply(cb, store.job(id), 202);
-              },
-              {Post});
-        route("/api/v1/proposals",
-              [&](auto, auto b, auto cb) {
-                  std::lock_guard l(mutex);
-                  auto w = decode(store.campaign());
-                  if (w.player.empty() || b["campaign_id"] != w.campaignId ||
-                      !b["expected_turn"].isInt() || b["expected_turn"].asInt() != w.turn)
-                      throw ValidationError("Load the current campaign before proposing orders");
-                  if (!b["text"].isString() || b["text"].asString().empty() ||
-                      b["text"].asString().size() > 1000)
-                      throw ValidationError("Provide 1–1000 bytes of instructions");
-                  if (auxiliary.size() >= 128) {
-                      for (auto it = auxiliary.begin(); it != auxiliary.end();) {
-                          if (it->second["status"] != "running")
-                              it = auxiliary.erase(it);
-                          else
-                              ++it;
-                      }
-                  }
-                  auto id = "proposal-" + std::to_string(++auxiliaryId);
-                  auto c = store.campaignContext(w, w.player);
-                  worker.add([&, w, c, b, id] {
-                      Json::Value j;
-                      j["id"] = id;
-                      try {
-                          auto p = provider.propose(w, c, b["text"].asString());
-                          j["orders"] = encode(p.orders);
-                          j["message"] = p.status;
-                          j["expected_turn"] = w.turn;
-                          j["campaign_id"] = w.campaignId;
-                          j["status"] = "complete";
-                      } catch (const std::exception &e) {
-                          j["status"] = "failed";
-                          j["error"] = e.what();
-                      }
-                      std::lock_guard l(mutex);
-                      store.recordInference(id,provider.takeAudit());
-                      auxiliary[id] = j;
-                  });
-                  Json::Value j;
-                  j["id"] = id;
-                  j["status"] = "running";
-                  auxiliary[id] = j;
-                  reply(cb, j, 202);
               },
               {Post});
         route("/api/v1/history",

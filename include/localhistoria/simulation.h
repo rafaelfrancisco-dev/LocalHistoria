@@ -9,20 +9,16 @@ namespace lh {
 struct ValidationError : std::runtime_error {
     using runtime_error::runtime_error;
 };
-struct CountryState {
-    int treasury = 100, income = 10, stability = 60, army = 10, navy = 10;
-    std::string posture = "defensive", priority = "balanced";
-};
 struct WorldState {
     int turn = 0;
     std::string player, campaignId;
     Json::Value actors{Json::objectValue}, territories{Json::objectValue}, entities{Json::objectValue}, conflicts{Json::objectValue}, commitments{Json::objectValue};
-    std::map<std::string, CountryState> countries;
-    std::map<std::string, int> relations;
-    std::set<std::string> alliances, offers;
+    bool hasActor(const std::string &id) const { return actors.isMember(id); }
 };
+// A free-text action written by a player or an AI nation, optionally pinned to map targets.
 struct Order {
-    std::string action, target, value;
+    std::string text;
+    std::vector<std::string> targets;
 };
 using TurnOrders = std::vector<Order>;
 struct ResolvedEvent {
@@ -36,14 +32,15 @@ struct Resolution {
     WorldState state;
     std::vector<ResolvedEvent> events;
 };
-std::string pairKey(std::string a, std::string b);
+constexpr size_t maxActions = 8, maxTargets = 4, maxActionBytes = 500;
 Json::Value encode(const WorldState &);
 WorldState decode(const Json::Value &);
 Json::Value encode(const TurnOrders &);
 Json::Value encode(const std::vector<ResolvedEvent> &);
 TurnOrders parseOrders(const Json::Value &);
 void validate(const WorldState &, const std::string &, const TurnOrders &);
-Resolution resolve(const WorldState &, const std::map<std::string, TurnOrders> &);
+// Advances one month: construction that is due completes; everything else is adjudicated.
+Resolution resolve(const WorldState &);
 CountryContext context(const WorldState &, const std::string &, const Json::Value &,
                        const Json::Value &);
 std::string dump(const Json::Value &);

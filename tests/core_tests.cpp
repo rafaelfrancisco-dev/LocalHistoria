@@ -30,80 +30,76 @@ int main(int argc, char **argv) {
         WorldState w;
         w.player = "PT";
         w.campaignId = "test";
-        for (auto a : {"PT", "ES", "FR"})
-            w.countries[a] = {};
-        auto r = resolve(
-            w,
-            {{"PT",
-              {{"economy", "", ""}, {"army", "", ""}, {"navy", "", ""}, {"improve", "ES", ""}}}});
-        check(r.state.countries["PT"].treasury == 55, "Costs and income");
-        check(r.state.countries["PT"].income == 12, "Investment");
-        check(r.state.countries["ES"].treasury == 110, "All actors administration");
-        check(r.state.countries["PT"].army == 13 && r.state.countries["PT"].navy == 13,
-              "Military investment");
-        check(dump(encode(resolve(w, {{"PT",
-                                       {{"navy", "", ""},
-                                        {"improve", "ES", ""},
-                                        {"army", "", ""},
-                                        {"economy", "", ""}}}})
-                              .state)) == dump(encode(r.state)),
-              "Stable resolution");
+        w.actors = parse(R"({"PT":{"name":"Portugal","color":"#123456"},"ES":{"name":"Spain","color":"#654321"},"FR":{"name":"France","color":"#abcdef"}})");
+        w.territories = parse(R"({"north":{"name":"North","owner":"PT","controller":"PT","initial_affiliation":"PT"}})");
+        w.entities = parse(R"({"port-1":{"name":"Harbor","kind":"port","actor":"PT","region":"north","status":"under_construction","completes_turn":2,"longitude":1,"latitude":1,"origin_event":"initial"}})");
+        auto r = resolve(w);
+        check(r.state.turn == 1 && r.events.empty() && r.state.entities["port-1"]["status"] == "under_construction", "Month advance");
+        auto completed = resolve(r.state);
+        check(completed.state.entities["port-1"]["status"] == "active" && !completed.state.entities["port-1"].isMember("completes_turn") &&
+                  completed.events.size() == 1 && completed.events[0].text == "Harbor (port) was completed in North.",
+              "Construction completes on schedule");
         check(dump(encode(decode(encode(r.state)))) == dump(encode(r.state)), "Serialization");
-        rejects([&] { validate(w, "PT", {{"improve", "ZZ", ""}}); });
-        rejects([&] { validate(w, "PT", {{"improve", "PT", ""}}); });
-        rejects([&] { validate(w, "PT", {{"accept", "ES", ""}}); });
-        rejects([&] { validate(w, "PT", {{"posture", "", "hostile"}}); });
-        rejects([&] { parseOrders(parse(R"([{"action":"army","treasury":999}])")); });
+        auto orders = parseOrders(parse(R"([{"text":"Build a port","targets":["north"]},{"text":"Negotiate with Spain","targets":["ES"]}])"));
+        check(orders.size() == 2 && orders[0].targets[0] == "north", "Free-text actions parse");
+        check(dump(encode(orders)) == R"([{"targets":["north"],"text":"Build a port"},{"targets":["ES"],"text":"Negotiate with Spain"}])", "Action encoding");
+        validate(w, "PT", orders);
+        validate(w, "PT", {});
+        rejects([&] { validate(w, "PT", {{"   ", {}}}); });
+        rejects([&] { validate(w, "PT", {{std::string(501, 'x'), {}}}); });
+        rejects([&] { validate(w, "PT", {{"Invade", {"nowhere"}}}); });
+        rejects([&] { validate(w, "PT", {{"Same", {}}, {"Same", {}}}); });
+        rejects([&] { validate(w, "ZZ", {}); });
+        rejects([&] { parseOrders(parse(R"([{"text":"x","action":"army"}])")); });
         rejects([&] { parseOrders(parse(R"({"orders":[]})")); });
-        rejects([&] { parseOrders(parse(R"([{"action":9}])")); });
-        auto poor = w;
-        poor.countries["PT"].treasury = 19;
-        rejects([&] { resolve(poor, {{"PT", {{"economy", "", ""}}}}); });
-        auto offered = resolve(w, {{"PT", {{"offer", "ES", ""}, {"improve", "ES", ""}}}});
-        check(offered.state.offers.contains("PT:ES"), "Offer persisted");
-        auto accepted = resolve(offered.state, {{"ES", {{"accept", "PT", ""}}}});
-        check(accepted.state.alliances.contains("ES:PT") && accepted.state.offers.empty(),
-              "Acceptance lifecycle");
-        auto noRelation = resolve(w, {{"PT", {{"offer", "FR", ""}}}});
-        auto rejected = resolve(noRelation.state, {{"FR", {{"reject", "PT", ""}}}});
-        check(rejected.state.offers.empty() && rejected.state.alliances.empty(),
-              "Rejection lifecycle");
-        rejects([&] { validate(offered.state, "PT", {{"offer", "ES", ""}}); });
-        auto crossed = resolve(w, {{"PT", {{"offer", "ES", ""}}}, {"ES", {{"offer", "PT", ""}}}});
-        auto crossedAccepted = resolve(crossed.state, {{"ES", {{"accept", "PT", ""}}}});
-        check(crossedAccepted.state.offers.empty() &&
-                  crossedAccepted.state.alliances.contains("ES:PT"),
-              "Reciprocal offers clear on acceptance");
-        auto prioritized = resolve(w, {{"PT", {{"priority", "", "prosperity"}}}});
-        check(prioritized.state.countries.at("PT").treasury == 110,
-              "New priority waits until next administration");
-        check(resolve(prioritized.state, {}).state.countries.at("PT").treasury == 121,
-              "Prosperity administration");
-        auto c = context(offered.state, "ES", {}, {});
-        LocalProvider malformed("http://127.0.0.1:8081", .1, [](auto, auto, auto, double) {
+        rejects([&] { parseOrders(parse(R"([{"text":9}])")); });
+        rejects([&] { parseOrders(parse(R"([{"text":"x","targets":["a","b","c","d","e"]}])")); });
+        rejects([&] { parseOrders(parse(R"([{"text":"1"},{"text":"2"},{"text":"3"},{"text":"4"},{"text":"5"},{"text":"6"},{"text":"7"},{"text":"8"},{"text":"9"}])")); });
+        auto c = context(w, "ES", {}, {});
+        check(c.facts["actor_name"] == "Spain" && c.facts["territories"].empty(), "Context");
+        LocalProvider malformed("http://127.0.0.1:8081", .1, [](auto, auto path, auto, double) {
+            if(path=="/props")return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+            if(path=="/apply-template")return parse(R"({"prompt":"fixture"})");
+            if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
             return parse(
                 R"({"choices":[{"message":{"content":"{\"orders\":[{\"action\":\"invade\"}]}"}}]})");
         });
-        rejects([&] { malformed.decide(offered.state, c); });
+        rejects([&] { malformed.decide(w, c); });
         LocalProvider timeoutProvider("http://127.0.0.1:8082", .1,
                                       [](auto, auto, auto, double) -> Json::Value {
                                           throw std::runtime_error("timeout");
                                       });
-        rejects([&] { timeoutProvider.decide(offered.state, c); });
+        rejects([&] { timeoutProvider.decide(w, c); });
         LocalProvider valid("http://127.0.0.1:8083", .1, [](auto, auto path, auto b, double) {
             if(path=="/props")return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
             if(path=="/apply-template")return parse(R"({"prompt":"fixture"})");
             if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
             check(b["response_format"]["type"] == "json_schema" &&
-                      !b["chat_template_kwargs"]["enable_thinking"].asBool(),
+                      !b["chat_template_kwargs"]["enable_thinking"].asBool() && b["max_tokens"].asInt() == 768,
                   "Constrained request");
             return parse(
-                R"({"choices":[{"message":{"content":"{\"orders\":[{\"action\":\"accept\",\"target\":\"PT\"}]}"}}]})");
+                R"({"choices":[{"message":{"content":"{\"actions\":[{\"text\":\"Open trade talks with Portugal\"}]}"}}]})");
         });
-        auto validDecision = valid.decide(offered.state, c);
-        check(validDecision.orders.size() == 1 && validDecision.orders[0].action == "accept" &&
-                  validDecision.orders[0].target == "PT",
+        auto validDecision = valid.decide(w, c);
+        check(validDecision.orders.size() == 1 && validDecision.orders[0].text == "Open trade talks with Portugal",
               "Valid model adapter");
+        // Adjudication reasons only when the context can hold the reasoning; otherwise it answers directly.
+        for (int ctx : {8192, 32768}) {
+            Json::Value seen;
+            LocalProvider judge("http://127.0.0.1:8084", .1, [&](auto, auto path, auto b, double) {
+                if(path=="/props"){Json::Value j;j["default_generation_settings"]["n_ctx"]=ctx;return j;}
+                if(path=="/apply-template")return parse(R"({"prompt":"fixture"})");
+                if(path=="/tokenize")return parse(R"({"tokens":[1,2,3]})");
+                seen=b;
+                return parse(R"({"choices":[{"message":{"content":"{\"events\":[]}","reasoning_content":"Thinking"}}]})");
+            });
+            Json::Value input;input["intentions"][0]["actor"]="PT";input["intentions"][0]["action"]="Wait";
+            judge.adjudicate(w, input, {});
+            auto audit = judge.takeAudit();
+            check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == (ctx == 32768) && seen["max_tokens"].asInt() == (ctx == 32768 ? 2560 : 2048) && seen.isMember("thinking_budget_tokens") == (ctx == 32768) &&
+                      audit[0]["context_limit"].asInt() == ctx,
+                  "Thinking budget follows context size");
+        }
         rejects([&] { LocalProvider bad(""); });
         rejects([&] { LocalProvider bad("not-a-url"); });
         auto path = (std::filesystem::temp_directory_path() / "localhistoria-test.sqlite").string();
@@ -121,7 +117,7 @@ int main(int argc, char **argv) {
             check(s.campaign()["turn"] == 0, "Atomic rollback");
             s.commit(id, r, {}, {});
             auto before = dump(s.campaign());
-            rejects([&] { timeoutProvider.narrate(r.events); });
+            rejects([&] { timeoutProvider.narrate(completed.events); });
             check(dump(s.campaign()) == before, "Narration isolation");
             s.narrate(id, "Fictional narration", false);
             check(dump(s.campaign()) == before, "Narration never mutates state");

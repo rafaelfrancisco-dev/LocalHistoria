@@ -31,8 +31,8 @@
       </div>
     </header>
     <div class="notice">
-      A fictional world, a shared starting point. All national statistics are
-      invented and balanced. Playable map actors do not assert sovereignty.
+      A fictional world, a shared starting point. Everything after January 2026
+      is invented by a local model. Playable map actors do not assert sovereignty.
     </div>
     <main>
       <aside aria-label="Countries">
@@ -72,56 +72,22 @@
           <p id="background"></p>
         </details>
         <section id="controls" hidden>
-          <h2>Your monthly orders</h2>
+          <h2>This month's actions</h2>
           <p id="player-label"></p>
-          <div id="diplomacy"></div>
           <p>
-            Income arrives monthly. Costs use your starting treasury. Up to 8
-            orders.
+            Write what your nation does this month, in your own words. Click a
+            map region while writing an action to pin it as a target. A month
+            is short: large goals advance step by step.
           </p>
-          <label for="world-target">Region, entity or actor ID</label><input id="world-target" placeholder="Select a region to copy its ID"/><label for="world-description">Intended outcome</label><input id="world-description" maxlength="500" placeholder="Describe construction, movement or diplomacy"/>
-          <label for="action">Action</label
-          ><select id="action">
-            <option value="construction">Construction intention</option><option value="movement">Movement intention</option><option value="conflict">Conflict intention</option><option value="territorial_diplomacy">Territorial diplomacy intention</option>
-            <option value="economy">Invest in economy · 20</option>
-            <option value="army">Invest in army · 15</option>
-            <option value="navy">Invest in navy · 15</option>
-            <option value="improve">Improve relations · 5</option>
-            <option value="offer">Offer alliance · free</option>
-            <option value="accept">Accept incoming alliance · free</option>
-            <option value="reject">Reject incoming alliance · free</option>
-            <option value="posture">Change posture · free</option>
-            <option value="priority">
-              Set domestic priority · free
-            </option></select
-          ><label for="target">Diplomatic target</label
-          ><select id="target"></select
-          ><label for="value">Posture / priority</label
-          ><select id="value"></select
-          ><button id="add">Add order to draft</button
-          ><label for="instruction">Or describe your intentions</label
-          ><textarea
-            id="instruction"
-            rows="2"
-            maxlength="1000"
-            placeholder="Invest in economy and improve relations with ES"
-          ></textarea
-          ><button id="propose">Create proposal for review</button>
-          <p>
-            Proposals only update this editable draft. Review before submitting.
-          </p>
-          <label for="draft">Editable order draft (JSON)</label
-          ><textarea id="draft" rows="7" spellcheck="false">[]</textarea
-          ><button class="primary" id="turn">
-            Review complete — advance one month</button
-          ><a href="/api/v1/replay" target="_blank"
-            >Export campaign &amp; replay</a
-          >
+          <div id="actions"></div>
+          <button id="add-action" type="button">+ Add action</button>
+          <button class="primary" id="turn">End month</button>
+          <a href="/api/v1/replay" target="_blank">Export campaign &amp; replay</a>
         </section>
       </section>
     </main>
     <footer>
-      Local play · January 2026 onward · No combat or territorial conquest ·
+      Local play · January 2026 onward · Fictional outcomes adjudicated by a local model ·
       <a href="/credits.html">Data &amp; credits</a>
     </footer>
   </body>

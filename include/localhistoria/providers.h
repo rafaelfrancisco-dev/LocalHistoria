@@ -27,7 +27,7 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Transport transport;
     mutable std::mutex inference, settings;
     Json::Value audit{Json::arrayValue};
-    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &);
+    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &, unsigned reasoningBudget, double temperature);
 
   public:
     explicit LocalProvider(std::string endpoint, double timeout = 20,
@@ -35,11 +35,9 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);
-    WorldDelta adjudicate(const WorldState &, const Json::Value &);
+    WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &);
     Json::Value takeAudit();
-    Decision propose(const WorldState &, const CountryContext &, const std::string &);
     void setEndpoint(const std::string &);
     std::string endpointValue() const;
 };
-Json::Value orderSchema();
 } // namespace lh

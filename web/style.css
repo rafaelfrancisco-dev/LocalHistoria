@@ -280,6 +280,46 @@ footer {
 #controls > a {
   display: block;
 }
+.action-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px 4px;
+  margin-bottom: 10px;
+  background: #13242c;
+}
+.action-card.active {
+  border-color: var(--accent);
+}
+.action-card textarea {
+  margin-bottom: 6px;
+  resize: vertical;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chips small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.chip {
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: #2b4149;
+}
+.action-card .remove {
+  margin: 6px 0;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: transparent;
+}
+#add-action {
+  width: 100%;
+}
 .leaflet-control-attribution {
   font-size: 9px;
 }

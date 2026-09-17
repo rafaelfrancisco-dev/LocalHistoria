@@ -18,6 +18,10 @@ def polygons(g):
         elif p.geom_type in ('MultiPolygon','GeometryCollection'):
             q=polygons(p); parts.extend([q] if q.geom_type=='Polygon' else q.geoms)
     return MultiPolygon(parts)
+def readable(name):
+    # Some geoBoundaries names are UTF-8 bytes mis-decoded as Latin-1 (e.g. "RegiÃ³n"); repair them when that round-trips.
+    try: return name.encode('latin-1').decode('utf-8')
+    except (UnicodeEncodeError,UnicodeDecodeError): return name
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--download',action='store_true');a=parser.parse_args()
     CACHE.mkdir(parents=True,exist_ok=True)
@@ -58,7 +62,7 @@ def main():
             for r in sorted(json.loads(path.read_text())['features'],key=lambda x:x['properties']['shapeID']):
                 g=polygons(shape(r['geometry']).intersection(outline));rid='gb-'+r['properties']['shapeID']
                 if g.intersection(used).area>1e-9:rejected.append(rid);continue
-                emit(rid,r['properties']['shapeName'],g,'ADM1');used=unary_union([used,g]);count+=not g.is_empty
+                emit(rid,readable(r['properties']['shapeName']),g,'ADM1');used=unary_union([used,g]);count+=not g.is_empty
         residual=polygons(outline.difference(used));emit(code+'-residual',p['name']+(' — uncovered territory' if count else ' — single territory'),residual,'residual' if count else 'single')
         manifest['countries'].append({'code':code,'regions':count,'missing_subdivisions':not path.exists(),'rejected_overlaps':rejected,'supplied_overlap_area':overlap,'residual_area':residual.area})
     # Final pass handles floating-point slivers after validity repair of supplied claims.
@@ -106,6 +110,6 @@ def main():
             a,b=affiliations[ids[i]],affiliations[ids[k]]
             if a and b and a!=b and g.intersects(shapes[k]):db.execute('INSERT OR IGNORE INTO neighbors VALUES(?,?)',(a,b))
     db.commit();
-    import region_interiors
+    import region_interiors, region_neighbors
     print(f'Imported {len(features)} regions and {seeded} located cities',flush=True)
 if __name__=='__main__':main()

@@ -1,12 +1,10 @@
-> Campaign geography, adjudication, historical preparation and current verification are described in [Evolving world](docs/EVOLVING_WORLD.md). This supersedes the original country-statistics-only behavior described below.
-
 # LocalHistoria
 
-A playable, local C++20/Drogon strategy sandbox. Choose one of 239 map actors, begin in **January 2026**, issue monthly orders, and build a fictional diplomatic history. All national statistics are deliberately invented and equal at the start. Country codes identify sandbox actors without asserting sovereignty. Combat and conquest are not implemented.
+A local C++20/Drogon strategy sandbox in the spirit of Pax Historia. Choose one of 239 nations, begin in **January 2026**, and each month write what your nation does in your own words. A local model decides what actually happens, what other nations do in response, and how the map changes: occupations, annexations, new states, construction, treaties and wars. There are no fixed action types, costs or statistics. The world's state is its map, its entities and its history.
 
 ## Run
 
-A reachable **llama-server** is required — there is no offline/scripted mode. See [model setup](docs/MODELS.md) to install and start one on port 8081 before continuing.
+A reachable **llama-server** is required; there is no offline/scripted mode. See [model setup](docs/MODELS.md) to start one on port 8081 before continuing.
 
 On macOS with Homebrew:
 
@@ -18,34 +16,31 @@ make test
 ./build/localhistoria --llama-endpoint=http://127.0.0.1:8081
 ```
 
-Open **http://127.0.0.1:8080** (use this address, not `localhost`). Run from the project root. CMake discovers installed dependencies; on Linux install Drogon, JsonCpp, SQLite development packages, a C++20 compiler, CMake and Python 3, then use the same commands. Set `CMAKE_PREFIX_PATH` when configuring manually for a custom dependency prefix.
+Open **http://127.0.0.1:8080** (use this address, not `localhost`). Run from the project root. CMake discovers installed dependencies. On Linux, install Drogon, JsonCpp, SQLite development packages, a C++20 compiler, CMake and Python 3, then use the same commands. Set `CMAKE_PREFIX_PATH` when configuring manually for a custom dependency prefix.
 
-The `--llama-endpoint=` flag is optional (it defaults to `http://127.0.0.1:8081`) and only needs to be given once — the server persists whatever endpoint is active (from the flag, or from the web UI's **Model endpoint** field) in the campaign save, and reuses it on the next launch with no flag needed.
+The `--llama-endpoint=` flag is optional; it defaults to `http://127.0.0.1:8081`. You only need to give it once: the server saves the active endpoint (from the flag or the web UI's **Model endpoint** field) in the campaign save and reuses it on the next launch.
 
-The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are project-owned assets. The build imports the data on demand; it never reads Downloads or downloads models. Rebuild reference data explicitly with `python3 tools/import_data.py` while the server is stopped.
+The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are project-owned assets. The build imports the data on demand. It never reads Downloads or downloads models. Rebuild reference data explicitly (see [Evolving world](docs/EVOLVING_WORLD.md)) while the server is stopped.
 
 ## Play
 
 1. Select a country using the map or searchable list, then choose **Play as this country**.
-2. Add structured orders, or request a text proposal — the local model translates free text into a proposed order draft for you to review.
-3. Edit and review the JSON draft, then click **Review complete — advance one month**. Proposals never submit themselves. All orders must validate together.
-4. Pending alliances and active treaties appear above your order controls. Improve relations before an offer; each targeted actor's accept/reject decision is made by the model. New offers can only be answered next month.
-5. The game autosaves each completed turn. Reload or restart to resume. A new campaign requires confirmation before replacing the active campaign and journal.
+2. Write up to eight actions for the month, e.g. *"Build a naval base in Faro"*, *"Propose a defensive alliance to Spain"* or *"Launch a national education reform"*. While an action is selected, click map regions to pin them as targets. This is optional, since regions and nations named in the text are recognized too.
+3. Click **End month**. The model writes the actions of the nations you addressed, your ongoing rivals and a neighbor. It then adjudicates everything together and narrates the month. Drafts survive a page reload.
+4. The game autosaves each completed turn. Reload or restart to resume. A new campaign requires confirmation before replacing the active campaign and journal.
 
-Each actor starts with treasury 100, monthly income 10, stability 60, army 10, navy 10, defensive posture, balanced priority and neutral relations. These are game units, not currency or historical measurements.
+A turn is one month, and the game keeps outcomes realistic:
 
-| Action | Cost | Effect |
-|---|---:|---|
-| Economy | 20 | Income +2 from the following month |
-| Army / navy | 15 | Respective strength +3 |
-| Improve relations | 5 | Bilateral relation +10, capped at 100 |
-| Offer / accept / reject alliance | 0 | Pending offers and treaties |
-| Posture | 0 | Defensive, neutral or assertive; descriptive until combat is added |
-| Priority | 0 | Balanced, prosperity (+1 treasury/month), welfare (+1 stability/month) |
+- Force reaches only regions bordering land you control, or near your active armies and fleets. At most two regions can change hands by force per month.
+- Conquest takes two steps: occupy a region first, then annex it in a later month.
+- Armies advance one region per month and fleets sail up to 1,500 km.
+- Construction takes months: armies 2, bases 3, fleets 4, ports 6, cities 24.
+- At most one new state can emerge per month, and it needs territory.
+- An action beyond these limits still appears in the journal as a failed attempt, and the rest of the month proceeds.
 
-Affordability uses starting treasury; administration uses starting income and priorities. Up to eight orders per actor per turn; duplicate action/target combinations are rejected. Income/strength cap at 10,000, treasury at 1,000,000, stability at 100; campaigns stop after 12,000 months. The model decides only for directly targeted actors and actors with pending offers, with no per-turn cap on how many such decisions a turn needs. All countries still receive routine monthly administration.
+Actions without map effects (reforms, trade, research, diplomacy) are recorded as events and shape later adjudication through the campaign history.
 
-Model decisions are schema constrained and validated in C++. If the model is unreachable, times out, or returns an oversized, illegal or malformed result, the whole turn (or proposal) fails outright with no state change — resubmit once the model is healthy. Narration is non-authoritative and may lag the saved turn; reload to see completed narration. Its failure preserves a factual event summary. Inference is serialized and defaults to a 20-second timeout per request.
+If the model is unreachable, times out, or returns an illegal or malformed result, the whole turn fails with no state change. Resubmit once the model is healthy. Narration is non-authoritative and may lag the saved turn; reload to see it. If narration fails, a factual event summary is kept. Inference is serialized. Adjudication reasons briefly before answering, so a month takes roughly one to two minutes on a 4B model.
 
 ## Optional Wikipedia reference
 
@@ -62,7 +57,7 @@ npx playwright install chromium # one-time test browser installation
 python3 tests/integration.py     # real loopback HTTP, SQLite, mock model, browser
 ```
 
-Integration tests create disposable temporary saves and never replace your active campaign. They exercise hard failure on a down/slow/malformed model through a real HTTP client (no state change, clear error), duplicate/overlapping requests, restart and interrupted-job recovery, the CLI flag and web-UI endpoint setting persisting across restarts, reviewed proposals, journal display and browser reload. The browser blocks all external requests. Test screenshots go to ignored `tests/artifacts/`. These mocks do not establish actual model quality or throughput. See [verification evidence](docs/VERIFICATION.md).
+Integration tests create disposable temporary saves and never replace your active campaign. They exercise hard failure on a down/slow/malformed model through a real HTTP client (no state change, clear error), duplicate/overlapping requests, restart and interrupted-job recovery, the CLI flag and web-UI endpoint setting persisting across restarts, free-text action cards with map targets, journal display and browser reload. The browser blocks all external requests. Test screenshots go to ignored `tests/artifacts/`. These mocks do not establish actual model quality or throughput. See [verification evidence](docs/VERIFICATION.md).
 
 ## Project guide
 

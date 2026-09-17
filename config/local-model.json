@@ -1,5 +1,5 @@
 {
   "port": 8080,
   "save_path": "saves/campaign.sqlite",
-  "timeout_seconds": 20
+  "timeout_seconds": 240
 }

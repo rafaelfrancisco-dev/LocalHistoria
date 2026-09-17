@@ -1,5 +1,6 @@
 #include "localhistoria/providers.h"
 #include <drogon/drogon.h>
+#include <algorithm>
 #include <chrono>
 #include <trantor/net/EventLoopThread.h>
 namespace lh {
@@ -33,24 +34,18 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
         throw std::runtime_error("Response exceeds bound");
     return parse(std::string(response->body()));
 }
-Json::Value orderSchema() {
-    return parse(
-        R"({"type":"object","additionalProperties":false,"required":["orders"],"properties":{"orders":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["action"],"properties":{"action":{"type":"string","enum":["economy","army","navy","improve","offer","accept","reject","posture","priority","construction","movement","conflict","territorial_diplomacy"]},"target":{"type":"string"},"value":{"type":"string"}}}}}})");
-}
 LocalProvider::LocalProvider(std::string e, double t, Transport tr)
     : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)) {}
 Json::Value LocalProvider::completion(const Json::Value &input, const Json::Value &schema,
-                                      const std::string &instruction) {
+                                      const std::string &instruction, unsigned reasoningBudget, double temperature) {
     std::lock_guard lock(inference);
     auto endpoint = endpointValue();
     auto selected = input;
     auto started = std::chrono::steady_clock::now();
     Json::Value b;
     b["model"] = "local";
-    b["temperature"] = 0;
-    b["max_tokens"] = schema["properties"].isMember("events") ? 2048 : 768;
+    b["temperature"] = temperature;
     b["stream"] = false;
-    b["chat_template_kwargs"]["enable_thinking"] = false;
     b["response_format"]["type"] = "json_schema";
     b["response_format"]["json_schema"]["name"] = "result";
     b["response_format"]["json_schema"]["strict"] = true;
@@ -66,6 +61,14 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     auto props=transport(endpoint,"/props",Json::nullValue,timeout);
     if(!props["default_generation_settings"]["n_ctx"].isInt() || props["default_generation_settings"]["n_ctx"].asInt()<8192)
         throw ValidationError("Model must expose a verified context of at least 8192 tokens");
+    const unsigned contextLimit=props["default_generation_settings"]["n_ctx"].asUInt();
+    // Reasoning shares the output budget, so thinking needs a context large enough to hold it.
+    bool thinking=reasoningBudget>0&&contextLimit>=16384;
+    unsigned answer=schema["properties"].isMember("events")?2048:768;
+    // Unbounded, a 4B model reasons for thousands of tokens (minutes) about simple actions.
+    b["max_tokens"]=answer+(thinking?reasoningBudget:0);
+    b["chat_template_kwargs"]["enable_thinking"]=thinking;
+    if(thinking)b["thinking_budget_tokens"]=reasoningBudget;
     unsigned tokens=0;
     for (;;) {
         b["messages"][1]["content"]=dump(selected);
@@ -75,7 +78,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
         auto counted=transport(endpoint,"/tokenize",request,timeout);
         if(!counted["tokens"].isArray())throw ValidationError("Tokenizer unavailable");
         tokens=counted["tokens"].size();
-        if(tokens+b["max_tokens"].asUInt()+256<=8192)break;
+        if(tokens+b["max_tokens"].asUInt()+256<=contextLimit)break;
         if(selected.isMember("reference_only") && !selected["reference_only"].isNull()) {
             auto &refs=selected["reference_only"];bool removed=false;
             auto trim=[&](Json::Value &ref){for(auto k:{"history_excerpt","excerpt"})if(ref.isObject()&&ref.isMember(k)){ref.removeMember(k);return true;}return false;};
@@ -94,7 +97,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     }
     auto response = transport(endpoint, "/v1/chat/completions", b, timeout);
     Json::Value record;record["input"]=selected;record["messages"]=b["messages"];record["schema"]=schema;
-    record["prompt_tokens"]=tokens;record["output_reserve"]=b["max_tokens"];record["context_limit"]=8192;
+    record["prompt_tokens"]=tokens;record["output_reserve"]=b["max_tokens"];record["context_limit"]=contextLimit;record["thinking"]=thinking;
     record["model"]=props["model_alias"];record["build"]=props["build_info"];record["chat_template"]=props["chat_template"];
     record["latency_ms"]=Json::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count());
     record["response"]=response;audit.append(record);
@@ -108,12 +111,15 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     input["facts"] = c.facts;
     input["reference_only"] = c.reference;
     auto j = completion(
-        input, orderSchema(),
-        "Choose legal intentions for this actor using starting facts. Respond only to existing "
-        "offers; new offers take effect next month. At most eight orders.");
-    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
+        input,
+        parse(R"({"type":"object","additionalProperties":false,"required":["actions"],"properties":{"actions":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})"),
+        "You lead this nation in a fictional monthly strategy sandbox. Write up to three concise actions (one sentence each) "
+        "it plausibly takes this month, given its facts, commitments, conflicts and recent events. Each action must be achievable "
+        "within a month or be a realistic step toward a longer goal. recent_events already happened: do not repeat them; "
+        "follow up, change course or respond to new developments. Refer to nations and regions by name.", 0, 0.7);
+    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} || !j["actions"].isArray())
         throw ValidationError("Invalid decision shape");
-    auto o = parseOrders(j["orders"]);
+    auto o = parseOrders(j["actions"]);
     validate(w, c.actor, o);
     return {o, "Local model"};
 }
@@ -121,56 +127,49 @@ std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e) { return
 std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e,const CountryContext &c) {
     Json::Value in;
     in["authoritative_events"] = encode(e);
-    in["facts"]=c.facts;in["facts"].removeMember("territories");in["facts"].removeMember("entities");in["reference_only"]=c.reference;
+    in["facts"]=c.facts;for(auto k:{"territories","occupied_by_others","occupying","entities"})in["facts"].removeMember(k);in["reference_only"]=c.reference;
     auto j = completion(
         in,
         parse(
             R"({"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","maxLength":2000}}})"),
         "Write a brief fictional monthly journal strictly reflecting these events. Do not invent "
-        "outcomes.");
+        "outcomes.", 0, 0.7);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"text"} ||
         !j["text"].isString() || j["text"].asString().size() > 2000 || j["text"].asString().empty())
         throw ValidationError("Invalid narration");
     return j["text"].asString();
 }
-Decision LocalProvider::propose(const WorldState &w, const CountryContext &c,
-                                const std::string &t) {
-    if (t.empty() || t.size() > 1000)
-        throw ValidationError("Instruction must contain 1–1000 bytes");
-    Json::Value in;
-    in["facts"] = c.facts;
-    in["player_instruction"] = t;
-    in["reference_only"] = c.reference;
-    auto j = completion(in, orderSchema(),
-                        "Translate the player's instruction into proposed legal orders. These "
-                        "are proposals requiring player review.");
-    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"orders"})
-        throw ValidationError("Invalid proposal shape");
-    auto o = parseOrders(j["orders"]);
-    validate(w, c.actor, o);
-    return {o, "Model proposal — review required"};
-}
 Json::Value LocalProvider::takeAudit() {std::lock_guard lock(inference);auto result=audit;audit=Json::arrayValue;return result;}
-WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &input) {
-    auto response = completion(input, operationSchema(w, input["facts"]),
-        "Adjudicate these fictional monthly intentions against the current facts. Return events: one per outcome, "
-        "including denied or failed intentions (with no operations). Up to three background events for other actors. "
-        "Each event has the acting actor, blocked_by (none, or the ID of the open commitment the intention breaks; affordability is checked by the game), causes (earlier event IDs from related_history, or []), a factual description of the outcome, "
-        "and then the operations (each named by action) that make that description true. Actions: build (new city/port/base/army/event_site in a region; "
-        "pair with spend for its cost), spend (consume treasury/army/navy), transfer_territory (owner and controller change), "
-        "occupy (controller changes, owner keeps it), restore_control, move_entity, set_entity_status, "
-        "create_actor (new state; then give it land with transfer_territory and funds with transfer_resources from the donor), "
-        "transfer_resources, adjust_stability, open_conflict, resolve_conflict, add_commitment, resolve_commitment. "
-        "Resources are never created, only spent or transferred. Intentions succeed unless the facts make them impossible "
-        "or an open commitment forbids them; never invent other rules, thresholds or prerequisites. "
-        "Attacking or occupying a region held by someone else is allowed without a prior conflict. Only its owner can build in, give away or grant independence to a region. "
-        "Examples: construct a port in R -> build + spend. Occupy R -> occupy (by the attacker) + open_conflict. "
-        "Annex R -> transfer_territory + open_conflict. Grant independence to R as a new state -> create_actor + transfer_territory to it, plus transfer_resources only when the intention gives it funds; independence itself costs nothing. "
-        "Sign a treaty -> add_commitment. "
-        "Exactly one event per intention; never report both success and failure for the same intention. "
-        "A blocked intention gets an event whose operations list is empty. Resolve a commitment or conflict only when the outcome explicitly ends it. "
-        "Use only the operations the outcome needs.");
-    return compileOperations(w, response);
+WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &input, const Adjacency &adjacency) {
+    std::vector<std::pair<std::string,std::string>> actions;
+    for(auto &i:input["intentions"])actions.emplace_back(i["actor"].asString(),i["action"].asString());
+    auto schema=operationSchema(w,input["facts"],actions);
+    static const std::string instruction=
+        "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's actions (intentions) against the facts. "
+        "Return events: exactly one per action, in the given order, each starting with that action's text; describe what actually happened to that action this month. "
+        "Then world_events: at most two brief unplanned developments (public mood, economy, weather, incidents) involving other listed nations, or none; they change nothing on the map. "
+        "History (past_events, related_history) already happened in earlier months: never repeat or re-adjudicate it; use it only as context and for causes. "
+        "Each event has the acting actor, blocked_by (none, or the ID of an open commitment that prevents the action, in which case it has no operations; a nation that knowingly breaks a treaty acts anyway), causes (earlier event IDs from related_history, or []), "
+        "a factual past-tense description of what happened, and then the operations that make the map match that description. "
+        "Realism: a turn is one month. Judge what can realistically be achieved in a month given the facts, history and ongoing efforts. "
+        "Large goals such as conquering a country, winning a war, founding a city or transforming an economy only advance by a step: describe partial progress, never complete them at once. "
+        "Actions without map effects (reforms, investment, research, trade, speeches, negotiations) are valid events with no operations; describe their plausible effect. "
+        "Do not invent rules or deny actions for lack of permission; the game itself rejects map changes that are out of reach. "
+        "Operations: build (starts constructing a city, port, base, army, fleet or event_site in a region the actor controls; it takes months to finish), "
+        "occupy (military control of a bordering region, owner unchanged), restore_control, transfer_territory (the owner cedes a region, or an occupier annexes a region it held before this month), "
+        "move_entity (an army moves one neighboring region, a fleet up to 1,500 km), set_entity_status (never to finish construction: the game completes it at completes_turn), create_actor (a new state; the owner transfers it a region in the same event), "
+        "open_conflict, resolve_conflict, add_commitment (treaties, alliances, agreements), resolve_commitment (only when explicitly ended). "
+        "Decisions within an actor's own authority over its own land take effect at once. Examples: build a port in R -> build port. Raise an army in R -> build army (only in its own regions). Send troops to occupy or attack a bordering region R -> occupy R by the actor + open_conflict unless already at war. Invade neighbor X -> occupy one or two of its regions within reach + open_conflict unless already at war. "
+        "Grant R independence as NAME (by its owner) -> create_actor + transfer_territory to it. Sign an alliance with X -> add_commitment. Reform education -> no operations.";
+    Json::Value response;
+    try {
+        // Enough reasoning to consider every action, bounded so a month stays around a minute or two.
+        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 256 * actions.size(), 512, 2048), 0.6);
+    } catch (const ValidationError &) {
+        // A reasoning run can exhaust its budget before answering; retry once without thinking.
+        response = completion(input, schema, instruction, 0, 0.6);
+    }
+    return compileOperations(w, response, adjacency);
 }
 void LocalProvider::setEndpoint(const std::string &e) {
     auto v = validateEndpoint(e);

@@ -21,19 +21,16 @@ class Mock(http.server.BaseHTTPRequestHandler):
    result={'orders':[{'action':'invade'}]}
   elif 'intentions' in json.loads(raw):
    result={'events':[]}
-   value=json.loads(raw);intentions=value['intentions'];fixture=next((o for o in intentions.get('PT',[]) if o.endswith(': transfer-and-build-fixture')),None)
+   value=json.loads(raw);intentions=[i['action'] for i in value['intentions'] if i['actor']=='PT'];fixture=next((o for o in intentions if 'transfer-and-build-fixture' in o),None)
    if fixture:
     rid=fixture.split('(region ')[1].split(')')[0]
-    result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'background':False,'operations':[{'action':'transfer_territory','region':rid,'to':'ES'},{'action':'build','kind':'port','name':'Fixture port','actor':'ES','region':rid}]}]}
+    result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'operations':[{'action':'build','kind':'port','name':'Fixture port','actor':'PT','region':rid},{'action':'transfer_territory','region':rid,'to':'ES'}]}]}
+   elif intentions:
+    result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
   elif 'authoritative_events' in raw:
    result={'text':'A quiet month of fictional administration.'}
-  elif 'player_instruction' in raw:
-   facts=json.loads(raw);text=facts['player_instruction'].lower()
-   result={'orders':[{'action':a} for w,a in [('econom','economy'),('army','army'),('navy','navy')] if w in text]}
   else:
-   facts=json.loads(raw);actor=facts['facts']['actor']
-   incoming=[o for o in facts['facts'].get('offers',[]) if o.endswith(':'+actor)]
-   result={'orders':[{'action':'accept','target':incoming[0].split(':')[0]}] if incoming else []}
+   result={'actions':[]}
   content=json.dumps(result)
   response=json.dumps({'choices':[{'message':{'content':content}}]}).encode()
   try:self.send_response(200);self.end_headers();self.wfile.write(response)
@@ -75,17 +72,18 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
   downfolder=folder/'down';downfolder.mkdir();d=Server(downfolder,'http://127.0.0.1:1');d.start()
   try:
    wd=d.get('campaign',{'country':'PT'})['state']
-   j=d.get('turns',order(wd,'down-turn',[{'action':'offer','target':'ES'}]),202)
+   j=d.get('turns',order(wd,'down-turn',[{'text':'Offer an alliance to Spain'}]),202)
    jr=d.poll(j['id']);assert jr['status']=='failed' and jr['error']
    assert d.get('campaign')['state']==wd
   finally:d.stop()
 
   s=Server(folder,f'http://127.0.0.1:{mock.server_port}');s.start()
   try:
-   w=s.get('campaign',{'country':'PT'})['state'];assert w['turn']==0 and len(w['countries'])==239
-   s.get('turns',order(w,'illegal-target',[{'action':'improve','target':'ZZ'}]),409)
+   w=s.get('campaign',{'country':'PT'})['state'];assert w['turn']==0 and len(w['actors'])==239 and 'countries' not in w
+   s.get('turns',order(w,'illegal-target',[{'text':'Invade','targets':['ZZ']}]),409)
+   s.get('turns',order(w,'typed-action',[{'action':'economy'}]),409)
    assert s.get('campaign')['state']==w
-   Mock.mode='slow';payload=order(w,'first-turn',[{'action':'offer','target':'ES'},{'action':'improve','target':'ES'}])
+   Mock.mode='slow';payload=order(w,'first-turn',[{'text':'Propose an alliance to Spain','targets':['ES']},{'text':'Invest in the national railway network'}])
    with concurrent.futures.ThreadPoolExecutor() as pool:results=list(pool.map(lambda _:s.get('turns',payload,202),range(4)))
    assert len({j['id'] for j in results})==1
    s.get('turns',order(w,'overlap-turn',[]),409)
@@ -96,21 +94,22 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    assert s.get('campaign')['state']==w
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
-   current=s.get('campaign')['state'];assert current['turn']==1 and current['offers']==['PT:ES']
+   current=s.get('campaign')['state'];assert current['turn']==1
+   events=[e['text'] for e in s.get('campaign')['journal'][0]['events']];assert len(events)==2 and all(e.startswith(o['text']) for e,o in zip(events,payload['orders'])),events
    s.get('turns',order(w,'stale-turn',[]),409)
    j=s.get('turns',order(current,'second-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
-   current=s.get('campaign')['state'];assert current['alliances']==['ES:PT'] and current['offers']==[]
+   current=s.get('campaign')['state'];assert current['turn']==2
    with sqlite3.connect(s.save) as db:db.execute('INSERT INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
    j=s.get('turns',order(current,'third-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
    replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)
-   export['turns'][0]['state']['countries']['PT']['treasury']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],capture_output=True).returncode==1
+   export['turns'][0]['state']['turn']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],capture_output=True).returncode==1
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
-   Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'action':'improve','target':'FR'}]),202)
+   Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
    assert Mock.requests and all(b['max_tokens'] in (768,2048) and b['response_format']['type']=='json_schema' for b in Mock.requests)
-   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, alliances, frozen references, restart and interrupted jobs',flush=True)
+   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, frozen references, restart and interrupted jobs',flush=True)
   finally:s.stop()
 
   cfgfolder=folder/'config-test';cfgfolder.mkdir()

@@ -15,10 +15,9 @@ int main(int argc, char **argv) {
         auto world = decode(input["initial_state"]);
         int turns = 0;
         for (const auto &turn : input["turns"]) {
-            std::map<std::string, TurnOrders> intentions;
             for (auto &actor : turn["intentions"].getMemberNames())
-                intentions[actor] = parseOrders(turn["intentions"][actor]);
-            auto result = resolve(world, intentions);
+                parseOrders(turn["intentions"][actor]);
+            auto result = resolve(world);
             if(turn["reference"].isMember("delta"))result=applyDelta(result,parseDelta(turn["reference"]["delta"]),input["geography"]);
             if (encode(result.state) != turn["state"] || encode(result.events) != turn["events"])
                 throw std::runtime_error("Replay mismatch at turn " +

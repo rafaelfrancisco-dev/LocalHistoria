@@ -14,34 +14,75 @@ Rebuild with `make geography-env` then `make data` when inputs change. For an ex
 
 ## Monthly simulation
 
-Reviewed economic/diplomatic orders remain supported. New intentions are `construction`, `movement`, `conflict`, and `territorial_diplomacy`; each carries an existing region/entity/actor `target` and a 1–500-byte `value` describing the intended outcome. The map copies selected region IDs into the intention controls. Proposals populate the reviewable draft and never advance the campaign.
+There are no fixed action types, costs or national statistics. Each month the player writes up to eight free-text actions, each optionally pinned to up to four region/entity/actor targets (clicking a map region adds one to the selected action). A turn:
 
-A turn obtains relevant actor decisions, resolves existing economic rules, then asks the model to adjudicate consequences and up to three background events. Direct targets and ongoing disputes/commitments are included; neighbors rotate by turn, with a rotating actor when there are no other candidates. Actor IDs are independent of country codes. A landless actor retains its resources and diplomatic play.
+1. Picks up to four AI nations to act: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes up to three free-text actions of its own, without thinking.
+2. Runs `resolve`: advances the month and completes construction whose `completes_turn` has arrived, recording a factual completion event.
+3. Asks the model to adjudicate every action together (with thinking) and compiles its answer into a validated delta.
+4. Commits state, delta, events and inference records in one transaction, then requests narration.
 
-`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, resources, conflict and commitment. Deltas are what is validated, saved and replayed.
+Actor IDs are independent of country codes. A landless actor keeps playing.
 
-The model does not write deltas directly. Asking a 4B model for exact `before`/`after` objects produced invalid output in most scenarios, so it returns compact **operations nested in events** (`compileOperations` in `src/world.cpp`), and C++ derives the exact delta:
+`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, conflict and commitment. Deltas are what is validated, saved and replayed.
 
-- Each event has `actor`, `background`, `blocked_by`, `causes`, `description` and `operations`. The event ID is `t<TURN>-<slug of description>`, deduplicated. Related actors, regions and entities are derived from its operations.
-- Operations: `build`, `spend`, `transfer_resources`, `adjust_stability`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict`, `resolve_conflict`, `add_commitment`, `resolve_commitment`. Each is named by `action`.
-- The schema restricts region, entity, actor, conflict, commitment and cause references to IDs present in the supplied facts. `blocked_by` accepts only `none` or an open commitment ID, so a denial cannot cite an invented rule.
-- C++ assigns entity IDs (`e<TURN>-<name slug>`), places new or moved entities at the region's verified interior point, and assigns conflict/commitment IDs. New actor IDs are derived from the actor name; later operations may refer to the new actor by its requested ID or its name.
-- Affordability is checked by C++. If an event's spending or transfers exceed the actor's resources, that event's operations are rolled back and it is recorded with `blocked_by: "cannot_pay"`. Exact repeated operations within one event are ignored.
-- jsoncpp serializes schema keys alphabetically and llama.cpp grammars keep that order. Key names are chosen so `description` precedes `operations` and `action` leads each operation.
+The model does not write deltas directly. Asking a 4B model for exact `before`/`after` objects produced invalid output in most scenarios. Instead it returns compact **operations nested in events**, and `compileOperations` in `src/world.cpp` derives the exact delta:
 
-Adjudication receives only the regions targeted by intentions (plus regions of open conflicts), without coordinates. Intentions are rendered as sentences such as `Military action targeting Comunitat Valenciana (region gb-…): Occupy …`; the raw order name `conflict` led the model to demand a pre-existing conflict.
+- **Events.** Each event has `actor`, `background`, `blocked_by`, `causes`, `description` and `operations`.
+  - The event ID is `t<TURN>-<slug of description>`, deduplicated.
+  - Related actors, regions and entities are derived from its operations.
+  - An event may have no operations: reforms, trade, research and negotiations are recorded as history.
+  - At most three background events are kept.
+- **Operations.** Each is named by `action`: `build`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict`, `resolve_conflict`, `add_commitment`, `resolve_commitment`. Alliances and treaties are commitments; armies and fleets are entities.
+- **Schema constraints.**
+  - Region, entity, event-actor, conflict, commitment and cause references are restricted to IDs present in the supplied facts.
+  - `blocked_by` accepts only `none` or an open commitment ID, so a denial cannot cite an invented rule.
+- **IDs and placement.**
+  - C++ assigns entity IDs (`e<TURN>-<name slug>`) and places new or moved entities at the region's verified interior point.
+  - Conflict and commitment IDs are also assigned by C++.
+  - New actor IDs come from the actor name. Later operations may refer to a new actor by its requested ID or its name.
+- **Key order.** jsoncpp serializes schema keys alphabetically, and llama.cpp grammars keep that order. Key names are chosen so `description` precedes `operations` and `action` leads each operation.
 
-Validation checks collection/ID references, preconditions, duplicate writes, locations (including polygon holes), resource bounds, fixed geography, new actor land allocation and event associations. New actors start with zero resources. Total treasury, income, army and navy cannot increase through adjudication, so donors must fund new states explicitly. The economic stage remains responsible for resource growth. Destruction is represented by status, not deletion. Conflicts and commitments use actor IDs, text, and open/resolved status.
+### Realistic pacing
 
-Validation runs on a copy. The complete state, accepted delta, indexed event relationships and turn records commit in one SQLite transaction. Unknown causes, invalid model output, tokenizer failure, unavailable inference, and oversized mandatory context fail without advancing the month. Narration runs after commit and cannot mutate state; failed narration leaves the factual summary.
+One turn is one month. The prompt tells the model to advance large goals by a step. C++ enforces physical limits it cannot talk its way around, judging everything against the start-of-month world:
+
+- **Reach.** Force (`occupy`, an owner retaking land, destroying another nation's entity) reaches a region only if it borders land the actor controls, or holds or borders one of its active armies or fleets. Residual sliver regions grant no reach.
+- **Tempo.** At most two regions per actor change hands by force per month.
+- **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month.
+- **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished.
+- **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
+- **New states.** At most one new state per month, and it must receive territory in the same event.
+
+An event that breaks a limit is rolled back as a whole. It is kept as `blocked_by: "infeasible"` with the text "Could not happen this month (reason): …", and the rest of the month proceeds.
+
+Adjacency is the `region_neighbors` table (`tools/region_neighbors.py`): regions that touch, or lie within 0.05° across a narrow strait. The adjudication prompt receives:
+
+- the regions targeted or named by actions;
+- the bordering regions of nations an action addresses;
+- regions of the acting nations' occupations, armies and fleets;
+- regions of open conflicts.
+
+Each region comes with `within_reach_of`, listing the acting nations that can project force there.
+
+Validation checks collection/ID references, preconditions, duplicate writes, locations (including polygon holes), construction schedules, fixed geography, new actor land allocation and event associations. Destruction is represented by status, not deletion. Conflicts and commitments use actor IDs, text, and open/resolved status.
+
+Validation runs on a copy. The complete state, accepted delta, indexed event relationships and turn records commit in one SQLite transaction. The following fail without advancing the month:
+
+- unknown causes;
+- invalid model output;
+- tokenizer failure;
+- unavailable inference;
+- oversized mandatory context.
+
+Narration runs after commit and cannot mutate state; failed narration leaves the factual summary.
 
 ## Historical preparation and context
 
 “Prepare campaign references” explicitly caches Wikipedia references for the player, initial neighbors and involved conflict/commitment actors. The result reports coverage and failures. Individual actor refresh remains available. No reference downloads occur as an implicit consequence of advancing a turn. Fictional actors have no real Wikipedia identity.
 
-Proposals, actor decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
+AI nation decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
 
-Every inference verifies `/props` exposes at least 8,192 context tokens, applies the server chat template, then calls its tokenizer. The request reserves 768 output tokens (2,048 for adjudication) and 256 safety tokens inside an 8,192-token budget. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
+Every inference reads the context size from `/props` (at least 8,192 tokens), applies the server chat template, then calls its tokenizer. The request reserves 768 output tokens, or 2,048 plus a reasoning budget of 256 tokens per action plus 256 (512–2,048) for adjudication, and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
 
 ## API additions
 
@@ -53,26 +94,44 @@ Every inference verifies `/props` exposes at least 8,192 context tokens, applies
 
 ## Measured model results
 
-Model: Qwen3.5-4B Q4_K_M via llama-server on port 8081 (8,192-token context, temperature 0). Measured 2026-09-17.
+Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1024 --ctx-checkpoints 8`) on a 16 GB Apple silicon MacBook Pro. Adjudication used thinking with a bounded budget; AI actions and narration did not. Measured 2026-09-17.
 
-`build/world_probe out.json` runs four isolated two-region scenarios and checks the outcome, not just validity. Prompts are about 570–730 tokens and latency is 4–8 s. Results were the same across repeated runs:
+`build/world_probe out.json` runs seven isolated free-text scenarios on a four-region map. Each checks the outcome, not just validity. Prompts are about 740–820 tokens and each adjudication takes 20–32 s. Sampling (temperature 0.6) makes results vary between runs. Over the final three runs:
 
-| Scenario | Valid | Intended outcome |
+| Scenario (action) | Intended outcome | Runs matching |
 | --- | --- | --- |
-| construction (port funded from treasury) | yes | yes (port entity + treasury spend) |
-| conflict (ES occupies PT region) | yes | yes (controller ES, owner PT, conflict opened) |
-| secession (grant independence with funds) | yes | yes (new actor owns region; treasury conserved; transferred 1 income instead of the requested 3) |
-| long_history (base forbidden by turn-1 treaty) | yes | yes (blocked by `treaty-1`, no base) |
+| construction: "Build a port in West." | port under construction in West | 3/3 |
+| conflict (Spain): "Send the army across the border to occupy West." | West controlled by Spain, still owned by Portugal | 3/3 |
+| secession: "Grant West independence as a new state named West Republic." | new state owns West | 2/3 (once created the state without land; the game blocked it) |
+| long_history: "Construct a military base in West." under a treaty forbidding it | no base | 3/3 |
+| reform: "Launch a national education reform." | recorded event, no map change | 3/3 |
+| overreach: "Conquer all of Spain this month." | Spain's interior untouched, nothing annexed | 3/3 |
+| capital: "Build a new city in North to serve as the future capital." | city under construction in North | 2/3 (once narrated only) |
 
-Earlier formats scored lower: full before/after objects 2/4 valid, six-element tuples 0/4.
+The first design iterations failed in informative ways:
 
-End-to-end campaign turns (disposable save, Portugal, real ADM1 regions; each turn 16–22 s including actor decisions and narration; adjudication prompts 760–1,030 tokens):
+- **Unbounded reasoning.** Thinking ran over 4,000 tokens (2+ minutes) for one construction order.
+- **Unaligned events.** With a free events array, the model skipped this month's actions and re-adjudicated earlier months. The fix is one outcome per action, each opening with the action's text as a schema `const`.
+- **World events with operations.** Background developments started construction and treaties for the player's nation.
+- **Commitment blocks.** A cited commitment suppressed an outcome whose operations were valid. Now a breach is recorded instead.
+- **Temperature 0.** AI nations repeated identical actions every month.
 
-- Construction in Viana do Castelo: committed port entity and treasury spend.
-- Occupation of Comunitat Valenciana with equal armies (10 vs 10): the model denied it, citing lack of military superiority. The turn still advanced; this is a judgment call, not a validation failure.
-- Independence for Guarda as Free Lusitania: committed a new actor owning the region.
+End-to-end campaign (disposable save, Portugal on real ADM1 regions; one AI nation, Spain, per month). Each turn took 109–122 s, including decisions, adjudication (1,500–3,500 prompt tokens) and narration:
 
-Before trimming the prompt to relevant regions, adjudication prompts were about 5,200 tokens, and the model denied almost every intention with invented prerequisites.
+1. **Turn 1.** "Build a port in Viana do Castelo", "Launch a national education reform", "Conquer all of Spain this month":
+   - the port started construction (due in 6 months);
+   - the reform was recorded without map changes;
+   - the conquest became a declaration of war, occupation of bordering Galicia and an expeditionary army under construction.
+2. **Turn 2.** "Occupy Comunitat Valenciana", "Raise a new army in Guarda":
+   - the model judged the distant occupation impossible until the army was ready;
+   - the Guarda army started construction.
+   - Spain's attempt to build in occupied Galicia was blocked by the game.
+3. **Turn 3.** "Grant Guarda independence as a new state named Free Lusitania":
+   - Free Lusitania was created and owns Guarda;
+   - the expeditionary army completed on schedule;
+   - Spain accepted a ceasefire, resolving the war.
+
+Earlier runs showed the model's typical mistakes. It sometimes picks the wrong operation for an action (e.g. `build` in an enemy region for an invasion) or a mismatched reason. In those cases the game blocks the event, and the journal says why.
 
 ## Validation boundaries
- Structural validity is separate from whether a model outcome sensibly follows a player's intention. No fixed combat engine or automatic correction of rejected deltas is implemented. A small model may reject, misunderstand, or fail to produce a valid outcome. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
+ Structural validity is separate from whether a model outcome sensibly follows a player's action. There is no combat strength model: reach and tempo limit what force can do, but whether an attack succeeds is the model's judgment. A small model may misunderstand an action or narrate background events of little consequence. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
