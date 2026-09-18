@@ -60,6 +60,19 @@ int main() {
             check(third[0]["actor"] == "ES" && third[1]["actor"] == "NO",
                   "Every third month a distant nation takes the second slot");
             v.turn = 0;
+            auto world = scheduleInitiatives(v, {}, near, {"DE"});
+            check(world[0]["actor"] == "ES" && world[1]["actor"] == "DE",
+                  "The second slot goes to a great power");
+            v.turn = 2;
+            check(scheduleInitiatives(v, {}, {{"ES", 3}, {"FR", 2}, {"IT", 1}}, {"DE"})[1]["actor"] == "NO",
+                  "A distant nation is neither close nor a great power");
+            v.turn = 0;
+            auto island = v;
+            island.territories["r"]["kind"] = "single";
+            for (int n = 0; n < 20; ++n) {
+                island.campaignId = std::to_string(n);
+                check(scheduleInitiatives(island)[2]["region"] == "s", "Single-territory countries have no regional slot");
+            }
             std::map<std::string, int> home{{"PT", 3}};
             for (int n = 0; n < 50; ++n) {
                 v.campaignId = std::to_string(n);

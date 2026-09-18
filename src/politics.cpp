@@ -40,14 +40,15 @@ uint64_t stableHash(const std::string &s) {
     return h ^ (h >> 31);
 }
 Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string> &reactive,
-                                const std::map<std::string, int> &weight) {
+                                const std::map<std::string, int> &closeness,
+                                const std::set<std::string> &powers) {
     auto seed = w.campaignId + ":" + std::to_string(w.turn + 1);
     auto recent = [&](const std::string &key) {
         return w.activity[key].isInt() && w.turn + 1 - w.activity[key].asInt() <= 2;
     };
     auto tier = [&](const std::string &id) {
-        auto it = weight.find(id);
-        return it == weight.end() ? 0 : it->second;
+        auto it = closeness.find(id);
+        return it == closeness.end() ? 0 : it->second;
     };
     // Higher `priority` ranks first, after cooldown and reactive preferences.
     auto rank = [&](std::vector<std::string> &v, const std::string &scope, auto priority) {
@@ -67,14 +68,19 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
     for (auto &r : w.territories.getMemberNames()) {
         auto &t = w.territories[r];
         auto a = t["controller"].asString();
-        if (t["kind"] != "residual" && w.hasActor(a))
+        // Residual geometry has no politics; a single-territory country's politics are national.
+        if (t["kind"] != "residual" && t["kind"] != "single" && w.hasActor(a))
             regions[a].push_back(r);
     }
     rank(nations, "national", tier);
-    // Every third month the second slot goes to a distant nation, keeping the wider world alive.
-    if (!weight.empty() && (w.turn + 1) % 3 == 0 && nations.size() > 2) {
+    // The first slot is the player's neighbourhood; the second the world stage, a great power, except every
+    // third month when a distant nation keeps the wider world alive.
+    if ((!closeness.empty() || !powers.empty()) && nations.size() > 2) {
         std::vector<std::string> rest(nations.begin() + 1, nations.end());
-        rank(rest, "distant", [&](auto &id) { return tier(id) > 0 ? -1 : 0; });
+        if ((w.turn + 1) % 3 == 0)
+            rank(rest, "distant", [&](auto &id) { return tier(id) > 0 || powers.contains(id) ? -1 : 0; });
+        else
+            rank(rest, "power", [&](auto &id) { return powers.contains(id) ? 1 : 0; });
         std::copy(rest.begin(), rest.end(), nations.begin() + 1);
     }
     Json::Value slots(Json::arrayValue);
