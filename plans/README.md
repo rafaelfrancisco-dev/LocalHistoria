@@ -27,7 +27,7 @@ Recommended order (dependencies in parentheses):
 | 08 | map-geometry | UI performance | M | |
 | 09 | ui-cleanups | UI | M | |
 | 10 | turn-cancel-and-deadline | UI + server | M | |
-| 11 | clang-format | code | S (do alone, separate commit) | |
+| 11 | clang-format | code | S (do alone, separate commit) | done 2026-09-18 |
 | 12 | split-main (after 11) | code | L | |
 | 13 | operation-compiler (after 11, 01, 03) | code | L | |
 | 14 | typed-keys-and-small-fixes (after 11) | code | M | |

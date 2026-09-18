@@ -1,5 +1,7 @@
 # 11 · One-time clang-format of the tree
 
+**Status: done (2026-09-18).** clang-format 21. Over-long raw JSON literals split into adjacent `R"(…)"` pieces (contents verified byte-identical); clang-format split long ordinary strings, sorted includes and added `// namespace` comments. No multi-statement lines remained apart from single-statement lambdas. `make format` / `make format-check` added.
+
 ## Goal
 Apply the checked-in `.clang-format` (LLVM, IndentWidth 4, ColumnLimit 100) to all C++ so later plans edit
 readable code. Behaviour-only-preserving; no logic changes in this commit.
