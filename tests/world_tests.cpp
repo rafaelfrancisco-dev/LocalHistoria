@@ -372,6 +372,19 @@ int main() {
             R"("background":false,"causes":[],"operations":[{"action":"transfer_territory",)"
             R"("region":"west","to":"neighbor"}]}]})");
         check(infeasible(grab), "Cannot take land by declaration");
+        // A dropped operation leaves an earlier operation's change to the same region untouched.
+        auto overreach = compile(
+            R"({"events":[{"description":"Overreach","actor":"neighbor","blocked_by":"none",)"
+            R"("background":false,"causes":[],"operations":[{"action":"occupy",)"
+            R"("region":"west","by":"neighbor"},{"action":"transfer_territory",)"
+            R"("region":"west","to":"neighbor"}]}]})");
+        check(overreach.changes.size() == 1 && overreach.changes[0]["id"] == "west" &&
+                  overreach.changes[0]["after"]["controller"] == "neighbor" &&
+                  overreach.changes[0]["after"]["owner"] == "old-state" &&
+                  overreach.changes[0]["rationale"].asString().find("transfer_territory") ==
+                      std::string::npos &&
+                  overreach.events[0]["partial"] == true,
+              "Rollback restores a change touched earlier in the event");
         // Armies advance one region per month; unfinished units cannot move.
         auto army =
             parse(R"({"name":"First Army","kind":"army","actor":"old-state","region":"west",)"

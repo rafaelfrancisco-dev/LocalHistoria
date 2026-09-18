@@ -923,8 +923,242 @@ std::string droppedClause(const Json::Value &event) {
         out += (n ? "; " : "") + phrases[n];
     return out + ".)";
 }
-WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
-                             const Adjacency &adjacency, const Json::Value &responses) {
+// How much an event's effects weigh: 2 per severe or strong one, 1 per mild one, ignoring malformed
+// entries.
+static int effectWeight(const Json::Value &effects) {
+    int score = 0;
+    if (!effects.isArray())
+        return 0;
+    for (auto &x : effects)
+        for (auto k : {"economy", "stability"}) {
+            auto v = x[k].isString() ? x[k].asString() : "";
+            score += v == "severe_decline" || v == "strong_growth" ? 2
+                     : v == "decline" || v == "growth"             ? 1
+                                                                   : 0;
+        }
+    return score;
+}
+static std::string alphanumeric(const std::string &v) {
+    std::string o;
+    for (unsigned char ch : v)
+        if (std::isalnum(ch))
+            o += char(std::tolower(ch));
+    return o;
+}
+// A treaty keeps its eight latest terms.
+static void appendTerms(Json::Value &treaty, const Json::Value &done) {
+    for (auto &t : done) {
+        treaty["terms"].append(t);
+        if (treaty["terms"].size() > 8)
+            treaty["terms"].removeIndex(0, nullptr);
+    }
+}
+namespace {
+// This month's changes, one per kind and ID, in the order first touched. open() starts a frame;
+// the first touch of an older change inside it saves that change, so rollback() restores only what
+// the frame touched and drops what it added.
+class PendingStore {
+  public:
+    struct Pending {
+        std::string kind, id, event, rationale;
+        Json::Value before, after;
+    };
+    Json::Value &touch(const std::string &kind, const std::string &id, const Json::Value &before,
+                       const std::string &event, const std::string &rationale) {
+        auto key = kind + ":" + id;
+        auto found = index.find(key);
+        if (found == index.end()) {
+            index[key] = entries.size();
+            entries.push_back({kind, id, event, rationale, before, before});
+            return entries.back().after;
+        }
+        auto &p = entries[found->second];
+        if (!frames.empty() && found->second < frames.back().size)
+            frames.back().saved.try_emplace(found->second, p.after, p.rationale);
+        p.rationale = std::string(p.rationale + "; " + rationale).substr(0, 1000);
+        return p.after;
+    }
+    Json::Value current(const std::string &kind, const Json::Value &collection,
+                        const std::string &id) const {
+        auto found = index.find(kind + ":" + id);
+        return found != index.end() ? entries[found->second].after : collection[id];
+    }
+    bool contains(const std::string &kind, const std::string &id) const {
+        return index.contains(kind + ":" + id);
+    }
+    std::vector<Pending>::const_iterator begin() const { return entries.begin(); }
+    std::vector<Pending>::const_iterator end() const { return entries.end(); }
+    void open() { frames.push_back({entries.size(), {}}); }
+    void commit() {
+        auto top = std::move(frames.back());
+        frames.pop_back();
+        if (!frames.empty())
+            for (auto &[n, saved] : top.saved)
+                if (n < frames.back().size)
+                    frames.back().saved.try_emplace(n, std::move(saved));
+    }
+    void rollback() {
+        auto &top = frames.back();
+        for (auto &[n, saved] : top.saved) {
+            entries[n].after = std::move(saved.first);
+            entries[n].rationale = std::move(saved.second);
+        }
+        for (auto n = top.size; n < entries.size(); ++n)
+            index.erase(entries[n].kind + ":" + entries[n].id);
+        entries.erase(entries.begin() + std::ptrdiff_t(top.size), entries.end());
+        frames.pop_back();
+    }
+
+  private:
+    struct Frame {
+        size_t size;
+        std::map<size_t, std::pair<Json::Value, std::string>> saved;
+    };
+    std::vector<Pending> entries;
+    std::map<std::string, size_t> index;
+    std::vector<Frame> frames;
+};
+
+// Turns the model's operations into a validated delta against the start-of-month world.
+class OperationCompiler {
+  public:
+    OperationCompiler(const WorldState &w, const Adjacency &adjacency)
+        : w(w), adjacency(adjacency) {}
+    WorldDelta compile(const Json::Value &response, const Json::Value &responses);
+
+  private:
+    struct Touched {
+        std::set<std::string> actors, regions, entities, createdHere, conflicts, commitments;
+        // What this month makes obvious: parties to a war opened or escalated here (and whoever
+        // took land by force), to a trade treaty, and owners whose land was taken.
+        std::set<std::string> warParties, tradeParties, seizedOwners;
+        // Parties to a trade treaty or union that ended here: their economies lose what it brought.
+        std::set<std::string> tradeLoss;
+    };
+    struct EventScope : Touched {
+        explicit EventScope(const Json::Value &e) : e(e) {}
+        const Json::Value &e;
+        std::string id, ev, regional, text, blocked, breaches;
+        bool trusted = false;
+        // Whether an operation changed the map or a war: such events are major whatever the model
+        // calls them.
+        bool structural = false;
+        std::vector<Json::Value> seenOps;
+        int failedOps = 0;
+        // Why operations were dropped: kept for the audit, never in the event text players and
+        // later prompts read.
+        Json::Value dropped{Json::arrayValue};
+    };
+    struct OpScope {
+        explicit OpScope(const Json::Value &o) : o(o) {}
+        const Json::Value &o;
+        std::string name, why;
+        // A treaty offered to the player is only proposed: it changes nothing until the player
+        // answers next month.
+        bool proposal = false, shaped = false;
+        // The operation finished early (a proposal or an identity correction): it neither shapes
+        // the event nor breaches a treaty.
+        bool done = false;
+        // Whoever this operation acts against: a treaty of peace or alliance with them is breached.
+        std::set<std::string> hostile;
+    };
+    struct Snapshot {
+        int created, newActors;
+        std::map<std::string, std::set<std::string>> taken;
+        std::map<std::string, std::string> aliases;
+        std::set<std::string> names;
+    };
+    Snapshot snapshot() const { return {created, newActors, taken, aliases, names}; }
+    void restore(Snapshot s) {
+        created = s.created;
+        newActors = s.newActors;
+        taken = std::move(s.taken);
+        aliases = std::move(s.aliases);
+        names = std::move(s.names);
+    }
+
+    int settleProposals(Json::Value &all, const Json::Value &responses) const;
+    void collectNames();
+    void collectConsent(const Json::Value &response);
+    void compileEvent(const Json::Value &e, bool trusted);
+    void runOperations(EventScope &s);
+    void runOperation(EventScope &s, OpScope &op);
+    void apply(EventScope &s, OpScope &op);
+    void markStructural(EventScope &s, const OpScope &op) const;
+    void breachTreaties(EventScope &s, OpScope &op);
+
+    void opRegional(EventScope &s, OpScope &op);
+    void opChangeIdentity(EventScope &s, OpScope &op);
+    void opCreateActor(EventScope &s, OpScope &op);
+    void opOpen(EventScope &s, OpScope &op);
+    std::vector<std::string> treatyParties(EventScope &s, const OpScope &op, Json::Value &v) const;
+    std::string treatyName(const OpScope &op, const std::string &kind, const std::string &type,
+                           const std::vector<std::string> &members, const Json::Value &v);
+    void propose(EventScope &s, OpScope &op, Json::Value v, const std::string &cid, int months);
+    void opResolve(EventScope &s, OpScope &op);
+    void opAmend(EventScope &s, OpScope &op);
+    void proposeAmendment(EventScope &s, OpScope &op, const Json::Value &treaty,
+                          const std::string &cid, int months, const std::string &revised);
+    void opSettle(EventScope &s, OpScope &op);
+    void acceptProposal(EventScope &s, OpScope &op, const std::string &pid, const Json::Value &p);
+    void opIntensity(EventScope &s, OpScope &op);
+    void opBuild(EventScope &s, OpScope &op);
+    void allocateForce(const std::string &builder, const std::string &kind, Json::Value &v) const;
+    void opEntity(EventScope &s, OpScope &op);
+    void moveEntity(EventScope &s, const OpScope &op, const std::string &eid, Json::Value &v,
+                    const std::string &owner);
+    void setEntityStatus(EventScope &s, OpScope &op, const std::string &eid, Json::Value &v,
+                         const std::string &owner);
+    bool atWar(const std::string &a, const std::string &b) const;
+    void opTerritory(EventScope &s, OpScope &op);
+    void transfer(EventScope &s, const OpScope &op, const std::string &r, Json::Value &t,
+                  const std::string &owner, const std::string &controller);
+    void occupy(EventScope &s, OpScope &op, const std::string &r, Json::Value &t,
+                const std::string &owner, const std::string &controller);
+
+    Json::Value applyTerms(EventScope &s, const Json::Value &terms,
+                           const std::vector<std::string> &members, const std::string &why);
+    Json::Value applyTerm(EventScope &s, const Json::Value &t,
+                          const std::vector<std::string> &members, const std::string &why);
+    void consent(const EventScope &s, const std::vector<std::string> &members, bool &proposal);
+    void awaiting(EventScope &s) const;
+    void ending(EventScope &s, const Json::Value &treaty, const std::string &why);
+
+    std::string str(const OpScope &op, const char *k) const;
+    std::string region(const OpScope &op) const;
+    std::string party(const EventScope &s, const OpScope &op, const char *k) const;
+    std::string actorRef(const std::string &v) const;
+    bool known(const std::string &a) const;
+    bool adjacent(const std::string &from, const std::string &to) const;
+    bool reaches(const std::string &a, const std::string &r) const;
+    void take(const std::string &a, const std::string &r);
+    WorldState allocatedWorld() const;
+
+    void renewEventSites(EventScope &s);
+    void finishRegionalHistory(EventScope &s);
+    void buildEvent(EventScope &s);
+    void settleEffects(const EventScope &s, Json::Value &event) const;
+    WorldDelta delta() const;
+
+    const WorldState &w;
+    const Adjacency &adjacency;
+    PendingStore pending;
+    std::map<std::string, std::set<std::string>> taken;
+    // New actors get IDs derived from their names; later references may use the requested ID or the
+    // name.
+    std::map<std::string, std::string> aliases;
+    // Names already used by any war or treaty, past or present, so repeats are numbered.
+    std::set<std::string> names;
+    // Who agreed with whom this month: an outcome of a nation's own action that names another
+    // nation. A treaty needs it from every party.
+    std::map<std::string, std::set<std::string>> consenting;
+    std::set<std::string> eventIds;
+    int created = 0, newActors = 0, background = 0;
+    Json::Value events{Json::arrayValue};
+    std::vector<Json::ArrayIndex> declared;
+};
+
+WorldDelta OperationCompiler::compile(const Json::Value &response, const Json::Value &responses) {
     require(response.isObject() && response["events"].isArray() &&
                 response["events"].size() <= 37 &&
                 (!response.isMember("world_events") ||
@@ -934,8 +1168,44 @@ WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
         require(k == "events" || k == "world_events", "Invalid operation response");
     // Outcomes of this month's actions first, then background developments.
     Json::Value all(Json::arrayValue);
-    // Last month's treaty offers to the player are settled first, as the month opens: accepted,
-    // declined, or lapsed unanswered.
+    int settlements = settleProposals(all, responses);
+    for (auto e : response["events"]) {
+        if (e.isObject()) {
+            e.removeMember("action");
+            if (!e.isMember("background"))
+                e["background"] = false;
+        }
+        all.append(e);
+    }
+    for (auto e : response["world_events"]) {
+        if (e.isObject()) {
+            if (e["actor"] == w.player || !e["operations"].empty())
+                continue;
+            e["background"] = true;
+            e["blocked_by"] = "none";
+            e["operations"] = Json::arrayValue;
+        }
+        all.append(e);
+    }
+    collectNames();
+    collectConsent(response);
+    int position = -1;
+    for (auto &e : all)
+        // Only the settlements C++ wrote may carry settle_proposal; a model cannot answer for the
+        // player.
+        compileEvent(e, ++position < settlements);
+    // Beyond what changed the map, a month keeps its three weightiest headlines.
+    std::stable_sort(declared.begin(), declared.end(), [&](Json::ArrayIndex a, Json::ArrayIndex b) {
+        return effectWeight(events[a].get("effects", Json::nullValue)) >
+               effectWeight(events[b].get("effects", Json::nullValue));
+    });
+    for (size_t n = 0; n < declared.size() && n < 3; ++n)
+        events[declared[n]]["major"] = true;
+    return delta();
+}
+// Last month's treaty offers to the player are settled first, as the month opens: accepted,
+// declined, or lapsed unanswered.
+int OperationCompiler::settleProposals(Json::Value &all, const Json::Value &responses) const {
     int settlements = 0;
     for (auto &pid : w.proposals.getMemberNames()) {
         auto &p = w.proposals[pid];
@@ -976,1226 +1246,1178 @@ WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
         all.append(e);
         ++settlements;
     }
-    for (auto e : response["events"]) {
-        if (e.isObject()) {
-            e.removeMember("action");
-            if (!e.isMember("background"))
-                e["background"] = false;
-        }
-        all.append(e);
-    }
-    for (auto e : response["world_events"]) {
-        if (e.isObject()) {
-            if (e["actor"] == w.player || !e["operations"].empty())
-                continue;
-            e["background"] = true;
-            e["blocked_by"] = "none";
-            e["operations"] = Json::arrayValue;
-        }
-        all.append(e);
-    }
-    struct Pending {
-        std::string kind, id, event, rationale;
-        Json::Value before, after;
-    };
-    std::vector<Pending> pending;
-    std::map<std::string, size_t> index;
-    auto touch = [&](const std::string &kind, const std::string &id, const Json::Value &before,
-                     const std::string &event, const std::string &rationale) -> Json::Value & {
-        auto key = kind + ":" + id;
-        if (!index.contains(key)) {
-            index[key] = pending.size();
-            pending.push_back({kind, id, event, rationale, before, before});
-        } else
-            pending[index[key]].rationale =
-                std::string(pending[index[key]].rationale + "; " + rationale).substr(0, 1000);
-        return pending[index[key]].after;
-    };
-    auto current = [&](const std::string &kind, const Json::Value &collection,
-                       const std::string &id) -> Json::Value {
-        auto key = kind + ":" + id;
-        return index.contains(key) ? pending[index[key]].after : collection[id];
-    };
-    auto allocatedWorld = [&] {
-        auto now = w;
-        for (const auto &p : pending)
-            if (p.kind == "entity") {
-                now.entities[p.id] = p.after;
-                if (p.after["status"] == "destroyed" && p.before["status"] != "destroyed") {
-                    auto a = p.after["actor"].asString();
-                    if (!static_cast<const WorldState &>(now)
-                             .actors[a]["status"]["military"]
-                             .isObject())
-                        continue;
-                    const char *field = p.after["kind"] == "army" ? "active" : "ships";
-                    const char *quantity = p.after["kind"] == "army" ? "personnel" : "ships";
-                    if (p.after["kind"] == "army" || p.after["kind"] == "fleet") {
-                        auto &m = now.actors[a]["status"]["military"];
-                        m[field] = std::max(
-                            0, m[field].asInt() -
-                                   p.after.get(quantity, p.after["kind"] == "army" ? 10000 : 3)
-                                       .asInt());
-                    }
-                }
-            }
-        return now;
-    };
-    auto near = [&](const std::string &from, const std::string &to) {
-        return from == to || (adjacency.contains(from) && adjacency.at(from).contains(to));
-    };
-    auto reaches = [&](const std::string &a, const std::string &r) {
-        return lh::reaches(w, adjacency, a, r);
-    };
-    Json::Value events(Json::arrayValue);
-    std::set<std::string> eventIds;
-    int created = 0, newActors = 0, background = 0;
-    std::vector<Json::ArrayIndex> declared;
-    // How much an event's effects weigh: 2 per severe or strong one, 1 per mild one, ignoring
-    // malformed entries.
-    auto effectWeight = [](const Json::Value &effects) {
-        int score = 0;
-        if (!effects.isArray())
-            return 0;
-        for (auto &x : effects)
-            for (auto k : {"economy", "stability"}) {
-                auto v = x[k].isString() ? x[k].asString() : "";
-                score += v == "severe_decline" || v == "strong_growth" ? 2
-                         : v == "decline" || v == "growth"             ? 1
-                                                                       : 0;
-            }
-        return score;
-    };
-    std::map<std::string, std::set<std::string>> taken;
-    // New actors get IDs derived from their names; later references may use the requested ID or the
-    // name.
-    std::map<std::string, std::string> aliases;
-    auto normal = [](const std::string &v) {
-        std::string o;
-        for (unsigned char ch : v)
-            if (std::isalnum(ch))
-                o += char(std::tolower(ch));
-        return o;
-    };
-    auto actorRef = [&](const std::string &v) {
-        if (w.hasActor(v))
-            return v;
-        if (aliases.contains(v))
-            return aliases[v];
-        if (aliases.contains("~" + normal(v)))
-            return aliases["~" + normal(v)];
-        return v;
-    };
-    auto known = [&](const std::string &a) {
-        return w.hasActor(a) || index.contains("actor:" + a);
-    };
-    // Names already used by any war or treaty, past or present, so repeats are numbered.
-    std::set<std::string> names;
-    auto lowered = [](std::string v) {
-        for (auto &ch : v)
-            ch = char(std::tolower(static_cast<unsigned char>(ch)));
-        return v;
-    };
+    return settlements;
+}
+void OperationCompiler::collectNames() {
     for (auto kind : {"conflict", "commitment"})
         for (auto &cid :
              (kind == std::string("conflict") ? w.conflicts : w.commitments).getMemberNames())
-            names.insert(lowered(displayName(w, kind, cid)));
-    // Who agreed with whom this month: an outcome of a nation's own action that names another
-    // nation. A treaty needs it from every party.
-    std::map<std::string, std::set<std::string>> consenting;
+            names.insert(lowercase(displayName(w, kind, cid)));
+}
+void OperationCompiler::collectConsent(const Json::Value &response) {
     for (auto &e : response["events"])
         if (e.isObject() && e["actor"].isString() && e["description"].isString())
             for (auto &b : w.actors.getMemberNames())
                 if (b != e["actor"].asString() && w.actors[b]["name"].isString() &&
-                    containsWord(lowered(e["description"].asString()),
-                                 lowered(w.actors[b]["name"].asString())))
+                    containsWord(lowercase(e["description"].asString()),
+                                 lowercase(w.actors[b]["name"].asString())))
                     consenting[e["actor"].asString()].insert(b);
-    int position = -1;
-    for (auto &e : all) {
-        // Only the settlements C++ wrote above may carry settle_proposal; a model cannot answer for
-        // the player.
-        bool trusted = ++position < settlements;
-        require(e.isObject() && e["description"].isString() && e["actor"].isString() &&
-                    e["blocked_by"].isString() && e["background"].isBool() &&
-                    e["causes"].isArray() && e["operations"].isArray() &&
-                    e["operations"].size() <= 8,
-                "Invalid operation event");
-        auto ev = e["actor"].asString();
-        require(w.hasActor(ev), "Unknown event actor");
-        // Background developments exist only for what changes something; those without an effect
-        // are noise.
-        if (e["background"].asBool() &&
-            (effectWeight(e.get("effects", Json::nullValue)) == 0 || ++background > 3))
-            continue;
-        auto regional = e.get("regional_actor", "").asString();
-        require(regional.empty() || (w.territories.isMember(regional) &&
-                                     w.territories[regional]["controller"] == ev &&
-                                     w.territories[regional]["kind"] != "residual"),
-                "Invalid regional authority");
-        auto text = e["description"].asString();
-        auto base = "t" + std::to_string(w.turn) + "-" + slug(text, 32);
-        auto id = base;
-        for (int n = 2; !eventIds.insert(id).second; ++n)
-            id = base + "-" + std::to_string(n);
-        std::set<std::string> actors, regions, entities, createdHere, conflicts, commitments;
-        // What this month makes obvious: parties to a war opened or escalated here (and whoever
-        // took land by force), to a trade treaty, and owners whose land was taken.
-        std::set<std::string> warParties, tradeParties, seizedOwners;
-        // Parties to a trade treaty or union that ended here: their economies lose what it brought.
-        std::set<std::string> tradeLoss;
-        std::vector<Json::Value> seenOps;
-        int failedOps = 0;
-        // Whether an operation changed the map or a war: such events are major whatever the model
-        // calls them.
-        bool structural = false;
-        std::string blocked = e["blocked_by"].asString(), breaches;
-        // A commitment binds only its parties.
-        if (w.commitments.isMember(blocked) &&
-            std::find(w.commitments[blocked]["actors"].begin(),
-                      w.commitments[blocked]["actors"].end(),
-                      Json::Value(ev)) == w.commitments[blocked]["actors"].end())
-            blocked = "none";
-        // Treaties can be broken: a cited commitment only blocks an event whose outcome changes
-        // nothing; otherwise the breach is recorded.
-        if (blocked != "none" && !e["operations"].empty() && w.commitments.isMember(blocked)) {
-            breaches = blocked;
-            blocked = "none";
-        }
-        auto snapshot = std::make_tuple(pending, index, created, newActors, taken, aliases, names);
-        // Why operations were dropped: kept for the audit, never in the event text players and
-        // later prompts read.
-        Json::Value dropped(Json::arrayValue);
-        // Executes a treaty's terms, which its parties' signatures authorize; an impossible clause
-        // is dropped on its own.
-        auto applyTerms = [&](const Json::Value &terms, const std::vector<std::string> &members,
-                              const std::string &why) {
-            Json::Value done(Json::arrayValue);
-            auto party = [&](const std::string &a) {
-                return std::find(members.begin(), members.end(), a) != members.end();
-            };
-            for (auto &t : treatyTerms(terms)) {
-                auto clause = t["action"].asString();
-                try {
-                    auto field = [&](const char *k) {
-                        if (!t[k].isString() || t[k].asString().empty())
-                            throw Infeasible("incomplete " + clause);
-                        return t[k].asString();
-                    };
-                    Json::Value kept;
-                    kept["action"] = clause;
-                    if (clause == "end_conflict") {
-                        auto cid = field("conflict");
-                        auto c = current("conflict", w.conflicts, cid);
-                        if (!c.isObject() || c["status"] != "open")
-                            throw Infeasible("no such open conflict");
-                        for (auto &a : c["actors"])
-                            if (!party(a.asString()))
-                                throw Infeasible("every side must sign to end " +
-                                                 displayName(w, "conflict", cid));
-                        auto &v = touch("conflict", cid, w.conflicts[cid], id, why);
-                        v["status"] = "resolved";
-                        v["ended_turn"] = w.turn;
-                        v["intensity"] = "none";
-                        conflicts.insert(cid);
-                        kept["conflict"] = cid;
-                    } else {
-                        auto r = field("region");
-                        if (!w.territories.isMember(r))
-                            throw Infeasible("unknown region");
-                        auto now = current("territory", w.territories, r);
-                        auto owner = now["owner"].asString(),
-                             controller = now["controller"].asString(),
-                             place = w.territories[r]["name"].asString();
-                        if (clause == "cede") {
-                            auto to = actorRef(field("to"));
-                            if (!party(to) || !party(owner) || owner == to)
-                                throw Infeasible("only its owner can cede " + place +
-                                                 " to another party");
-                            auto &v = touch("territory", r, w.territories[r], id, why);
-                            v["owner"] = to;
-                            v["controller"] = to;
-                            kept["from"] = owner;
-                            kept["to"] = to;
-                            actors.insert(to);
-                        } else if (clause == "occupy") {
-                            auto by = actorRef(field("by"));
-                            if (!party(by) || !party(owner) || by == owner)
-                                throw Infeasible("an agreed occupation of " + place +
-                                                 " needs its owner and the occupier as parties");
-                            touch("territory", r, w.territories[r], id, why)["controller"] = by;
-                            kept["by"] = by;
-                            actors.insert(by);
-                        } else if (clause == "withdraw") {
-                            if (!party(controller) || !party(owner) || controller == owner)
-                                throw Infeasible("no party occupies " + place);
-                            touch("territory", r, w.territories[r], id, why)["controller"] = owner;
-                            kept["by"] = controller;
-                        } else
-                            throw Infeasible("unknown term " + clause);
-                        regions.insert(r);
-                        actors.insert(owner);
-                        kept["region"] = r;
-                    }
-                    done.append(kept);
-                } catch (const Infeasible &x) {
-                    Json::Value d;
-                    d["action"] = "term " + clause;
-                    d["reason"] = x.what();
-                    dropped.append(d);
-                }
-            }
-            return done;
-        };
-        // Parties to a treaty signed, amended or answered here, and whether anyone must still
-        // agree.
-        auto consent = [&](const std::vector<std::string> &members, bool &proposal) {
-            for (auto &m : members)
-                if (m != ev && !createdHere.contains(m) && !consenting[m].contains(ev)) {
-                    if (m == w.player) {
-                        proposal = true;
-                        continue;
-                    }
-                    throw Infeasible("needs agreement from " +
-                                     current("actor", w.actors, m)["name"].asString());
-                }
-        };
-        auto awaiting = [&] {
-            auto awaits = " It awaits " + w.actors[w.player]["name"].asString() + "'s answer.";
-            if (text.find(awaits) == std::string::npos)
-                text += awaits;
-        };
-        // A treaty ended here: occupations it allowed end with it, and trade it brought is lost.
-        auto ending = [&](const Json::Value &treaty, const std::string &why) {
-            for (auto &t : treaty["terms"])
-                if (t["action"] == "occupy" && t["region"].isString() &&
-                    w.territories.isMember(t["region"].asString())) {
-                    auto r = t["region"].asString();
-                    auto now = current("territory", w.territories, r);
-                    if (now["controller"] == t["by"] && now["owner"] != t["by"]) {
-                        touch("territory", r, w.territories[r], id, why)["controller"] =
-                            now["owner"];
-                        regions.insert(r);
-                    }
-                }
-            auto kind = treaty["kind"].asString();
-            if (kind == "trade_agreement" || kind == "union")
-                for (auto &a : treaty["actors"])
-                    tradeLoss.insert(a.asString());
-        };
-        try {
-            for (auto &o : e["operations"]) {
-                if (blocked != "none")
-                    break;
-                require(o.isObject() && o["action"].isString(), "Invalid operation");
-                // Small models sometimes loop; an exact repeat within one event is degenerate, not
-                // a second outcome.
-                if (std::find(seenOps.begin(), seenOps.end(), o) != seenOps.end())
-                    continue;
-                seenOps.push_back(o);
-                auto name = o["action"].asString();
-                auto why = name + ": " + text.substr(0, 300);
-                // An impossible operation is dropped on its own; the rest of the event still
-                // happens.
-                auto before =
-                    std::make_tuple(pending, index, created, newActors, taken, aliases, names,
-                                    actors, regions, entities, createdHere, conflicts, commitments,
-                                    warParties, tradeParties, seizedOwners, tradeLoss);
-                // A treaty offered to the player is only proposed: it changes nothing until the
-                // player answers next month.
-                bool proposal = false, shaped = false;
-                // Whoever this operation acts against: a treaty of peace or alliance with them is
-                // breached.
-                std::set<std::string> hostile;
-                try {
-                    auto str = [&](const char *k) {
-                        if (!o[k].isString() || o[k].asString().empty())
-                            throw Infeasible("incomplete " + name);
-                        return o[k].asString();
-                    };
-                    auto region = [&] {
-                        auto r = str("region");
-                        if (!w.territories.isMember(r))
-                            throw Infeasible("unknown region");
-                        return r;
-                    };
-                    auto party = [&](const char *k) {
-                        auto a = actorRef(str(k));
-                        // A small model often names the new state after its region; the state this
-                        // event created is the only sensible recipient.
-                        if (!known(a) && createdHere.size() == 1)
-                            a = *createdHere.begin();
-                        if (!known(a))
-                            throw Infeasible("unknown actor " + a);
-                        return a;
-                    };
-                    auto take = [&](const std::string &a, const std::string &r) {
-                        if (!reaches(a, r))
-                            throw Infeasible("no border, army or fleet within reach of " +
-                                             w.territories[r]["name"].asString());
-                        auto defender = w.territories[r]["controller"].asString();
-                        if (defender.empty())
-                            defender = w.territories[r]["owner"].asString();
-                        if (w.actors[a]["status"]["military"].isObject() && defender != a) {
-                            int cap = force::assaultCapacity(w, adjacency, a, defender, r);
-                            if (!cap)
-                                throw Infeasible("too weak to occupy " +
-                                                 w.territories[r]["name"].asString());
-                            int used = 0;
-                            for (const auto &held : taken[a]) {
-                                auto d = w.territories[held]["controller"].asString();
-                                if (d.empty())
-                                    d = w.territories[held]["owner"].asString();
-                                if (d == defender && held != r)
-                                    ++used;
-                            }
-                            if (used >= cap)
-                                throw Infeasible("military strength limits gains against this "
-                                                 "defender this month");
-                        }
-                        taken[a].insert(r);
-                        if (taken[a].size() > 2)
-                            throw Infeasible(
-                                "at most two regions can change hands by force in one month");
-                    };
-                    if (!regional.empty() && name != "regional_initiative")
-                        throw Infeasible("regional initiatives require an explicit national "
-                                         "response for national operations");
-                    if (name == "regional_initiative" || name == "respond_regional") {
-                        auto r = region();
-                        if (w.territories[r]["kind"] == "residual")
-                            throw Infeasible("residual geometry has no political actor");
-                        auto p = current("regional", w.regionalPolitics, r);
-                        if (p.isNull())
-                            p = regionalState(w, r);
-                        if (name == "regional_initiative") {
-                            if (regional != r)
-                                throw Infeasible(
-                                    "only the selected regional actor can set its agenda");
-                            p["agenda"] = str("agenda");
-                            p["relations"] = str("relations");
-                            if (o["demand"].isString() && !o["demand"].asString().empty()) {
-                                if (p["demands"].size() >= 8) {
-                                    for (Json::ArrayIndex n = 0; n < p["demands"].size(); ++n)
-                                        if (p["demands"][n]["status"] != "pending") {
-                                            p["demands"].removeIndex(n, nullptr);
-                                            break;
-                                        }
-                                }
-                                if (p["demands"].size() >= 8)
-                                    throw Infeasible("regional pending demand capacity reached");
-                                Json::Value demand;
-                                demand["id"] = id;
-                                demand["text"] = o["demand"];
-                                demand["status"] = "pending";
-                                demand["authority_at_creation"] = ev;
-                                p["demands"].append(demand);
-                            }
-                        } else {
-                            if (!regional.empty() || w.territories[r]["controller"] != ev)
-                                throw Infeasible("only current national authority can respond");
-                            bool found = false;
-                            for (auto &d : p["demands"])
-                                if (d["id"] == str("demand_id") && d["status"] == "pending") {
-                                    auto response = str("response");
-                                    if (response != "accepted" && response != "rejected")
-                                        throw Infeasible("invalid national response");
-                                    d["status"] = response;
-                                    d["response_event"] = id;
-                                    d["responding_authority"] = ev;
-                                    found = true;
-                                }
-                            if (!found)
-                                throw Infeasible("no pending demand to answer");
-                        }
-                        p["supporting_events"].append(id);
-                        if (p["supporting_events"].size() > 12)
-                            p["supporting_events"].removeIndex(0, nullptr);
-                        touch("regional", r, w.regionalPolitics[r], id, why) = p;
-                        regions.insert(r);
-                    } else if (name == "change_identity") {
-                        auto a = party("actor");
-                        if (a != ev)
-                            throw Infeasible("only a national actor can change its own identity");
-                        auto v = current("actor", w.actors, a);
-                        auto type = str("change_type");
-                        auto newName = str("name");
-                        auto reason = str("reason");
-                        if (type != "rename" && type != "refounding" && type != "correction")
-                            throw Infeasible("unknown identity change");
-                        if (reason.size() > 500 || newName.size() > 120)
-                            throw Infeasible("identity exceeds bounds");
-                        if (type == "correction") {
-                            if (!identityCorrection(newName, v["name"].asString()))
-                                throw Infeasible("substantive rename requires a new identity");
-                        }
-                        if (type == "rename" && identityCorrection(newName, v["name"].asString()))
-                            type = "correction";
-                        if (index.contains("actor:" + a))
-                            throw Infeasible("only one identity change per actor per month");
-                        if (type == "correction") {
-                            v["name"] = newName;
-                            touch("actor", a, w.actors[a], id, reason) = v;
-                            actors.insert(a);
-                            continue;
-                        }
-                        // Capture original static identity before updating its name.
-                        if (!v["identity_revisions"].isArray()) {
-                            Json::Value old;
-                            if (!std::regex_match(a, std::regex("[A-Z]{2}")))
-                                old = makeFlag(Json::nullValue, w.campaignId + a, "legacy");
-                            else {
-                                old["static_flag"] = v.get("static_flag", a);
-                                old["origin_event"] = "initial";
-                            }
-                            old["name"] = v["name"];
-                            v["identity_revisions"].append(old);
-                        }
-                        v["name"] = newName;
-                        reviseIdentity(v, o["flag_design"], w.campaignId + a + id, id);
-                        touch("actor", a, w.actors[a], id, reason) = v;
-                        actors.insert(a);
-                    } else if (name == "create_actor") {
-                        if (++newActors > 1)
-                            throw Infeasible("only one new state can emerge per month");
-                        auto requested = str("actor_id"), a = slug(str("name"), 30);
-                        for (int n = 2; w.hasActor(a) || index.contains("actor:" + a); ++n)
-                            a = slug(str("name"), 30) + "-" + std::to_string(n);
-                        if (!w.hasActor(requested))
-                            aliases[requested] = a;
-                        aliases["~" + normal(str("name"))] = a;
-                        aliases["~" + normal(requested)] = a;
-                        Json::Value identity;
-                        identity["name"] = str("name");
-                        identity["color"] = str("color");
-                        reviseIdentity(identity, o["flag_design"], w.campaignId + a + id, id);
-                        touch("actor", a, Json::nullValue, id, why) = identity;
-                        actors.insert(a);
-                        createdHere.insert(a);
-                    } else if (name == "open_conflict" || name == "add_commitment") {
-                        if (!o["actors"].isArray() || o["actors"].size() < 2)
-                            throw Infeasible("needs two parties");
-                        auto kind = name == "open_conflict" ? std::string("conflict")
-                                                            : std::string("commitment");
-                        auto cid = std::string(kind == "conflict" ? "c" : "k") +
-                                   std::to_string(w.turn) + "-" + std::to_string(++created);
-                        Json::Value v;
-                        v["actors"] = Json::arrayValue;
-                        v["status"] = "open";
-                        v["text"] = str("text");
-                        std::vector<std::string> members;
-                        for (auto &a : o["actors"]) {
-                            if (!a.isString())
-                                throw Infeasible("unknown party");
-                            auto ref = actorRef(a.asString());
-                            if (!known(ref))
-                                throw Infeasible("unknown party " + ref);
-                            if (std::find(members.begin(), members.end(), ref) != members.end())
-                                continue;
-                            members.push_back(ref);
-                            v["actors"].append(ref);
-                            actors.insert(ref);
-                        }
-                        if (members.size() < 2)
-                            throw Infeasible("needs two parties");
-                        if (std::find(members.begin(), members.end(), ev) == members.end())
-                            throw Infeasible("only a party can open or sign this");
-                        if (kind == "commitment")
-                            consent(members, proposal);
-                        else
-                            for (auto &m : members)
-                                if (m != ev)
-                                    hostile.insert(m);
-                        auto type = o["kind"].asString();
-                        if (kind == "conflict" ? !validConflictKind(type)
-                                               : !validCommitmentKind(type))
-                            type = kind == "conflict" ? "war" : "other";
-                        // Pending creations are not in w yet; name them against what they will be.
-                        WorldState named = w;
-                        for (auto &m : members)
-                            if (!named.hasActor(m))
-                                named.actors[m] = current("actor", w.actors, m);
-                        v["name"] = realisticName(named, kind, type,
-                                                  o["name"].isString() ? o["name"].asString() : "",
-                                                  members, v["text"].asString(), names);
-                        names.insert(lowered(v["name"].asString()));
-                        v["kind"] = type;
-                        v["started_turn"] = w.turn;
-                        if (kind == "conflict") {
-                            auto level = o["intensity"].asString();
-                            v["set_intensity"] = v["intensity"] =
-                                (level == "low" || level == "high") ? level : "medium";
-                            v["affected_regions"] = Json::arrayValue;
-                            v["casualties"] = v["displaced"] = Json::Int64(0);
-                        }
-                        // How long it lasts (0 = open-ended) and what signing changes at once, both
-                        // drafted by the model.
-                        int months = kind == "commitment" && o["months"].isInt()
-                                         ? std::clamp(o["months"].asInt(), 0, 120)
-                                         : 0;
-                        if (proposal) {
-                            // Keyed by the commitment ID it will take, so acceptance never clashes
-                            // with a later treaty.
-                            v.removeMember("status");
-                            v.removeMember("started_turn");
-                            v["from"] = ev;
-                            v["status"] = "pending";
-                            v["proposed_turn"] = w.turn;
-                            v["event"] = id;
-                            v["months"] = months;
-                            v["terms"] = treatyTerms(o["terms"]);
-                            touch("proposal", cid, Json::nullValue, id, why) = v;
-                            awaiting();
-                            continue;
-                        }
-                        if (kind == "commitment") {
-                            auto done = applyTerms(o["terms"], members, why);
-                            if (!done.empty()) {
-                                v["terms"] = done;
-                                shaped = true;
-                            }
-                            if (months)
-                                v["expires_turn"] = w.turn + months;
-                        }
-                        touch(kind, cid, Json::nullValue, id, why) = v;
-                        (kind == "conflict" ? conflicts : commitments).insert(cid);
-                        if (kind == "conflict" ? (type == "war" || type == "civil_war" ||
-                                                  v["set_intensity"] == "high")
-                                               : (type == "trade_agreement" || type == "union"))
-                            for (auto &m : members)
-                                (kind == "conflict" ? warParties : tradeParties).insert(m);
-                    } else if (name == "resolve_conflict" || name == "resolve_commitment") {
-                        auto kind = name == "resolve_conflict" ? std::string("conflict")
-                                                               : std::string("commitment");
-                        auto cid = str(kind.c_str());
-                        auto &collection = kind == "conflict" ? w.conflicts : w.commitments;
-                        if (!collection.isMember(cid))
-                            throw Infeasible("unknown " + kind);
-                        if (std::find(collection[cid]["actors"].begin(),
-                                      collection[cid]["actors"].end(),
-                                      Json::Value(ev)) == collection[cid]["actors"].end())
-                            throw Infeasible("only a party can end " + displayName(w, kind, cid));
-                        auto treaty = current(kind, collection, cid);
-                        {
-                            auto &v = touch(kind, cid, collection[cid], id, why);
-                            (kind == "conflict" ? conflicts : commitments).insert(cid);
-                            v["status"] = "resolved";
-                            v["ended_turn"] = w.turn;
-                            if (kind == "conflict")
-                                v["intensity"] = "none";
-                        }
-                        if (kind == "commitment" && treaty["status"] == "open")
-                            ending(treaty, why);
-                    } else if (name == "amend_commitment") {
-                        auto cid = str("commitment");
-                        auto treaty = current("commitment", w.commitments, cid);
-                        if (!treaty.isObject() || treaty["status"] != "open")
-                            throw Infeasible("no such treaty in force");
-                        std::vector<std::string> members;
-                        for (auto &a : treaty["actors"])
-                            members.push_back(a.asString());
-                        if (std::find(members.begin(), members.end(), ev) == members.end())
-                            throw Infeasible("only a party can amend " +
-                                             displayName(w, "commitment", cid));
-                        consent(members, proposal);
-                        // Renewal: months from now; 0 keeps the current end date.
-                        int months =
-                            o["months"].isInt() ? std::clamp(o["months"].asInt(), 0, 120) : 0;
-                        auto revised =
-                            o["text"].isString() ? o["text"].asString().substr(0, 1000) : "";
-                        for (auto &m : members)
-                            actors.insert(m);
-                        if (proposal) {
-                            auto pid = cid + "-r" + std::to_string(w.turn);
-                            for (int n = 2;
-                                 w.proposals.isMember(pid) || index.contains("proposal:" + pid);
-                                 ++n)
-                                pid = cid + "-r" + std::to_string(w.turn) + "-" + std::to_string(n);
-                            Json::Value v;
-                            v["from"] = ev;
-                            v["actors"] = treaty["actors"];
-                            v["kind"] = validCommitmentKind(treaty.get("kind", "").asString())
-                                            ? treaty["kind"]
-                                            : Json::Value("other");
-                            v["name"] = displayName(w, "commitment", cid);
-                            v["text"] = revised.empty() ? treaty["text"] : Json::Value(revised);
-                            v["months"] = months;
-                            v["terms"] = treatyTerms(o["terms"]);
-                            v["amends"] = cid;
-                            v["status"] = "pending";
-                            v["proposed_turn"] = w.turn;
-                            v["event"] = id;
-                            touch("proposal", pid, Json::nullValue, id, why) = v;
-                            awaiting();
-                            continue;
-                        }
-                        auto done = applyTerms(o["terms"], members, why);
-                        auto &v = touch("commitment", cid, w.commitments[cid], id, why);
-                        commitments.insert(cid);
-                        if (!revised.empty())
-                            v["text"] = revised;
-                        if (months)
-                            v["expires_turn"] = w.turn + months;
-                        for (auto &t : done) {
-                            v["terms"].append(t);
-                            if (v["terms"].size() > 8)
-                                v["terms"].removeIndex(0, nullptr);
-                        }
-                        shaped = !done.empty();
-                    } else if (name == "settle_proposal") {
-                        if (!trusted)
-                            throw Infeasible("unknown operation " + name);
-                        auto pid = str("proposal"), answer = str("answer");
-                        auto &p = w.proposals[pid];
-                        auto after = p;
-                        after["status"] = answer;
-                        after["answered_turn"] = w.turn;
-                        touch("proposal", pid, p, id, why) = after;
-                        for (auto &a : p["actors"])
-                            actors.insert(a.asString());
-                        if (answer == "accepted") {
-                            std::vector<std::string> members;
-                            for (auto &a : p["actors"])
-                                members.push_back(a.asString());
-                            auto done = applyTerms(p["terms"], members, why);
-                            int months = p.get("months", 0).asInt();
-                            auto kind = p["kind"].asString();
-                            if (p["amends"].isString()) {
-                                auto cid = p["amends"].asString();
-                                auto &v = touch("commitment", cid, w.commitments[cid], id, why);
-                                v["text"] = p["text"];
-                                if (months)
-                                    v["expires_turn"] = w.turn + months;
-                                for (auto &t : done) {
-                                    v["terms"].append(t);
-                                    if (v["terms"].size() > 8)
-                                        v["terms"].removeIndex(0, nullptr);
-                                }
-                                commitments.insert(cid);
-                                shaped = !done.empty();
-                            } else {
-                                Json::Value v;
-                                for (auto k : {"actors", "kind", "name", "text"})
-                                    v[k] = p[k];
-                                v["status"] = "open";
-                                v["started_turn"] = w.turn;
-                                if (!done.empty())
-                                    v["terms"] = done;
-                                if (months)
-                                    v["expires_turn"] = w.turn + months;
-                                touch("commitment", pid, Json::nullValue, id, why) = v;
-                                commitments.insert(pid);
-                                if (kind == "trade_agreement" || kind == "union")
-                                    for (auto &m : members)
-                                        tradeParties.insert(m);
-                                shaped =
-                                    !done.empty() || (kind != "trade_agreement" && kind != "other");
-                            }
-                        }
-                    } else if (name == "set_conflict_intensity") {
-                        auto cid = str("conflict");
-                        auto level = str("intensity");
-                        if (!w.conflicts.isMember(cid) || w.conflicts[cid]["status"] != "open")
-                            throw Infeasible("no such open conflict");
-                        if (level != "low" && level != "medium" && level != "high")
-                            throw Infeasible("invalid intensity");
-                        auto &parties = w.conflicts[cid]["actors"];
-                        if (std::find(parties.begin(), parties.end(), Json::Value(ev)) ==
-                            parties.end())
-                            throw Infeasible("only a party can escalate or scale down " +
-                                             displayName(w, "conflict", cid));
-                        touch("conflict", cid, w.conflicts[cid], id, why)["set_intensity"] = level;
-                        conflicts.insert(cid);
-                        if (level != "low")
-                            for (auto &a : parties)
-                                hostile.insert(a.asString());
-                        for (auto &a : parties) {
-                            actors.insert(a.asString());
-                            if (level == "high")
-                                warParties.insert(a.asString());
-                        }
-                    } else if (name == "build") {
-                        auto r = region();
-                        auto builder = party("actor");
-                        auto kind = str("kind");
-                        if (builder != ev && !createdHere.contains(builder))
-                            throw Infeasible("can only build for itself");
-                        auto t = current("territory", w.territories, r);
-                        if (kind != "event_site" && w.territories[r]["controller"] != builder)
-                            throw Infeasible("can only build in regions it controls, not " +
-                                             w.territories[r]["name"].asString());
-                        require(t["longitude"].isNumeric() && t["latitude"].isNumeric(),
-                                "Region has no interior location");
-                        auto eid = "e" + std::to_string(w.turn) + "-" + slug(str("name"), 30);
-                        for (int n = 2; w.entities.isMember(eid) || index.contains("entity:" + eid);
-                             ++n)
-                            eid = "e" + std::to_string(w.turn) + "-" + slug(str("name"), 30) + "-" +
-                                  std::to_string(n);
-                        Json::Value v;
-                        v["name"] = str("name");
-                        v["kind"] = kind;
-                        v["actor"] = builder;
-                        v["region"] = r;
-                        v["longitude"] = t["longitude"];
-                        v["latitude"] = t["latitude"];
-                        v["origin_event"] = id;
-                        // Construction takes months; the finished entity appears when resolve()
-                        // reaches completes_turn.
-                        if (int months = constructionMonths(kind)) {
-                            v["status"] = "under_construction";
-                            v["completes_turn"] = w.turn + months;
-                        } else
-                            v["status"] = "active";
-                        if (kind == "event_site")
-                            v["expires_turn"] = w.turn + eventMapMonths;
-                        if (w.actors[builder]["status"]["military"].isObject() &&
-                            kind != "event_site") {
-                            auto allocated = allocatedWorld();
-                            int projects = 0;
-                            for (const auto &e : allocated.entities)
-                                if (e["actor"] == builder && e["status"] == "under_construction" &&
-                                    e["kind"] != "event_site")
-                                    ++projects;
-                            if (projects >= force::constructionCapacity(w, builder))
-                                throw Infeasible("construction capacity reached");
-                            if (kind == "army") {
-                                int available = force::uncommittedPersonnel(allocated, builder);
-                                if (available < 5000)
-                                    throw Infeasible("no troops left to form an army");
-                                v["personnel"] = std::min(
-                                    available,
-                                    std::clamp(int(std::round(
-                                                   w.actors[builder]["status"]["military"]["active"]
-                                                       .asDouble() /
-                                                   10000)) *
-                                                   1000,
-                                               5000, 150000));
-                            } else if (kind == "fleet") {
-                                int available = force::uncommittedShips(allocated, builder);
-                                if (!available)
-                                    throw Infeasible("no major warships available");
-                                v["ships"] = std::min(
-                                    available,
-                                    std::clamp(int(std::round(
-                                                   w.actors[builder]["status"]["military"]["ships"]
-                                                       .asDouble() *
-                                                   0.25)),
-                                               1, 30));
-                            }
-                        }
-                        touch("entity", eid, Json::nullValue, id, why) = v;
-                        actors.insert(builder);
-                        regions.insert(r);
-                        entities.insert(eid);
-                    } else if (name == "move_entity" || name == "set_entity_status") {
-                        auto eid = str("entity");
-                        if (!w.entities.isMember(eid))
-                            throw Infeasible("unknown or unfinished entity");
-                        auto &v = touch("entity", eid, w.entities[eid], id, why);
-                        auto owner = w.entities[eid]["actor"].asString();
-                        if (name == "move_entity") {
-                            auto r = region();
-                            auto from = w.entities[eid]["region"].asString();
-                            auto kind = w.entities[eid]["kind"].asString();
-                            if (ev != owner)
-                                throw Infeasible("only its owner can move " +
-                                                 w.entities[eid]["name"].asString());
-                            if (w.entities[eid]["status"] != "active")
-                                throw Infeasible(w.entities[eid]["name"].asString() +
-                                                 " is not ready");
-                            if (kind == "army") {
-                                if (!near(from, r))
-                                    throw Infeasible(
-                                        "an army advances at most one region per month");
-                            } else if (kind == "fleet") {
-                                if (kilometres(w.territories[from], w.territories[r]) > 1500)
-                                    throw Infeasible("a fleet sails at most 1,500 km per month");
-                            } else
-                                throw Infeasible("a " + kind + " cannot be relocated");
-                            auto t = current("territory", w.territories, r);
-                            v["region"] = r;
-                            v["longitude"] = t["longitude"];
-                            v["latitude"] = t["latitude"];
-                            regions.insert(r);
-                        } else {
-                            auto status = str("status");
-                            if (w.entities[eid]["status"] == "under_construction" &&
-                                status == "active")
-                                throw Infeasible("construction is still under way");
-                            if (w.entities[eid]["status"] == "destroyed" && status != "destroyed")
-                                throw Infeasible("a destroyed entity cannot be restored");
-                            if (ev != owner && (status == "active" ||
-                                                !reaches(ev, w.entities[eid]["region"].asString())))
-                                throw Infeasible("cannot reach " +
-                                                 w.entities[eid]["name"].asString());
-                            if (ev != owner && status == "destroyed") {
-                                // At war since before this month, or declared earlier in this
-                                // month's outcomes.
-                                auto fighting = [&](const Json::Value &c) {
-                                    auto &p = c["actors"];
-                                    return c["status"] == "open" &&
-                                           std::find(p.begin(), p.end(), Json::Value(ev)) !=
-                                               p.end() &&
-                                           std::find(p.begin(), p.end(), Json::Value(owner)) !=
-                                               p.end();
-                                };
-                                bool war = false;
-                                for (auto &c : w.conflicts)
-                                    war = war || fighting(c);
-                                for (auto &c : pending)
-                                    war = war || (c.kind == "conflict" && fighting(c.after));
-                                if (!war)
-                                    throw Infeasible("not at war with " +
-                                                     w.actors[owner]["name"].asString());
-                                hostile.insert(owner);
-                            }
-                            if (ev != owner && status != "active" &&
-                                w.actors[ev]["status"]["military"].isObject() &&
-                                force::assaultCapacity(w, adjacency, ev, owner,
-                                                       w.entities[eid]["region"].asString()) < 1)
-                                throw Infeasible("too weak to defeat this formation");
-                            if (status == "active" && v["status"] == "inactive" &&
-                                w.actors[owner]["status"]["military"].isObject()) {
-                                auto allocated = allocatedWorld();
-                                if (v["kind"] == "army" &&
-                                    force::uncommittedPersonnel(allocated, owner) <
-                                        v.get("personnel", 10000).asInt())
-                                    throw Infeasible("no troops left to reactivate army");
-                                if (v["kind"] == "fleet" &&
-                                    force::uncommittedShips(allocated, owner) <
-                                        v.get("ships", 3).asInt())
-                                    throw Infeasible("no major warships available");
-                            }
-                            v["status"] = status;
-                            if (status != "under_construction")
-                                v.removeMember("completes_turn");
-                            if (status != "active")
-                                v.removeMember("expires_turn");
-                        }
-                        entities.insert(eid);
-                        actors.insert(owner);
-                    } else if (name == "transfer_territory" || name == "occupy" ||
-                               name == "restore_control") {
-                        auto r = region();
-                        auto owner = w.territories[r]["owner"].asString(),
-                             controller = w.territories[r]["controller"].asString();
-                        auto &t = touch("territory", r, w.territories[r], id, why);
-                        if (name == "transfer_territory") {
-                            auto to = party("to");
-                            // Owners may cede; others must already have held the region before this
-                            // month to annex it.
-                            bool cession = ev == owner,
-                                 annexation =
-                                     controller == ev && (to == ev || createdHere.contains(to)),
-                                 returned = controller == ev && to == owner;
-                            if (createdHere.contains(to) && !cession) {
-                                bool established = false;
-                                for (auto &conflict : w.conflicts)
-                                    if (conflict["status"] == "open") {
-                                        auto &parties = conflict["actors"];
-                                        bool acting = std::find(parties.begin(), parties.end(),
-                                                                Json::Value(ev)) != parties.end();
-                                        bool governing =
-                                            std::find(parties.begin(), parties.end(),
-                                                      Json::Value(owner)) != parties.end();
-                                        established = established || (acting && governing);
-                                    }
-                                if (!established)
-                                    throw Infeasible("independence needs national agreement or an "
-                                                     "established relevant conflict");
-                            }
-                            if (!cession && !annexation && !returned)
-                                throw Infeasible(
-                                    controller == ev
-                                        ? "cannot hand over land it does not own"
-                                        : "must occupy " + w.territories[r]["name"].asString() +
-                                              " for at least a month before annexing it");
-                            if (!cession && to != owner && !owner.empty()) {
-                                seizedOwners.insert(owner);
-                                warParties.insert(ev);
-                            }
-                            t["owner"] = to;
-                            t["controller"] = to;
-                        } else if (name == "occupy") {
-                            auto by = party("by");
-                            if (by != ev && !createdHere.contains(by))
-                                throw Infeasible(
-                                    "an occupation must be carried out by the acting nation");
-                            if (controller != by) {
-                                take(ev, r);
-                                if (!owner.empty() && owner != by) {
-                                    seizedOwners.insert(owner);
-                                    warParties.insert(ev);
-                                }
-                                hostile.insert(owner);
-                                hostile.insert(controller);
-                            }
-                            t["controller"] = by;
-                        } else {
-                            if (ev == owner && controller != owner)
-                                take(ev, r);
-                            else if (ev != controller)
-                                throw Infeasible(
-                                    "only the owner or the occupier can change control");
-                            t["controller"] = t["owner"];
-                        }
-                        regions.insert(r);
-                        for (auto k : {"owner", "controller"})
-                            if (!t[k].asString().empty())
-                                actors.insert(t[k].asString());
-                    } else
-                        throw Infeasible("unknown operation " + name);
-                    static const std::set<std::string> shaping{
-                        "occupy",        "transfer_territory", "restore_control",
-                        "open_conflict", "resolve_conflict",   "set_conflict_intensity",
-                        "create_actor",  "change_identity",    "resolve_commitment"};
-                    auto kind = o["kind"].asString();
-                    if (!proposal)
-                        structural = structural || shaped || shaping.contains(name) ||
-                                     (name == "add_commitment" && kind != "trade_agreement" &&
-                                      kind != "other") ||
-                                     (name == "build" && kind == "event_site") ||
-                                     (name == "set_entity_status" && o["status"] == "destroyed");
-                    // Acting against a partner breaches the treaties of peace or alliance between
-                    // them; a two-party one is broken.
-                    hostile.erase(ev);
-                    hostile.erase("");
-                    for (auto &target : hostile)
-                        for (auto &kid : w.commitments.getMemberNames()) {
-                            auto treaty = current("commitment", w.commitments, kid);
-                            auto &p = treaty["actors"];
-                            if (treaty["status"] != "open" ||
-                                !securityTreaty(treaty["kind"].asString()) ||
-                                std::find(p.begin(), p.end(), Json::Value(ev)) == p.end() ||
-                                std::find(p.begin(), p.end(), Json::Value(target)) == p.end())
-                                continue;
-                            if (breaches.empty())
-                                breaches = kid;
-                            if (p.size() == 2) {
-                                auto &v = touch("commitment", kid, w.commitments[kid], id,
-                                                "Broken: " + why);
-                                v["status"] = "resolved";
-                                v["ended_turn"] = w.turn;
-                                commitments.insert(kid);
-                                ending(treaty, "Broken: " + why);
-                                structural = true;
-                            }
-                        }
-                } catch (const Infeasible &x) {
-                    std::tie(pending, index, created, newActors, taken, aliases, names, actors,
-                             regions, entities, createdHere, conflicts, commitments, warParties,
-                             tradeParties, seizedOwners, tradeLoss) = before;
-                    Json::Value d;
-                    d["action"] = name;
-                    d["reason"] = x.what();
-                    dropped.append(d);
-                    ++failedOps;
-                }
-            }
-            // Nothing was breached if every operation was dropped.
-            if (!breaches.empty() && failedOps == int(seenOps.size()))
-                breaches.clear();
-            for (auto &a : createdHere) {
-                bool land = false;
-                for (auto &c : pending)
-                    land = land || (c.kind == "territory" && c.after["owner"] == a);
-                if (!land)
-                    throw Infeasible("a new state needs territory");
-            }
-        } catch (const Infeasible &x) {
-            std::tie(pending, index, created, newActors, taken, aliases, names) = snapshot;
-            actors.clear();
-            regions.clear();
-            entities.clear();
-            conflicts.clear();
-            commitments.clear();
-            warParties.clear();
-            tradeParties.clear();
-            seizedOwners.clear();
-            tradeLoss.clear();
-            structural = false;
-            blocked = "infeasible";
-            Json::Value d;
-            d["action"] = "event";
-            d["reason"] = x.what();
-            dropped.append(d);
-        }
-        // A later event about an incident, or one caused by it, keeps its site on the map for
-        // another few months.
-        if (blocked == "none") {
-            std::set<std::string> causes;
-            for (auto &c : e["causes"])
-                if (c.isString())
-                    causes.insert(c.asString());
-            for (auto &eid : w.entities.getMemberNames()) {
-                // Sites created this month are not in w yet and need no renewal; kind never
-                // changes, so check it before copying.
-                if (w.entities[eid].get("kind", "") != "event_site")
-                    continue;
-                auto site = current("entity", w.entities, eid);
-                if (site["kind"] != "event_site" || site["status"] != "active" ||
-                    (!entities.contains(eid) && !causes.contains(site["origin_event"].asString())))
-                    continue;
-                touch("entity", eid, w.entities[eid], id,
-                      "Renewed by a related event")["expires_turn"] = w.turn + eventMapMonths;
-                entities.insert(eid);
-            }
-        }
-        if (!regional.empty()) {
-            regions.insert(regional);
-            // Even narrative-only and failed attempts leave a persistent regional history.
-            auto p = current("regional", w.regionalPolitics, regional);
-            if (p.isNull())
-                p = regionalState(w, regional);
-            if (std::find(p["supporting_events"].begin(), p["supporting_events"].end(),
-                          Json::Value(id)) == p["supporting_events"].end())
-                p["supporting_events"].append(id);
-            if (p["supporting_events"].size() > 12)
-                p["supporting_events"].removeIndex(0, nullptr);
-            touch("regional", regional, w.regionalPolitics[regional], id,
-                  "Regional political history") = p;
-        }
-        actors.insert(ev);
-        if (!breaches.empty() && blocked == "none")
-            text += " This breached the commitment: " + w.commitments[breaches]["text"].asString();
-        Json::Value event;
-        event["id"] = id;
-        event["actor"] = ev;
-        if (blocked != "none")
-            event["blocked_by"] = blocked;
-        if (!breaches.empty() && blocked == "none")
-            event["breaches"] = breaches;
-        event["text"] = text.substr(0, 2000);
-        if (!dropped.empty())
-            event["dropped_operations"] = dropped;
-        // What players and later prompts are told about dropped operations: a flag, never the
-        // reasons.
-        bool failed = blocked == "none" && !seenOps.empty() && failedOps == int(seenOps.size());
-        if (failed)
-            event["failed"] = true;
-        else if (blocked == "none" && !dropped.empty())
-            event["partial"] = true;
-        event["background"] = e["background"];
-        event["causes"] = e["causes"];
-        for (auto [key, values] :
-             std::initializer_list<std::pair<const char *, std::set<std::string> *>>{
-                 {"actors", &actors},
-                 {"regions", &regions},
-                 {"entities", &entities},
-                 {"conflicts", &conflicts},
-                 {"commitments", &commitments}}) {
-            event[key] = Json::arrayValue;
-            for (auto &v : *values)
-                event[key].append(v);
-        }
-        for (auto k : {"initiative_type", "regional_actor"})
-            if (e.isMember(k))
-                event[k] = e[k];
-        // Only something that happened has consequences; malformed or unknown effects are dropped,
-        // not fatal.
-        if (blocked == "none") {
-            struct Effect {
-                std::string actor, economy, stability;
-                bool forced;
-            };
-            std::vector<Effect> effects;
-            auto find = [&](const std::string &a) {
-                return std::find_if(effects.begin(), effects.end(),
-                                    [&](const Effect &f) { return f.actor == a; });
-            };
-            if (e["effects"].isArray())
-                for (auto &x : e["effects"]) {
-                    if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
-                        !x["economy"].isString() || !x["stability"].isString())
-                        continue;
-                    auto a = actorRef(x["actor"].asString());
-                    auto economy = x["economy"].asString(), stability = x["stability"].asString();
-                    if (!known(a) || !validEffect(economy) || !validEffect(stability) ||
-                        (economy == "none" && stability == "none") || find(a) != effects.end())
-                        continue;
-                    effects.push_back({a, economy, stability, false});
-                }
-            // The small model rewards aggression and punishes victims at random; the month's
-            // operations settle the sign.
-            auto entry = [&](const std::string &a, const std::string &economy,
-                             const std::string &stability) -> Effect & {
-                auto f = find(a);
-                if (f == effects.end()) {
-                    effects.push_back({a, economy, stability, true});
-                    return effects.back();
-                }
-                f->forced = true;
-                return *f;
-            };
-            for (auto &p : warParties) {
-                auto &f = entry(p, "none", "none");
-                f.economy = weaker(f.economy, "decline");
-                if (p != ev)
-                    f.stability = weaker(f.stability, "decline");
-            }
-            for (auto &p : tradeParties) {
-                auto &f = entry(p, "none", "none");
-                f.economy = stronger(f.economy, "growth");
-            }
-            for (auto &p : seizedOwners) {
-                auto &f = entry(p, "none", "none");
-                f.stability = weaker(f.stability, "decline");
-            }
-            for (auto &p : tradeLoss) {
-                auto &f = entry(p, "none", "none");
-                f.economy = weaker(f.economy, "decline");
-            }
-            std::erase_if(effects, [](const Effect &f) {
-                return f.economy == "none" && f.stability == "none";
-            });
-            // Forced entries survive the cap; among the model's own, the weightiest stay.
-            auto weight = [](const Effect &f) {
-                return std::abs(rank(f.economy) - 2) + std::abs(rank(f.stability) - 2);
-            };
-            std::stable_sort(effects.begin(), effects.end(), [&](const Effect &a, const Effect &b) {
-                return a.forced != b.forced ? a.forced : weight(a) > weight(b);
-            });
-            if (effects.size() > 3)
-                effects.resize(3);
-            if (!effects.empty()) {
-                event["effects"] = Json::arrayValue;
-                for (auto &f : effects) {
-                    Json::Value x;
-                    x["actor"] = f.actor;
-                    x["economy"] = f.economy;
-                    x["stability"] = f.stability;
-                    event["effects"].append(x);
-                }
-            }
-        }
-        event["identity_changes"] = Json::arrayValue;
-        for (const auto &c : pending)
-            if (c.kind == "actor" && c.event == id && c.after["flag_revision"].isUInt() &&
-                c.after["flag_revision"] != c.before["flag_revision"]) {
-                Json::Value link;
-                link["actor"] = c.id;
-                link["revision"] = c.after["flag_revision"];
-                event["identity_changes"].append(link);
-            }
-        event["major"] = blocked == "none" && (structural || event.isMember("breaches"));
-        // A severe or strong effect declares a headline; the model no longer labels significance
-        // itself.
-        bool strong = false;
-        for (auto &x : event.get("effects", Json::arrayValue))
-            for (auto k : {"economy", "stability"})
-                strong = strong || x[k] == "severe_decline" || x[k] == "strong_growth";
-        if (blocked == "none" && !event["major"].asBool() && strong)
-            declared.push_back(events.size());
-        events.append(event);
+}
+
+void OperationCompiler::compileEvent(const Json::Value &e, bool trusted) {
+    require(e.isObject() && e["description"].isString() && e["actor"].isString() &&
+                e["blocked_by"].isString() && e["background"].isBool() && e["causes"].isArray() &&
+                e["operations"].isArray() && e["operations"].size() <= 8,
+            "Invalid operation event");
+    EventScope s(e);
+    s.trusted = trusted;
+    s.ev = e["actor"].asString();
+    require(w.hasActor(s.ev), "Unknown event actor");
+    // Background developments exist only for what changes something; those without an effect are
+    // noise.
+    if (e["background"].asBool() &&
+        (effectWeight(e.get("effects", Json::nullValue)) == 0 || ++background > 3))
+        return;
+    s.regional = e.get("regional_actor", "").asString();
+    require(s.regional.empty() || (w.territories.isMember(s.regional) &&
+                                   w.territories[s.regional]["controller"] == s.ev &&
+                                   w.territories[s.regional]["kind"] != "residual"),
+            "Invalid regional authority");
+    s.text = e["description"].asString();
+    auto base = "t" + std::to_string(w.turn) + "-" + slug(s.text, 32);
+    s.id = base;
+    for (int n = 2; !eventIds.insert(s.id).second; ++n)
+        s.id = base + "-" + std::to_string(n);
+    s.blocked = e["blocked_by"].asString();
+    // A commitment binds only its parties.
+    auto &commitments = w.commitments;
+    if (commitments.isMember(s.blocked) &&
+        std::find(commitments[s.blocked]["actors"].begin(), commitments[s.blocked]["actors"].end(),
+                  Json::Value(s.ev)) == commitments[s.blocked]["actors"].end())
+        s.blocked = "none";
+    // Treaties can be broken: a cited commitment only blocks an event whose outcome changes
+    // nothing; otherwise the breach is recorded.
+    if (s.blocked != "none" && !e["operations"].empty() && commitments.isMember(s.blocked)) {
+        s.breaches = s.blocked;
+        s.blocked = "none";
     }
-    // Beyond what changed the map, a month keeps its three weightiest headlines.
-    std::stable_sort(declared.begin(), declared.end(), [&](Json::ArrayIndex a, Json::ArrayIndex b) {
-        return effectWeight(events[a].get("effects", Json::nullValue)) >
-               effectWeight(events[b].get("effects", Json::nullValue));
+    runOperations(s);
+    if (s.blocked == "none")
+        renewEventSites(s);
+    if (!s.regional.empty())
+        finishRegionalHistory(s);
+    s.actors.insert(s.ev);
+    buildEvent(s);
+}
+void OperationCompiler::runOperations(EventScope &s) {
+    auto before = snapshot();
+    pending.open();
+    try {
+        for (auto &o : s.e["operations"]) {
+            if (s.blocked != "none")
+                break;
+            require(o.isObject() && o["action"].isString(), "Invalid operation");
+            // Small models sometimes loop; an exact repeat within one event is degenerate, not a
+            // second outcome.
+            if (std::find(s.seenOps.begin(), s.seenOps.end(), o) != s.seenOps.end())
+                continue;
+            s.seenOps.push_back(o);
+            OpScope op{o};
+            op.name = o["action"].asString();
+            op.why = op.name + ": " + s.text.substr(0, 300);
+            runOperation(s, op);
+        }
+        // Nothing was breached if every operation was dropped.
+        if (!s.breaches.empty() && s.failedOps == int(s.seenOps.size()))
+            s.breaches.clear();
+        for (auto &a : s.createdHere) {
+            bool land = false;
+            for (auto &c : pending)
+                land = land || (c.kind == "territory" && c.after["owner"] == a);
+            if (!land)
+                throw Infeasible("a new state needs territory");
+        }
+        pending.commit();
+    } catch (const Infeasible &x) {
+        pending.rollback();
+        restore(std::move(before));
+        static_cast<Touched &>(s) = Touched();
+        s.structural = false;
+        s.blocked = "infeasible";
+        Json::Value d;
+        d["action"] = "event";
+        d["reason"] = x.what();
+        s.dropped.append(d);
+    }
+}
+// An impossible operation is dropped on its own; the rest of the event still happens.
+void OperationCompiler::runOperation(EventScope &s, OpScope &op) {
+    auto before = snapshot();
+    Touched touched = s;
+    pending.open();
+    try {
+        apply(s, op);
+        pending.commit();
+    } catch (const Infeasible &x) {
+        pending.rollback();
+        restore(std::move(before));
+        static_cast<Touched &>(s) = std::move(touched);
+        Json::Value d;
+        d["action"] = op.name;
+        d["reason"] = x.what();
+        s.dropped.append(d);
+        ++s.failedOps;
+    }
+}
+void OperationCompiler::apply(EventScope &s, OpScope &op) {
+    auto &name = op.name;
+    if (!s.regional.empty() && name != "regional_initiative")
+        throw Infeasible("regional initiatives require an explicit national response for national "
+                         "operations");
+    if (name == "regional_initiative" || name == "respond_regional")
+        opRegional(s, op);
+    else if (name == "change_identity")
+        opChangeIdentity(s, op);
+    else if (name == "create_actor")
+        opCreateActor(s, op);
+    else if (name == "open_conflict" || name == "add_commitment")
+        opOpen(s, op);
+    else if (name == "resolve_conflict" || name == "resolve_commitment")
+        opResolve(s, op);
+    else if (name == "amend_commitment")
+        opAmend(s, op);
+    else if (name == "settle_proposal")
+        opSettle(s, op);
+    else if (name == "set_conflict_intensity")
+        opIntensity(s, op);
+    else if (name == "build")
+        opBuild(s, op);
+    else if (name == "move_entity" || name == "set_entity_status")
+        opEntity(s, op);
+    else if (name == "transfer_territory" || name == "occupy" || name == "restore_control")
+        opTerritory(s, op);
+    else
+        throw Infeasible("unknown operation " + name);
+    if (op.done)
+        return;
+    markStructural(s, op);
+    breachTreaties(s, op);
+}
+void OperationCompiler::markStructural(EventScope &s, const OpScope &op) const {
+    static const std::set<std::string> shaping{
+        "occupy",        "transfer_territory", "restore_control",
+        "open_conflict", "resolve_conflict",   "set_conflict_intensity",
+        "create_actor",  "change_identity",    "resolve_commitment"};
+    auto &name = op.name;
+    auto kind = op.o["kind"].asString();
+    if (!op.proposal)
+        s.structural = s.structural || op.shaped || shaping.contains(name) ||
+                       (name == "add_commitment" && kind != "trade_agreement" && kind != "other") ||
+                       (name == "build" && kind == "event_site") ||
+                       (name == "set_entity_status" && op.o["status"] == "destroyed");
+}
+// Acting against a partner breaches the treaties of peace or alliance between them; a two-party one
+// is broken.
+void OperationCompiler::breachTreaties(EventScope &s, OpScope &op) {
+    op.hostile.erase(s.ev);
+    op.hostile.erase("");
+    for (auto &target : op.hostile)
+        for (auto &kid : w.commitments.getMemberNames()) {
+            auto treaty = pending.current("commitment", w.commitments, kid);
+            auto &p = treaty["actors"];
+            if (treaty["status"] != "open" || !securityTreaty(treaty["kind"].asString()) ||
+                std::find(p.begin(), p.end(), Json::Value(s.ev)) == p.end() ||
+                std::find(p.begin(), p.end(), Json::Value(target)) == p.end())
+                continue;
+            if (s.breaches.empty())
+                s.breaches = kid;
+            if (p.size() == 2) {
+                auto &v =
+                    pending.touch("commitment", kid, w.commitments[kid], s.id, "Broken: " + op.why);
+                v["status"] = "resolved";
+                v["ended_turn"] = w.turn;
+                s.commitments.insert(kid);
+                ending(s, treaty, "Broken: " + op.why);
+                s.structural = true;
+            }
+        }
+}
+
+void OperationCompiler::opRegional(EventScope &s, OpScope &op) {
+    auto &o = op.o;
+    auto r = region(op);
+    if (w.territories[r]["kind"] == "residual")
+        throw Infeasible("residual geometry has no political actor");
+    auto p = pending.current("regional", w.regionalPolitics, r);
+    if (p.isNull())
+        p = regionalState(w, r);
+    if (op.name == "regional_initiative") {
+        if (s.regional != r)
+            throw Infeasible("only the selected regional actor can set its agenda");
+        p["agenda"] = str(op, "agenda");
+        p["relations"] = str(op, "relations");
+        if (o["demand"].isString() && !o["demand"].asString().empty()) {
+            if (p["demands"].size() >= 8) {
+                for (Json::ArrayIndex n = 0; n < p["demands"].size(); ++n)
+                    if (p["demands"][n]["status"] != "pending") {
+                        p["demands"].removeIndex(n, nullptr);
+                        break;
+                    }
+            }
+            if (p["demands"].size() >= 8)
+                throw Infeasible("regional pending demand capacity reached");
+            Json::Value demand;
+            demand["id"] = s.id;
+            demand["text"] = o["demand"];
+            demand["status"] = "pending";
+            demand["authority_at_creation"] = s.ev;
+            p["demands"].append(demand);
+        }
+    } else {
+        if (!s.regional.empty() || w.territories[r]["controller"] != s.ev)
+            throw Infeasible("only current national authority can respond");
+        bool found = false;
+        for (auto &d : p["demands"])
+            if (d["id"] == str(op, "demand_id") && d["status"] == "pending") {
+                auto response = str(op, "response");
+                if (response != "accepted" && response != "rejected")
+                    throw Infeasible("invalid national response");
+                d["status"] = response;
+                d["response_event"] = s.id;
+                d["responding_authority"] = s.ev;
+                found = true;
+            }
+        if (!found)
+            throw Infeasible("no pending demand to answer");
+    }
+    p["supporting_events"].append(s.id);
+    if (p["supporting_events"].size() > 12)
+        p["supporting_events"].removeIndex(0, nullptr);
+    pending.touch("regional", r, w.regionalPolitics[r], s.id, op.why) = p;
+    s.regions.insert(r);
+}
+void OperationCompiler::opChangeIdentity(EventScope &s, OpScope &op) {
+    auto a = party(s, op, "actor");
+    if (a != s.ev)
+        throw Infeasible("only a national actor can change its own identity");
+    auto v = pending.current("actor", w.actors, a);
+    auto type = str(op, "change_type");
+    auto newName = str(op, "name");
+    auto reason = str(op, "reason");
+    if (type != "rename" && type != "refounding" && type != "correction")
+        throw Infeasible("unknown identity change");
+    if (reason.size() > 500 || newName.size() > 120)
+        throw Infeasible("identity exceeds bounds");
+    if (type == "correction") {
+        if (!identityCorrection(newName, v["name"].asString()))
+            throw Infeasible("substantive rename requires a new identity");
+    }
+    if (type == "rename" && identityCorrection(newName, v["name"].asString()))
+        type = "correction";
+    if (pending.contains("actor", a))
+        throw Infeasible("only one identity change per actor per month");
+    if (type == "correction") {
+        v["name"] = newName;
+        pending.touch("actor", a, w.actors[a], s.id, reason) = v;
+        s.actors.insert(a);
+        op.done = true;
+        return;
+    }
+    // Capture original static identity before updating its name.
+    if (!v["identity_revisions"].isArray()) {
+        Json::Value old;
+        if (!std::regex_match(a, std::regex("[A-Z]{2}")))
+            old = makeFlag(Json::nullValue, w.campaignId + a, "legacy");
+        else {
+            old["static_flag"] = v.get("static_flag", a);
+            old["origin_event"] = "initial";
+        }
+        old["name"] = v["name"];
+        v["identity_revisions"].append(old);
+    }
+    v["name"] = newName;
+    reviseIdentity(v, op.o["flag_design"], w.campaignId + a + s.id, s.id);
+    pending.touch("actor", a, w.actors[a], s.id, reason) = v;
+    s.actors.insert(a);
+}
+void OperationCompiler::opCreateActor(EventScope &s, OpScope &op) {
+    if (++newActors > 1)
+        throw Infeasible("only one new state can emerge per month");
+    auto requested = str(op, "actor_id"), a = slug(str(op, "name"), 30);
+    for (int n = 2; w.hasActor(a) || pending.contains("actor", a); ++n)
+        a = slug(str(op, "name"), 30) + "-" + std::to_string(n);
+    if (!w.hasActor(requested))
+        aliases[requested] = a;
+    aliases["~" + alphanumeric(str(op, "name"))] = a;
+    aliases["~" + alphanumeric(requested)] = a;
+    Json::Value identity;
+    identity["name"] = str(op, "name");
+    identity["color"] = str(op, "color");
+    reviseIdentity(identity, op.o["flag_design"], w.campaignId + a + s.id, s.id);
+    pending.touch("actor", a, Json::nullValue, s.id, op.why) = identity;
+    s.actors.insert(a);
+    s.createdHere.insert(a);
+}
+void OperationCompiler::opOpen(EventScope &s, OpScope &op) {
+    auto &o = op.o;
+    if (!o["actors"].isArray() || o["actors"].size() < 2)
+        throw Infeasible("needs two parties");
+    auto kind = op.name == "open_conflict" ? std::string("conflict") : std::string("commitment");
+    auto cid = std::string(kind == "conflict" ? "c" : "k") + std::to_string(w.turn) + "-" +
+               std::to_string(++created);
+    Json::Value v;
+    v["actors"] = Json::arrayValue;
+    v["status"] = "open";
+    v["text"] = str(op, "text");
+    auto members = treatyParties(s, op, v);
+    if (kind == "commitment")
+        consent(s, members, op.proposal);
+    else
+        for (auto &m : members)
+            if (m != s.ev)
+                op.hostile.insert(m);
+    auto type = o["kind"].asString();
+    if (kind == "conflict" ? !validConflictKind(type) : !validCommitmentKind(type))
+        type = kind == "conflict" ? "war" : "other";
+    v["name"] = treatyName(op, kind, type, members, v);
+    v["kind"] = type;
+    v["started_turn"] = w.turn;
+    if (kind == "conflict") {
+        auto level = o["intensity"].asString();
+        v["set_intensity"] = v["intensity"] =
+            (level == "low" || level == "high") ? level : "medium";
+        v["affected_regions"] = Json::arrayValue;
+        v["casualties"] = v["displaced"] = Json::Int64(0);
+    }
+    // How long it lasts (0 = open-ended) and what signing changes at once, both drafted by the
+    // model.
+    int months =
+        kind == "commitment" && o["months"].isInt() ? std::clamp(o["months"].asInt(), 0, 120) : 0;
+    if (op.proposal)
+        return propose(s, op, v, cid, months);
+    if (kind == "commitment") {
+        auto done = applyTerms(s, o["terms"], members, op.why);
+        if (!done.empty()) {
+            v["terms"] = done;
+            op.shaped = true;
+        }
+        if (months)
+            v["expires_turn"] = w.turn + months;
+    }
+    pending.touch(kind, cid, Json::nullValue, s.id, op.why) = v;
+    (kind == "conflict" ? s.conflicts : s.commitments).insert(cid);
+    if (kind == "conflict" ? (type == "war" || type == "civil_war" || v["set_intensity"] == "high")
+                           : (type == "trade_agreement" || type == "union"))
+        for (auto &m : members)
+            (kind == "conflict" ? s.warParties : s.tradeParties).insert(m);
+}
+std::vector<std::string> OperationCompiler::treatyParties(EventScope &s, const OpScope &op,
+                                                          Json::Value &v) const {
+    std::vector<std::string> members;
+    for (auto &a : op.o["actors"]) {
+        if (!a.isString())
+            throw Infeasible("unknown party");
+        auto ref = actorRef(a.asString());
+        if (!known(ref))
+            throw Infeasible("unknown party " + ref);
+        if (std::find(members.begin(), members.end(), ref) != members.end())
+            continue;
+        members.push_back(ref);
+        v["actors"].append(ref);
+        s.actors.insert(ref);
+    }
+    if (members.size() < 2)
+        throw Infeasible("needs two parties");
+    if (std::find(members.begin(), members.end(), s.ev) == members.end())
+        throw Infeasible("only a party can open or sign this");
+    return members;
+}
+std::string OperationCompiler::treatyName(const OpScope &op, const std::string &kind,
+                                          const std::string &type,
+                                          const std::vector<std::string> &members,
+                                          const Json::Value &v) {
+    // Pending creations are not in w yet; name them against what they will be.
+    WorldState named = w;
+    for (auto &m : members)
+        if (!named.hasActor(m))
+            named.actors[m] = pending.current("actor", w.actors, m);
+    auto name =
+        realisticName(named, kind, type, op.o["name"].isString() ? op.o["name"].asString() : "",
+                      members, v["text"].asString(), names);
+    names.insert(lowercase(name));
+    return name;
+}
+// Keyed by the commitment ID it will take, so acceptance never clashes with a later treaty.
+void OperationCompiler::propose(EventScope &s, OpScope &op, Json::Value v, const std::string &cid,
+                                int months) {
+    v.removeMember("status");
+    v.removeMember("started_turn");
+    v["from"] = s.ev;
+    v["status"] = "pending";
+    v["proposed_turn"] = w.turn;
+    v["event"] = s.id;
+    v["months"] = months;
+    v["terms"] = treatyTerms(op.o["terms"]);
+    pending.touch("proposal", cid, Json::nullValue, s.id, op.why) = v;
+    awaiting(s);
+    op.done = true;
+}
+void OperationCompiler::opResolve(EventScope &s, OpScope &op) {
+    auto kind = op.name == "resolve_conflict" ? std::string("conflict") : std::string("commitment");
+    auto cid = str(op, kind.c_str());
+    auto &collection = kind == "conflict" ? w.conflicts : w.commitments;
+    if (!collection.isMember(cid))
+        throw Infeasible("unknown " + kind);
+    if (std::find(collection[cid]["actors"].begin(), collection[cid]["actors"].end(),
+                  Json::Value(s.ev)) == collection[cid]["actors"].end())
+        throw Infeasible("only a party can end " + displayName(w, kind, cid));
+    auto treaty = pending.current(kind, collection, cid);
+    {
+        auto &v = pending.touch(kind, cid, collection[cid], s.id, op.why);
+        (kind == "conflict" ? s.conflicts : s.commitments).insert(cid);
+        v["status"] = "resolved";
+        v["ended_turn"] = w.turn;
+        if (kind == "conflict")
+            v["intensity"] = "none";
+    }
+    if (kind == "commitment" && treaty["status"] == "open")
+        ending(s, treaty, op.why);
+}
+void OperationCompiler::opAmend(EventScope &s, OpScope &op) {
+    auto &o = op.o;
+    auto cid = str(op, "commitment");
+    auto treaty = pending.current("commitment", w.commitments, cid);
+    if (!treaty.isObject() || treaty["status"] != "open")
+        throw Infeasible("no such treaty in force");
+    std::vector<std::string> members;
+    for (auto &a : treaty["actors"])
+        members.push_back(a.asString());
+    if (std::find(members.begin(), members.end(), s.ev) == members.end())
+        throw Infeasible("only a party can amend " + displayName(w, "commitment", cid));
+    consent(s, members, op.proposal);
+    // Renewal: months from now; 0 keeps the current end date.
+    int months = o["months"].isInt() ? std::clamp(o["months"].asInt(), 0, 120) : 0;
+    auto revised = o["text"].isString() ? o["text"].asString().substr(0, 1000) : "";
+    for (auto &m : members)
+        s.actors.insert(m);
+    if (op.proposal)
+        return proposeAmendment(s, op, treaty, cid, months, revised);
+    auto done = applyTerms(s, o["terms"], members, op.why);
+    auto &v = pending.touch("commitment", cid, w.commitments[cid], s.id, op.why);
+    s.commitments.insert(cid);
+    if (!revised.empty())
+        v["text"] = revised;
+    if (months)
+        v["expires_turn"] = w.turn + months;
+    appendTerms(v, done);
+    op.shaped = !done.empty();
+}
+void OperationCompiler::proposeAmendment(EventScope &s, OpScope &op, const Json::Value &treaty,
+                                         const std::string &cid, int months,
+                                         const std::string &revised) {
+    auto pid = cid + "-r" + std::to_string(w.turn);
+    for (int n = 2; w.proposals.isMember(pid) || pending.contains("proposal", pid); ++n)
+        pid = cid + "-r" + std::to_string(w.turn) + "-" + std::to_string(n);
+    Json::Value v;
+    v["from"] = s.ev;
+    v["actors"] = treaty["actors"];
+    v["kind"] = validCommitmentKind(treaty.get("kind", "").asString()) ? treaty["kind"]
+                                                                       : Json::Value("other");
+    v["name"] = displayName(w, "commitment", cid);
+    v["text"] = revised.empty() ? treaty["text"] : Json::Value(revised);
+    v["months"] = months;
+    v["terms"] = treatyTerms(op.o["terms"]);
+    v["amends"] = cid;
+    v["status"] = "pending";
+    v["proposed_turn"] = w.turn;
+    v["event"] = s.id;
+    pending.touch("proposal", pid, Json::nullValue, s.id, op.why) = v;
+    awaiting(s);
+    op.done = true;
+}
+void OperationCompiler::opSettle(EventScope &s, OpScope &op) {
+    if (!s.trusted)
+        throw Infeasible("unknown operation " + op.name);
+    auto pid = str(op, "proposal"), answer = str(op, "answer");
+    auto &p = w.proposals[pid];
+    auto after = p;
+    after["status"] = answer;
+    after["answered_turn"] = w.turn;
+    pending.touch("proposal", pid, p, s.id, op.why) = after;
+    for (auto &a : p["actors"])
+        s.actors.insert(a.asString());
+    if (answer == "accepted")
+        acceptProposal(s, op, pid, p);
+}
+void OperationCompiler::acceptProposal(EventScope &s, OpScope &op, const std::string &pid,
+                                       const Json::Value &p) {
+    std::vector<std::string> members;
+    for (auto &a : p["actors"])
+        members.push_back(a.asString());
+    auto done = applyTerms(s, p["terms"], members, op.why);
+    int months = p.get("months", 0).asInt();
+    auto kind = p["kind"].asString();
+    if (p["amends"].isString()) {
+        auto cid = p["amends"].asString();
+        auto &v = pending.touch("commitment", cid, w.commitments[cid], s.id, op.why);
+        v["text"] = p["text"];
+        if (months)
+            v["expires_turn"] = w.turn + months;
+        appendTerms(v, done);
+        s.commitments.insert(cid);
+        op.shaped = !done.empty();
+        return;
+    }
+    Json::Value v;
+    for (auto k : {"actors", "kind", "name", "text"})
+        v[k] = p[k];
+    v["status"] = "open";
+    v["started_turn"] = w.turn;
+    if (!done.empty())
+        v["terms"] = done;
+    if (months)
+        v["expires_turn"] = w.turn + months;
+    pending.touch("commitment", pid, Json::nullValue, s.id, op.why) = v;
+    s.commitments.insert(pid);
+    if (kind == "trade_agreement" || kind == "union")
+        for (auto &m : members)
+            s.tradeParties.insert(m);
+    op.shaped = !done.empty() || (kind != "trade_agreement" && kind != "other");
+}
+void OperationCompiler::opIntensity(EventScope &s, OpScope &op) {
+    auto cid = str(op, "conflict");
+    auto level = str(op, "intensity");
+    if (!w.conflicts.isMember(cid) || w.conflicts[cid]["status"] != "open")
+        throw Infeasible("no such open conflict");
+    if (level != "low" && level != "medium" && level != "high")
+        throw Infeasible("invalid intensity");
+    auto &parties = w.conflicts[cid]["actors"];
+    if (std::find(parties.begin(), parties.end(), Json::Value(s.ev)) == parties.end())
+        throw Infeasible("only a party can escalate or scale down " +
+                         displayName(w, "conflict", cid));
+    pending.touch("conflict", cid, w.conflicts[cid], s.id, op.why)["set_intensity"] = level;
+    s.conflicts.insert(cid);
+    if (level != "low")
+        for (auto &a : parties)
+            op.hostile.insert(a.asString());
+    for (auto &a : parties) {
+        s.actors.insert(a.asString());
+        if (level == "high")
+            s.warParties.insert(a.asString());
+    }
+}
+void OperationCompiler::opBuild(EventScope &s, OpScope &op) {
+    auto r = region(op);
+    auto builder = party(s, op, "actor");
+    auto kind = str(op, "kind");
+    if (builder != s.ev && !s.createdHere.contains(builder))
+        throw Infeasible("can only build for itself");
+    auto t = pending.current("territory", w.territories, r);
+    if (kind != "event_site" && w.territories[r]["controller"] != builder)
+        throw Infeasible("can only build in regions it controls, not " +
+                         w.territories[r]["name"].asString());
+    require(t["longitude"].isNumeric() && t["latitude"].isNumeric(),
+            "Region has no interior location");
+    auto eid = "e" + std::to_string(w.turn) + "-" + slug(str(op, "name"), 30);
+    for (int n = 2; w.entities.isMember(eid) || pending.contains("entity", eid); ++n)
+        eid = "e" + std::to_string(w.turn) + "-" + slug(str(op, "name"), 30) + "-" +
+              std::to_string(n);
+    Json::Value v;
+    v["name"] = str(op, "name");
+    v["kind"] = kind;
+    v["actor"] = builder;
+    v["region"] = r;
+    v["longitude"] = t["longitude"];
+    v["latitude"] = t["latitude"];
+    v["origin_event"] = s.id;
+    // Construction takes months; the finished entity appears when resolve() reaches
+    // completes_turn.
+    if (int months = constructionMonths(kind)) {
+        v["status"] = "under_construction";
+        v["completes_turn"] = w.turn + months;
+    } else
+        v["status"] = "active";
+    if (kind == "event_site")
+        v["expires_turn"] = w.turn + eventMapMonths;
+    if (w.actors[builder]["status"]["military"].isObject() && kind != "event_site")
+        allocateForce(builder, kind, v);
+    pending.touch("entity", eid, Json::nullValue, s.id, op.why) = v;
+    s.actors.insert(builder);
+    s.regions.insert(r);
+    s.entities.insert(eid);
+}
+// A nation with military figures builds within its construction capacity and forms armies and
+// fleets from what is not yet committed.
+void OperationCompiler::allocateForce(const std::string &builder, const std::string &kind,
+                                      Json::Value &v) const {
+    auto allocated = allocatedWorld();
+    int projects = 0;
+    for (const auto &e : allocated.entities)
+        if (e["actor"] == builder && e["status"] == "under_construction" &&
+            e["kind"] != "event_site")
+            ++projects;
+    if (projects >= force::constructionCapacity(w, builder))
+        throw Infeasible("construction capacity reached");
+    auto &military = w.actors[builder]["status"]["military"];
+    if (kind == "army") {
+        int available = force::uncommittedPersonnel(allocated, builder);
+        if (available < 5000)
+            throw Infeasible("no troops left to form an army");
+        v["personnel"] = std::min(
+            available, std::clamp(int(std::round(military["active"].asDouble() / 10000)) * 1000,
+                                  5000, 150000));
+    } else if (kind == "fleet") {
+        int available = force::uncommittedShips(allocated, builder);
+        if (!available)
+            throw Infeasible("no major warships available");
+        v["ships"] = std::min(
+            available, std::clamp(int(std::round(military["ships"].asDouble() * 0.25)), 1, 30));
+    }
+}
+void OperationCompiler::opEntity(EventScope &s, OpScope &op) {
+    auto eid = str(op, "entity");
+    if (!w.entities.isMember(eid))
+        throw Infeasible("unknown or unfinished entity");
+    auto &v = pending.touch("entity", eid, w.entities[eid], s.id, op.why);
+    auto owner = w.entities[eid]["actor"].asString();
+    if (op.name == "move_entity")
+        moveEntity(s, op, eid, v, owner);
+    else
+        setEntityStatus(s, op, eid, v, owner);
+    s.entities.insert(eid);
+    s.actors.insert(owner);
+}
+void OperationCompiler::moveEntity(EventScope &s, const OpScope &op, const std::string &eid,
+                                   Json::Value &v, const std::string &owner) {
+    auto &entity = w.entities[eid];
+    auto r = region(op);
+    auto from = entity["region"].asString();
+    auto kind = entity["kind"].asString();
+    if (s.ev != owner)
+        throw Infeasible("only its owner can move " + entity["name"].asString());
+    if (entity["status"] != "active")
+        throw Infeasible(entity["name"].asString() + " is not ready");
+    if (kind == "army") {
+        if (!adjacent(from, r))
+            throw Infeasible("an army advances at most one region per month");
+    } else if (kind == "fleet") {
+        if (kilometres(w.territories[from], w.territories[r]) > 1500)
+            throw Infeasible("a fleet sails at most 1,500 km per month");
+    } else
+        throw Infeasible("a " + kind + " cannot be relocated");
+    auto t = pending.current("territory", w.territories, r);
+    v["region"] = r;
+    v["longitude"] = t["longitude"];
+    v["latitude"] = t["latitude"];
+    s.regions.insert(r);
+}
+void OperationCompiler::setEntityStatus(EventScope &s, OpScope &op, const std::string &eid,
+                                        Json::Value &v, const std::string &owner) {
+    auto &entity = w.entities[eid];
+    auto &ev = s.ev;
+    auto status = str(op, "status");
+    if (entity["status"] == "under_construction" && status == "active")
+        throw Infeasible("construction is still under way");
+    if (entity["status"] == "destroyed" && status != "destroyed")
+        throw Infeasible("a destroyed entity cannot be restored");
+    if (ev != owner && (status == "active" || !reaches(ev, entity["region"].asString())))
+        throw Infeasible("cannot reach " + entity["name"].asString());
+    if (ev != owner && status == "destroyed") {
+        if (!atWar(ev, owner))
+            throw Infeasible("not at war with " + w.actors[owner]["name"].asString());
+        op.hostile.insert(owner);
+    }
+    if (ev != owner && status != "active" && w.actors[ev]["status"]["military"].isObject() &&
+        force::assaultCapacity(w, adjacency, ev, owner, entity["region"].asString()) < 1)
+        throw Infeasible("too weak to defeat this formation");
+    if (status == "active" && v["status"] == "inactive" &&
+        w.actors[owner]["status"]["military"].isObject()) {
+        auto allocated = allocatedWorld();
+        if (v["kind"] == "army" &&
+            force::uncommittedPersonnel(allocated, owner) < v.get("personnel", 10000).asInt())
+            throw Infeasible("no troops left to reactivate army");
+        if (v["kind"] == "fleet" &&
+            force::uncommittedShips(allocated, owner) < v.get("ships", 3).asInt())
+            throw Infeasible("no major warships available");
+    }
+    v["status"] = status;
+    if (status != "under_construction")
+        v.removeMember("completes_turn");
+    if (status != "active")
+        v.removeMember("expires_turn");
+}
+// At war since before this month, or declared earlier in this month's outcomes.
+bool OperationCompiler::atWar(const std::string &a, const std::string &b) const {
+    auto fighting = [&](const Json::Value &c) {
+        auto &p = c["actors"];
+        return c["status"] == "open" && std::find(p.begin(), p.end(), Json::Value(a)) != p.end() &&
+               std::find(p.begin(), p.end(), Json::Value(b)) != p.end();
+    };
+    bool war = false;
+    for (auto &c : w.conflicts)
+        war = war || fighting(c);
+    for (auto &c : pending)
+        war = war || (c.kind == "conflict" && fighting(c.after));
+    return war;
+}
+void OperationCompiler::opTerritory(EventScope &s, OpScope &op) {
+    auto r = region(op);
+    auto owner = w.territories[r]["owner"].asString(),
+         controller = w.territories[r]["controller"].asString();
+    auto &t = pending.touch("territory", r, w.territories[r], s.id, op.why);
+    if (op.name == "transfer_territory")
+        transfer(s, op, r, t, owner, controller);
+    else if (op.name == "occupy")
+        occupy(s, op, r, t, owner, controller);
+    else {
+        if (s.ev == owner && controller != owner)
+            take(s.ev, r);
+        else if (s.ev != controller)
+            throw Infeasible("only the owner or the occupier can change control");
+        t["controller"] = t["owner"];
+    }
+    s.regions.insert(r);
+    for (auto k : {"owner", "controller"})
+        if (!t[k].asString().empty())
+            s.actors.insert(t[k].asString());
+}
+void OperationCompiler::transfer(EventScope &s, const OpScope &op, const std::string &r,
+                                 Json::Value &t, const std::string &owner,
+                                 const std::string &controller) {
+    auto &ev = s.ev;
+    auto to = party(s, op, "to");
+    // Owners may cede; others must already have held the region before this month to annex it.
+    bool cession = ev == owner,
+         annexation = controller == ev && (to == ev || s.createdHere.contains(to)),
+         returned = controller == ev && to == owner;
+    if (s.createdHere.contains(to) && !cession) {
+        bool established = false;
+        for (auto &conflict : w.conflicts)
+            if (conflict["status"] == "open") {
+                auto &parties = conflict["actors"];
+                bool acting =
+                    std::find(parties.begin(), parties.end(), Json::Value(ev)) != parties.end();
+                bool governing =
+                    std::find(parties.begin(), parties.end(), Json::Value(owner)) != parties.end();
+                established = established || (acting && governing);
+            }
+        if (!established)
+            throw Infeasible("independence needs national agreement or an established relevant "
+                             "conflict");
+    }
+    if (!cession && !annexation && !returned)
+        throw Infeasible(controller == ev ? "cannot hand over land it does not own"
+                                          : "must occupy " + w.territories[r]["name"].asString() +
+                                                " for at least a month before annexing it");
+    if (!cession && to != owner && !owner.empty()) {
+        s.seizedOwners.insert(owner);
+        s.warParties.insert(ev);
+    }
+    t["owner"] = to;
+    t["controller"] = to;
+}
+void OperationCompiler::occupy(EventScope &s, OpScope &op, const std::string &r, Json::Value &t,
+                               const std::string &owner, const std::string &controller) {
+    auto by = party(s, op, "by");
+    if (by != s.ev && !s.createdHere.contains(by))
+        throw Infeasible("an occupation must be carried out by the acting nation");
+    if (controller != by) {
+        take(s.ev, r);
+        if (!owner.empty() && owner != by) {
+            s.seizedOwners.insert(owner);
+            s.warParties.insert(s.ev);
+        }
+        op.hostile.insert(owner);
+        op.hostile.insert(controller);
+    }
+    t["controller"] = by;
+}
+
+// Executes a treaty's terms, which its parties' signatures authorize; an impossible clause is
+// dropped on its own.
+Json::Value OperationCompiler::applyTerms(EventScope &s, const Json::Value &terms,
+                                          const std::vector<std::string> &members,
+                                          const std::string &why) {
+    Json::Value done(Json::arrayValue);
+    for (auto &t : treatyTerms(terms)) {
+        try {
+            done.append(applyTerm(s, t, members, why));
+        } catch (const Infeasible &x) {
+            Json::Value d;
+            d["action"] = "term " + t["action"].asString();
+            d["reason"] = x.what();
+            s.dropped.append(d);
+        }
+    }
+    return done;
+}
+Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
+                                         const std::vector<std::string> &members,
+                                         const std::string &why) {
+    auto clause = t["action"].asString();
+    auto party = [&](const std::string &a) {
+        return std::find(members.begin(), members.end(), a) != members.end();
+    };
+    auto field = [&](const char *k) {
+        if (!t[k].isString() || t[k].asString().empty())
+            throw Infeasible("incomplete " + clause);
+        return t[k].asString();
+    };
+    Json::Value kept;
+    kept["action"] = clause;
+    if (clause == "end_conflict") {
+        auto cid = field("conflict");
+        auto c = pending.current("conflict", w.conflicts, cid);
+        if (!c.isObject() || c["status"] != "open")
+            throw Infeasible("no such open conflict");
+        for (auto &a : c["actors"])
+            if (!party(a.asString()))
+                throw Infeasible("every side must sign to end " + displayName(w, "conflict", cid));
+        auto &v = pending.touch("conflict", cid, w.conflicts[cid], s.id, why);
+        v["status"] = "resolved";
+        v["ended_turn"] = w.turn;
+        v["intensity"] = "none";
+        s.conflicts.insert(cid);
+        kept["conflict"] = cid;
+        return kept;
+    }
+    auto r = field("region");
+    if (!w.territories.isMember(r))
+        throw Infeasible("unknown region");
+    auto now = pending.current("territory", w.territories, r);
+    auto owner = now["owner"].asString(), controller = now["controller"].asString(),
+         place = w.territories[r]["name"].asString();
+    if (clause == "cede") {
+        auto to = actorRef(field("to"));
+        if (!party(to) || !party(owner) || owner == to)
+            throw Infeasible("only its owner can cede " + place + " to another party");
+        auto &v = pending.touch("territory", r, w.territories[r], s.id, why);
+        v["owner"] = to;
+        v["controller"] = to;
+        kept["from"] = owner;
+        kept["to"] = to;
+        s.actors.insert(to);
+    } else if (clause == "occupy") {
+        auto by = actorRef(field("by"));
+        if (!party(by) || !party(owner) || by == owner)
+            throw Infeasible("an agreed occupation of " + place +
+                             " needs its owner and the occupier as parties");
+        pending.touch("territory", r, w.territories[r], s.id, why)["controller"] = by;
+        kept["by"] = by;
+        s.actors.insert(by);
+    } else if (clause == "withdraw") {
+        if (!party(controller) || !party(owner) || controller == owner)
+            throw Infeasible("no party occupies " + place);
+        pending.touch("territory", r, w.territories[r], s.id, why)["controller"] = owner;
+        kept["by"] = controller;
+    } else
+        throw Infeasible("unknown term " + clause);
+    s.regions.insert(r);
+    s.actors.insert(owner);
+    kept["region"] = r;
+    return kept;
+}
+// Parties to a treaty signed, amended or answered here, and whether anyone must still agree.
+void OperationCompiler::consent(const EventScope &s, const std::vector<std::string> &members,
+                                bool &proposal) {
+    for (auto &m : members)
+        if (m != s.ev && !s.createdHere.contains(m) && !consenting[m].contains(s.ev)) {
+            if (m == w.player) {
+                proposal = true;
+                continue;
+            }
+            throw Infeasible("needs agreement from " +
+                             pending.current("actor", w.actors, m)["name"].asString());
+        }
+}
+void OperationCompiler::awaiting(EventScope &s) const {
+    auto awaits = " It awaits " + w.actors[w.player]["name"].asString() + "'s answer.";
+    if (s.text.find(awaits) == std::string::npos)
+        s.text += awaits;
+}
+// A treaty ended here: occupations it allowed end with it, and trade it brought is lost.
+void OperationCompiler::ending(EventScope &s, const Json::Value &treaty, const std::string &why) {
+    for (auto &t : treaty["terms"])
+        if (t["action"] == "occupy" && t["region"].isString() &&
+            w.territories.isMember(t["region"].asString())) {
+            auto r = t["region"].asString();
+            auto now = pending.current("territory", w.territories, r);
+            if (now["controller"] == t["by"] && now["owner"] != t["by"]) {
+                pending.touch("territory", r, w.territories[r], s.id, why)["controller"] =
+                    now["owner"];
+                s.regions.insert(r);
+            }
+        }
+    auto kind = treaty["kind"].asString();
+    if (kind == "trade_agreement" || kind == "union")
+        for (auto &a : treaty["actors"])
+            s.tradeLoss.insert(a.asString());
+}
+
+std::string OperationCompiler::str(const OpScope &op, const char *k) const {
+    if (!op.o[k].isString() || op.o[k].asString().empty())
+        throw Infeasible("incomplete " + op.name);
+    return op.o[k].asString();
+}
+std::string OperationCompiler::region(const OpScope &op) const {
+    auto r = str(op, "region");
+    if (!w.territories.isMember(r))
+        throw Infeasible("unknown region");
+    return r;
+}
+std::string OperationCompiler::party(const EventScope &s, const OpScope &op, const char *k) const {
+    auto a = actorRef(str(op, k));
+    // A small model often names the new state after its region; the state this event created is
+    // the only sensible recipient.
+    if (!known(a) && s.createdHere.size() == 1)
+        a = *s.createdHere.begin();
+    if (!known(a))
+        throw Infeasible("unknown actor " + a);
+    return a;
+}
+std::string OperationCompiler::actorRef(const std::string &v) const {
+    if (w.hasActor(v))
+        return v;
+    if (aliases.contains(v))
+        return aliases.at(v);
+    if (aliases.contains("~" + alphanumeric(v)))
+        return aliases.at("~" + alphanumeric(v));
+    return v;
+}
+bool OperationCompiler::known(const std::string &a) const {
+    return w.hasActor(a) || pending.contains("actor", a);
+}
+bool OperationCompiler::adjacent(const std::string &from, const std::string &to) const {
+    return from == to || (adjacency.contains(from) && adjacency.at(from).contains(to));
+}
+bool OperationCompiler::reaches(const std::string &a, const std::string &r) const {
+    return lh::reaches(w, adjacency, a, r);
+}
+void OperationCompiler::take(const std::string &a, const std::string &r) {
+    if (!reaches(a, r))
+        throw Infeasible("no border, army or fleet within reach of " +
+                         w.territories[r]["name"].asString());
+    auto defender = w.territories[r]["controller"].asString();
+    if (defender.empty())
+        defender = w.territories[r]["owner"].asString();
+    if (w.actors[a]["status"]["military"].isObject() && defender != a) {
+        int cap = force::assaultCapacity(w, adjacency, a, defender, r);
+        if (!cap)
+            throw Infeasible("too weak to occupy " + w.territories[r]["name"].asString());
+        int used = 0;
+        for (const auto &held : taken[a]) {
+            auto d = w.territories[held]["controller"].asString();
+            if (d.empty())
+                d = w.territories[held]["owner"].asString();
+            if (d == defender && held != r)
+                ++used;
+        }
+        if (used >= cap)
+            throw Infeasible("military strength limits gains against this defender this month");
+    }
+    taken[a].insert(r);
+    if (taken[a].size() > 2)
+        throw Infeasible("at most two regions can change hands by force in one month");
+}
+// The start-of-month world with this month's entities, less the forces of formations destroyed
+// here.
+WorldState OperationCompiler::allocatedWorld() const {
+    auto now = w;
+    for (const auto &p : pending)
+        if (p.kind == "entity") {
+            now.entities[p.id] = p.after;
+            if (p.after["status"] == "destroyed" && p.before["status"] != "destroyed") {
+                auto a = p.after["actor"].asString();
+                if (!static_cast<const WorldState &>(now)
+                         .actors[a]["status"]["military"]
+                         .isObject())
+                    continue;
+                const char *field = p.after["kind"] == "army" ? "active" : "ships";
+                const char *quantity = p.after["kind"] == "army" ? "personnel" : "ships";
+                if (p.after["kind"] == "army" || p.after["kind"] == "fleet") {
+                    auto &m = now.actors[a]["status"]["military"];
+                    m[field] = std::max(
+                        0,
+                        m[field].asInt() -
+                            p.after.get(quantity, p.after["kind"] == "army" ? 10000 : 3).asInt());
+                }
+            }
+        }
+    return now;
+}
+
+// A later event about an incident, or one caused by it, keeps its site on the map for another few
+// months.
+void OperationCompiler::renewEventSites(EventScope &s) {
+    std::set<std::string> causes;
+    for (auto &c : s.e["causes"])
+        if (c.isString())
+            causes.insert(c.asString());
+    for (auto &eid : w.entities.getMemberNames()) {
+        // Sites created this month are not in w yet and need no renewal; kind never changes, so
+        // check it before copying.
+        if (w.entities[eid].get("kind", "") != "event_site")
+            continue;
+        auto site = pending.current("entity", w.entities, eid);
+        if (site["kind"] != "event_site" || site["status"] != "active" ||
+            (!s.entities.contains(eid) && !causes.contains(site["origin_event"].asString())))
+            continue;
+        pending.touch("entity", eid, w.entities[eid], s.id,
+                      "Renewed by a related event")["expires_turn"] = w.turn + eventMapMonths;
+        s.entities.insert(eid);
+    }
+}
+// Even narrative-only and failed attempts leave a persistent regional history.
+void OperationCompiler::finishRegionalHistory(EventScope &s) {
+    s.regions.insert(s.regional);
+    auto p = pending.current("regional", w.regionalPolitics, s.regional);
+    if (p.isNull())
+        p = regionalState(w, s.regional);
+    if (std::find(p["supporting_events"].begin(), p["supporting_events"].end(),
+                  Json::Value(s.id)) == p["supporting_events"].end())
+        p["supporting_events"].append(s.id);
+    if (p["supporting_events"].size() > 12)
+        p["supporting_events"].removeIndex(0, nullptr);
+    pending.touch("regional", s.regional, w.regionalPolitics[s.regional], s.id,
+                  "Regional political history") = p;
+}
+void OperationCompiler::buildEvent(EventScope &s) {
+    auto &e = s.e;
+    bool happened = s.blocked == "none";
+    if (!s.breaches.empty() && happened)
+        s.text += " This breached the commitment: " + w.commitments[s.breaches]["text"].asString();
+    Json::Value event;
+    event["id"] = s.id;
+    event["actor"] = s.ev;
+    if (!happened)
+        event["blocked_by"] = s.blocked;
+    if (!s.breaches.empty() && happened)
+        event["breaches"] = s.breaches;
+    event["text"] = s.text.substr(0, 2000);
+    if (!s.dropped.empty())
+        event["dropped_operations"] = s.dropped;
+    // What players and later prompts are told about dropped operations: a flag, never the reasons.
+    bool failed = happened && !s.seenOps.empty() && s.failedOps == int(s.seenOps.size());
+    if (failed)
+        event["failed"] = true;
+    else if (happened && !s.dropped.empty())
+        event["partial"] = true;
+    event["background"] = e["background"];
+    event["causes"] = e["causes"];
+    for (auto [key, values] :
+         std::initializer_list<std::pair<const char *, std::set<std::string> *>>{
+             {"actors", &s.actors},
+             {"regions", &s.regions},
+             {"entities", &s.entities},
+             {"conflicts", &s.conflicts},
+             {"commitments", &s.commitments}}) {
+        event[key] = Json::arrayValue;
+        for (auto &v : *values)
+            event[key].append(v);
+    }
+    for (auto k : {"initiative_type", "regional_actor"})
+        if (e.isMember(k))
+            event[k] = e[k];
+    // Only something that happened has consequences.
+    if (happened)
+        settleEffects(s, event);
+    event["identity_changes"] = Json::arrayValue;
+    for (const auto &c : pending)
+        if (c.kind == "actor" && c.event == s.id && c.after["flag_revision"].isUInt() &&
+            c.after["flag_revision"] != c.before["flag_revision"]) {
+            Json::Value link;
+            link["actor"] = c.id;
+            link["revision"] = c.after["flag_revision"];
+            event["identity_changes"].append(link);
+        }
+    event["major"] = happened && (s.structural || event.isMember("breaches"));
+    // A severe or strong effect declares a headline; the model no longer labels significance
+    // itself.
+    bool strong = false;
+    for (auto &x : event.get("effects", Json::arrayValue))
+        for (auto k : {"economy", "stability"})
+            strong = strong || x[k] == "severe_decline" || x[k] == "strong_growth";
+    if (happened && !event["major"].asBool() && strong)
+        declared.push_back(events.size());
+    events.append(event);
+}
+// Malformed or unknown effects are dropped, not fatal. The small model rewards aggression and
+// punishes victims at random; the month's operations settle the sign.
+void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) const {
+    struct Effect {
+        std::string actor, economy, stability;
+        bool forced;
+    };
+    std::vector<Effect> effects;
+    auto find = [&](const std::string &a) {
+        return std::find_if(effects.begin(), effects.end(),
+                            [&](const Effect &f) { return f.actor == a; });
+    };
+    if (s.e["effects"].isArray())
+        for (auto &x : s.e["effects"]) {
+            if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
+                !x["economy"].isString() || !x["stability"].isString())
+                continue;
+            auto a = actorRef(x["actor"].asString());
+            auto economy = x["economy"].asString(), stability = x["stability"].asString();
+            if (!known(a) || !validEffect(economy) || !validEffect(stability) ||
+                (economy == "none" && stability == "none") || find(a) != effects.end())
+                continue;
+            effects.push_back({a, economy, stability, false});
+        }
+    auto entry = [&](const std::string &a) -> Effect & {
+        auto f = find(a);
+        if (f == effects.end()) {
+            effects.push_back({a, "none", "none", true});
+            return effects.back();
+        }
+        f->forced = true;
+        return *f;
+    };
+    for (auto &p : s.warParties) {
+        auto &f = entry(p);
+        f.economy = weaker(f.economy, "decline");
+        if (p != s.ev)
+            f.stability = weaker(f.stability, "decline");
+    }
+    for (auto &p : s.tradeParties) {
+        auto &f = entry(p);
+        f.economy = stronger(f.economy, "growth");
+    }
+    for (auto &p : s.seizedOwners) {
+        auto &f = entry(p);
+        f.stability = weaker(f.stability, "decline");
+    }
+    for (auto &p : s.tradeLoss) {
+        auto &f = entry(p);
+        f.economy = weaker(f.economy, "decline");
+    }
+    std::erase_if(effects,
+                  [](const Effect &f) { return f.economy == "none" && f.stability == "none"; });
+    // Forced entries survive the cap; among the model's own, the weightiest stay.
+    auto weight = [](const Effect &f) {
+        return std::abs(rank(f.economy) - 2) + std::abs(rank(f.stability) - 2);
+    };
+    std::stable_sort(effects.begin(), effects.end(), [&](const Effect &a, const Effect &b) {
+        return a.forced != b.forced ? a.forced : weight(a) > weight(b);
     });
-    for (size_t n = 0; n < declared.size() && n < 3; ++n)
-        events[declared[n]]["major"] = true;
+    if (effects.size() > 3)
+        effects.resize(3);
+    if (effects.empty())
+        return;
+    event["effects"] = Json::arrayValue;
+    for (auto &f : effects) {
+        Json::Value x;
+        x["actor"] = f.actor;
+        x["economy"] = f.economy;
+        x["stability"] = f.stability;
+        event["effects"].append(x);
+    }
+}
+// Actors first so later territory and entity changes may reference them.
+WorldDelta OperationCompiler::delta() const {
     WorldDelta d;
     d.events = events;
-    // Actors first so later territory and entity changes may reference them.
     for (auto kind :
          {"actor", "territory", "entity", "conflict", "commitment", "regional", "proposal"})
         for (auto &c : pending)
@@ -2210,5 +2432,11 @@ WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
                 d.changes.append(j);
             }
     return parseDelta(encode(d));
+}
+} // namespace
+
+WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
+                             const Adjacency &adjacency, const Json::Value &responses) {
+    return OperationCompiler(w, adjacency).compile(response, responses);
 }
 } // namespace lh

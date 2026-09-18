@@ -1,5 +1,7 @@
 # 13 · Refactor `compileOperations` into an `OperationCompiler`
 
+**Status: done (2026-09-18).** `compileOperations` (grown to ~1,290 lines after plans 18/19) is now a wrapper around `OperationCompiler` in an anonymous namespace in `src/world.cpp`. It has one method per operation (territory and entity operations split into prologue plus branch), a `PendingStore` with nested `open()/commit()/rollback()` frames that save only touched entries, and `EventScope`/`OpScope` for per-event and per-operation state. Scalars, aliases, names and the event's touched sets are still snapshots. The longest method is 70 lines (`settleEffects`). `applyDelta` and `operationSchema` are still over 80 lines and out of scope. A temporary dump hook showed all 90 compiled deltas from the unit suites byte-identical before and after. New `world_tests` case: rollback restores a change an earlier operation made (checked by mutating the restore).
+
 Do plans 11, 01 and 03 first (they edit this function; refactor once they are in).
 
 ## Goal
