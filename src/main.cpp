@@ -5,6 +5,7 @@
 #include <regex>
 #include "localhistoria/providers.h"
 #include "localhistoria/store.h"
+#include "localhistoria/turn.h"
 #include <condition_variable>
 #include <algorithm>
 #include <cctype>
@@ -78,140 +79,6 @@ static std::string campaignDate(int turn) {
     static const char *months[] = {"January", "February", "March", "April", "May", "June",
                                    "July", "August", "September", "October", "November", "December"};
     return std::string(months[turn % 12]) + " " + std::to_string(2026 + turn / 12);
-}
-struct Mentions {
-    std::set<std::string> actors, regions;
-};
-// Free text names nations and regions; resolve those names to IDs so the model sees the relevant map.
-static Mentions mentioned(const WorldState &w, const std::string &actor, const TurnOrders &orders) {
-    Mentions m;
-    std::string text;
-    for (auto &o : orders) {
-        text += lowercase(o.text) + "\n";
-        for (auto &t : o.targets) {
-            if (w.hasActor(t)) m.actors.insert(t);
-            else if (w.territories.isMember(t)) m.regions.insert(t);
-            else if (w.entities.isMember(t)) m.regions.insert(w.entities[t]["region"].asString());
-        }
-    }
-    for (auto &id : w.actors.getMemberNames()) {
-        auto name = lowercase(w.actors[id]["name"].asString());
-        if (name.size() >= 4 && containsWord(text, name)) m.actors.insert(id);
-    }
-    std::map<std::string, std::vector<std::string>> byName;
-    for (auto &id : w.territories.getMemberNames()) {
-        auto name = lowercase(w.territories[id]["name"].asString());
-        if (name.size() >= 4 && w.territories[id]["kind"] != "residual") byName[name].push_back(id);
-    }
-    for (auto &[name, ids] : byName) {
-        if (!containsWord(text, name)) continue;
-        std::vector<std::string> preferred;
-        for (auto &id : ids) {
-            auto owner = w.territories[id]["owner"].asString(), controller = w.territories[id]["controller"].asString();
-            if (owner == actor || controller == actor || m.actors.contains(owner) || m.actors.contains(controller)) preferred.push_back(id);
-        }
-        auto &chosen = preferred.empty() ? ids : preferred;
-        if (chosen.size() <= 3) m.regions.insert(chosen.begin(), chosen.end());
-    }
-    for (auto &id : m.regions)
-        if (w.territories.isMember(id)) {
-            auto owner = w.territories[id]["owner"].asString();
-            if (w.hasActor(owner)) m.actors.insert(owner);
-        }
-    m.actors.erase(actor);
-    return m;
-}
-static Json::Value adjudicationInput(const WorldState &w, const std::map<std::string, CountryContext> &contexts,
-                                     const std::map<std::string, TurnOrders> &intentions, const Adjacency &adjacency) {
-    Json::Value input;
-    input["facts"]["turn"] = w.turn;
-    input["facts"]["actors"] = Json::objectValue;
-    std::set<std::string> acting, relevant, grounded;
-    for (auto &[a, o] : intentions) {
-        acting.insert(a);
-        auto m = mentioned(w, a, o);
-        // The acting nation and the nations it names get recent history when the action is about war, land or treaties.
-        for (auto &action : o)
-            if (consequential(action.text)) { grounded.insert(a); grounded.insert(m.actors.begin(), m.actors.end()); break; }
-        relevant.insert(m.regions.begin(), m.regions.end());
-        // Nations an actor addresses without naming a region: the parts of them it borders, where an invasion or handover would begin.
-        for (auto &target : m.actors)
-            for (auto &id : w.territories.getMemberNames())
-                if (w.territories[id]["controller"] == target && w.territories[id]["kind"] != "residual" && relevant.size() < 40 && reaches(w, adjacency, a, id))
-                    relevant.insert(id);
-    }
-    for (auto &[a, c] : contexts) {
-        auto facts = c.facts;
-        facts.removeMember("territories");
-        facts["past_events"] = facts["recent_events"];
-        facts.removeMember("recent_events");
-        input["facts"]["actors"][a] = facts;
-        // Each decision already read its reference; adjudication mostly needs the facts, and a shorter prompt is a faster month.
-        // Nations at war or in a war, land or treaty action this month also get the end of their history.
-        bool fighting = false;
-        for (auto &id : w.conflicts.getMemberNames())
-            if (w.conflicts[id]["status"] == "open")
-                for (auto &party : w.conflicts[id]["actors"]) fighting = fighting || party == a;
-        auto history = c.reference["chronicle"].isString() ? 1200 : 600;
-        input["reference_only"][a] = briefReference(c.reference, 600, grounded.contains(a) || fighting ? history : 0);
-        for (auto k : {"occupied_by_others", "occupying"})
-            for (auto &id : c.facts[k].getMemberNames()) relevant.insert(id);
-    }
-    // Fronts of wars this month's actors fight; distant wars would crowd the prompt with irrelevant regions.
-    for (auto &id : w.conflicts.getMemberNames()) {
-        auto &c = w.conflicts[id];
-        bool involved = false;
-        for (auto &a : c["actors"]) involved = involved || acting.contains(a.asString());
-        if (c["status"] == "open" && involved)
-            for (auto &r : c["affected_regions"])
-                if (r.isString() && relevant.size() < 60) relevant.insert(r.asString());
-    }
-    // Where the acting nations' armies and fleets stand, so movement has somewhere to go.
-    for (auto &id : w.entities.getMemberNames()) {
-        auto &e = w.entities[id];
-        if (acting.contains(e["actor"].asString()) && (e["kind"] == "army" || e["kind"] == "fleet") && e["status"] == "active")
-            relevant.insert(e["region"].asString());
-    }
-    input["facts"]["territories"] = Json::objectValue;
-    input["facts"]["entities"] = Json::objectValue;
-    for (auto &id : relevant) {
-        if (!w.territories.isMember(id)) continue;
-        auto t = w.territories[id];
-        for (auto k : {"longitude", "latitude", "initial_affiliation", "kind", "gdp_usd", "occupation_gdp"}) t.removeMember(k);
-        t["within_reach_of"] = Json::arrayValue;
-        for (auto &a : acting)
-            if (reaches(w, adjacency, a, id)) t["within_reach_of"].append(a);
-        input["facts"]["territories"][id] = t;
-    }
-    for (auto &id : w.entities.getMemberNames())
-        if (relevant.contains(w.entities[id]["region"].asString())) {
-            auto e = w.entities[id];
-            for (auto k : {"longitude", "latitude", "origin_event"}) e.removeMember(k);
-            input["facts"]["entities"][id] = e;
-        }
-    // The player's actions come first so the model's bounded reasoning reaches them.
-    input["intentions"] = Json::arrayValue;
-    std::vector<std::string> order{w.player};
-    for (auto &[a, o] : intentions)
-        if (a != w.player) order.push_back(a);
-    for (auto &a : order) {
-        if (!intentions.contains(a)) continue;
-        for (auto &action : intentions.at(a)) {
-            std::string targets;
-            for (auto &t : action.targets) {
-                auto name = w.territories.isMember(t) ? w.territories[t]["name"].asString() + " (region " + t + ")"
-                          : w.entities.isMember(t)    ? w.entities[t]["name"].asString() + " (entity " + t + ")"
-                                                      : w.actors[t]["name"].asString() + " (actor " + t + ")";
-                targets += (targets.empty() ? "" : ", ") + name;
-            }
-            Json::Value item;
-            item["actor"] = a;
-            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")") +
-                             attackGuidance(a, action.text, input["facts"]["territories"]);
-            input["intentions"].append(item);
-        }
-    }
-    return input;
 }
 int main(int argc, char **argv) {
     try {
