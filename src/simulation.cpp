@@ -251,7 +251,7 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     for (const auto &month : recent)
         for (const auto &event : month["events"])
             if ((event["actor"] == a || event["target"] == a) && f["recent_events"].size() < 6)
-                f["recent_events"].append(event["text"]);
+                f["recent_events"].append(event.get("prompt_text", event["text"]));
     Json::Value ref = reference;
     if (ref.isNull()) { ref["available"]=false; ref["reason"]="Not prepared"; }
     return {a, f, ref};

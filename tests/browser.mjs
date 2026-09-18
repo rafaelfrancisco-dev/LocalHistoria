@@ -222,6 +222,21 @@ try {
   await page.waitForFunction(() => state?.actors?.PT?.flag_revision === 2 && !busy);
   await page.waitForFunction(() => document.querySelector("#playing-as-name").textContent === "Atlantic Republic");
 
+  // An event whose every operation was dropped is marked as not having happened.
+  const before = await page.evaluate(() => state.turn);
+  await page.locator("#action-0").fill("Strike deep: unreachable-fixture");
+  await page.locator("#turn").click();
+  await page.waitForFunction(t => state?.turn === t + 1 && !busy, before);
+  await page.waitForFunction(() => [...document.querySelectorAll("#journal p")].some(p => p.textContent.startsWith("Failed · Strike deep")));
+  await page.locator("#events-open").click();
+  await page.locator("#events").waitFor({ state: "visible" });
+  // A failed event changed nothing, so it is not major.
+  await page.getByRole("tab", { name: "All events" }).click();
+  await page.waitForFunction(() => !document.querySelector("#events-major-label").hidden);
+  await page.locator("#events-major").uncheck();
+  await page.locator("#events-search").fill("Strike deep");
+  await page.waitForFunction(() => [...document.querySelectorAll("#events-list .event-card")].some(c => c.textContent.includes("Strike deep") && c.textContent.includes("did not happen")));
+
   fs.mkdirSync("tests/artifacts", { recursive: true });
   await page.screenshot({
     path: "tests/artifacts/browser.png",

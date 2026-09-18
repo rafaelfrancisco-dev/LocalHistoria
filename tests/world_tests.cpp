@@ -84,6 +84,7 @@ int main(){try{
  // Out of reach: Heart borders no land the aggressor controls.
  auto far=compile(R"({"events":[{"description":"Deep strike","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"occupy","region":"island","by":"old-state"}]}]})");
  check(infeasible(far)&&far.events[0]["text"]=="Deep strike"&&!far.events[0].isMember("blocked_by")&&changed(far,"territory","march")&&!changed(far,"territory","island"),"Unreachable region dropped, the rest of its event holds");
+ check(far.events[0]["partial"]==true&&!far.events[0].isMember("failed")&&droppedClause(far.events[0])==" (In fact: no territory changed hands.)",("A partly dropped event is partial: "+dump(far.events[0])).c_str());
  auto blitz=compile(R"({"events":[{"description":"Blitz","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"text":"War"}]},
   {"description":"Second front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]},
   {"description":"Third front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"heart","by":"old-state"}]}]})");
@@ -91,6 +92,7 @@ int main(){try{
  auto war=applyDelta(opsBase,blitz,geo);check(war.state.territories["march"]["controller"]=="old-state"&&war.state.territories["march"]["owner"]=="neighbor"&&war.state.conflicts.size()==1,"Occupation keeps ownership");
  auto annexNow=compile(R"({"events":[{"description":"Annex","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"transfer_territory","region":"march","to":"old-state"}]}]})");
  check(infeasible(annexNow)&&annexNow.changes.empty(),"Annexation needs prior occupation");
+ check(annexNow.events[0]["failed"]==true&&!annexNow.events[0].isMember("partial"),"An event with every operation dropped failed");
  auto nextMonth=resolve(war.state);
  auto annexLater=compileOperations(nextMonth.state,parse(R"({"events":[{"description":"Annex","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"transfer_territory","region":"march","to":"old-state"},{"action":"occupy","region":"heart","by":"old-state"}]}]})"),adjacency);
  auto annexed=applyDelta(nextMonth,annexLater,geo);check(annexed.state.territories["march"]["owner"]=="old-state"&&annexed.state.territories["heart"]["controller"]=="old-state","Annexation after a month of occupation, then further advance");
@@ -122,6 +124,7 @@ int main(){try{
  check(infeasible(orphan)&&orphan.events[0]["blocked_by"]=="infeasible"&&orphan.changes.empty()&&applyDelta(opsBase,orphan,geo).events.empty(),"New state needs land; the rolled-back event stays out of the journal");
  auto reform=compile(R"({"events":[{"description":"Education reform begins","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");
  check(reform.changes.empty()&&reform.events.size()==1&&!reform.events[0].isMember("blocked_by")&&applyDelta(opsBase,reform,geo).events.size()==1,"Narrative-only event");
+ check(!reform.events[0].isMember("partial")&&!reform.events[0].isMember("failed")&&droppedClause(reform.events[0]).empty(),"A narrative event is neither partial nor failed");
  auto treaty=opsBase;treaty.state.commitments["treaty-9"]=parse(R"({"actors":["old-state","neighbor"],"status":"open","text":"No new states"})");
  auto refused=ops;refused["events"][0]["blocked_by"]="treaty-9";refused["events"][0]["operations"]=Json::arrayValue;auto denied=compileOperations(treaty.state,refused,adjacency);check(denied.events[0]["blocked_by"]=="treaty-9"&&denied.changes.size()==1,"Commitment block");
  auto broken=ops;broken["events"][0]["blocked_by"]="treaty-9";auto breach=compileOperations(treaty.state,broken,adjacency);
@@ -263,6 +266,18 @@ int main(){try{
   check(log.eventLog(current,parse(R"({"on_map":true})"))["events"].empty()&&log.eventLog(current,parse(R"({})"))["events"].size()==3,"Old events leave the map but stay in the log");
   check(log.campaignContext(current,"old-state").facts["related_history"].size()==1,"Rolled-back events stay out of history");
   auto paged=log.eventLog(current,parse(R"({"limit":1,"before_turn":1})"));check(paged["events"].empty()&&!paged["more"].asBool(),"Paging before the first month is empty");
+ }
+ {
+  // Partial events: flagged in the log, and prompts read what actually happened while the journal keeps the model's text.
+  Store log(":memory:");auto start=opsBase.state;start.turn=0;log.create(start,false);
+  auto first=resolve(start);auto partial=compileOperations(first.state,parse(R"({"events":[{"description":"Deep strike","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"occupy","region":"island","by":"old-state"}]}]})"),adjacency);
+  auto month=applyDelta(first,partial,geo);Json::Value r;r["delta"]=encode(partial);log.commit(log.submit(0,"partial-1","{}")["id"].asString(),month,{},r);
+  auto current=month.state;auto truth="Deep strike (In fact: no territory changed hands.)";
+  check(log.campaignContext(current,"old-state").facts["related_history"][0]["text"]==truth,"Related history reads what happened");
+  auto journal=log.journal();check(journal[0]["events"][0]["text"]=="Deep strike"&&journal[0]["events"][0]["prompt_text"]==truth,("Journal keeps the model's text: "+dump(journal[0]["events"])).c_str());
+  check(context(current,"old-state",journal,{}).facts["recent_events"][0]==truth,"Recent events read what happened");
+  check(log.chronicleEvents("old-state",0)[0]["description"]==truth,"Chronicle inputs read what happened");
+  auto logged=log.eventLog(current,parse(R"({"scope":"all"})"))["events"];check(logged[0]["partial"]==true&&!logged[0].isMember("failed"),"The event log exposes partial");
  }
  std::cout<<"World deltas: occupation, secession, entity placement, holes, construction schedule, reach, pacing, annexation, conflicts, reload, replay, old history and atomic rollback passed\n";
 }catch(const std::exception&e){std::cerr<<e.what()<<"\n";return 1;}}

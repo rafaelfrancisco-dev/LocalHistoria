@@ -14,6 +14,9 @@ Json::Value operationSchema(const WorldState &, const Json::Value &facts, const 
 // Physically impossible operations (reach, pacing, ownership) block only their event.
 // responses: the player's [{proposal, accept}] answers to last month's treaty offers, settled first; unanswered offers lapse.
 WorldDelta compileOperations(const WorldState &, const Json::Value &response, const Adjacency &adjacency, const Json::Value &responses = Json::Value(Json::arrayValue));
+// For an event with partial or failed set: " (In fact: no forces moved.)", from its dropped operations; "" otherwise.
+// Prompts read it after the event text; the saved text stays the model's description.
+std::string droppedClause(const Json::Value &event);
 int constructionMonths(const std::string &kind);
 // Whether an actor can project force into a region this month (bordering controlled land, or a nearby army/fleet).
 bool reaches(const WorldState &, const Adjacency &, const std::string &actor, const std::string &region);

@@ -578,7 +578,7 @@ int main(int argc, char **argv) {
                           c.facts["regional_identity"]=w.territories[r];c.facts["regional_identity"]["id"]=r;for(auto k:{"gdp_usd","occupation_gdp"})c.facts["regional_identity"].removeMember(k);
                           c.facts["governing_authority"]=w.actors[a];c.facts["governing_authority"].removeMember("identity_revisions");c.facts["governing_authority"]["status"]=nationalStatus(w,a);
                           c.facts["politics"]=regionalState(w,r);c.facts["related_history"]=Json::arrayValue;
-                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) AND "+Store::happened+" ORDER BY turn DESC LIMIT 12",{r}))c.facts["related_history"].append(parse(row["document"].asString()));
+                          for(auto &row:store.query("SELECT document FROM events WHERE id IN (SELECT event FROM event_links WHERE kind='regions' AND target=?) AND "+Store::happened+" ORDER BY turn DESC LIMIT 12",{r})){auto d=parse(row["document"].asString());d["text"]=d["text"].asString()+droppedClause(d);c.facts["related_history"].append(d);}
                           c.reference=store.background(r);refs[r]=c.reference;
                       }
                       refs[a]=store.background(a);independentContexts.push_back(c);

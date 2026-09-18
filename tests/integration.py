@@ -38,6 +38,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
     if 'war-fixture' in i['action']:
      e['operations']=[{'action':'open_conflict','actors':['PT','ES'],'kind':'war','intensity':'medium','name':'War','text':'Border war with Spain'}]
      e['effects']=[{'actor':'PT','economy':'decline','stability':'decline'}]
+    if 'unreachable-fixture' in i['action']:
+     e['operations']=[{'action':'occupy','region':'nowhere-fixture','by':'PT'}]
     if 'identity-fixture' in i['action']:
      e['operations']=[{'action':'change_identity','actor':i['actor'],'name':'Atlantic Republic','change_type':'rename' if 'refound' not in i['action'] else 'refounding','reason':'Explicit constitutional settlement','flag_design':{'layout':'horizontal','palette':['#123456','#abcdef','#987654'],'emblem':'circle','explanation':'Shared civic future'}}]
   elif 'authoritative_events' in raw:

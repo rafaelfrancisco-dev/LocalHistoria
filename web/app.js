@@ -310,6 +310,7 @@ async function load() {
         const line = document.createElement("p");
         line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
+        if (structured?.failed || structured?.partial) line.prepend(structured.failed ? "Failed · " : "Partial · ");
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
         flagThumbs(structured?.identity_changes, line);
         details.append(line);
@@ -947,7 +948,7 @@ function eventCard(ev) {
   const card = document.createElement("article");
   card.className = "agreement event-card";
   card.dataset.id = ev.id;
-  const head = cardHead(month(ev.turn - 1), [ev.major ? ["major", "major"] : null, [EVENT_CATEGORIES[ev.category] || ev.category, ""], ev.on_map ? ["on the map", ""] : null, ev.breaches ? ["breached a treaty", "blocked"] : null, ev.blocked_by ? ["held back by a treaty", "blocked"] : null]);
+  const head = cardHead(month(ev.turn - 1), [ev.major ? ["major", "major"] : null, [EVENT_CATEGORIES[ev.category] || ev.category, ""], ev.on_map ? ["on the map", ""] : null, ev.breaches ? ["breached a treaty", "blocked"] : null, ev.blocked_by ? ["held back by a treaty", "blocked"] : null, ev.failed ? ["did not happen", "blocked"] : null, ev.partial ? ["partly happened", "blocked"] : null]);
   const parties = partyChips([...new Set([ev.actor, ...ev.actors])], "events", 8);
   if (ev.regional_actor) parties.append(`Regional initiative of ${state.territories[ev.regional_actor]?.name || ev.regional_actor}`);
   const text = document.createElement("p");

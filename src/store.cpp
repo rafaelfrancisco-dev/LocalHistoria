@@ -1,4 +1,5 @@
 #include "localhistoria/store.h"
+#include "localhistoria/world.h"
 #include <algorithm>
 #include <memory>
 namespace lh {
@@ -163,6 +164,8 @@ Json::Value Store::journal() {
     for (auto &x : j)
         x["events"] = parse(x["events"].asString());
     for(auto &month:j){month["structured_events"]=Json::arrayValue;for(auto &row:query("SELECT document FROM events WHERE turn=? ORDER BY rowid",{month["turn"].asString()}))month["structured_events"].append(parse(row["document"].asString()));}
+    // Prompts read what actually happened; the journal shows the model's text with a badge.
+    for(auto &month:j)for(auto &event:month["events"])for(auto &d:month["structured_events"])if(d["id"]==event["target"]){auto clause=droppedClause(d);if(!clause.empty())event["prompt_text"]=event["text"].asString()+clause;break;}
     return j;
 }
 CountryContext Store::campaignContext(const WorldState &w,const std::string &actor) {
@@ -173,7 +176,7 @@ CountryContext Store::campaignContext(const WorldState &w,const std::string &act
     for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);
     auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE "+happened+" ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
     c.facts["related_history"]=Json::arrayValue;
-    for(auto &row:older)c.facts["related_history"].append(parse(row["document"].asString()));
+    for(auto &row:older){auto d=parse(row["document"].asString());d["text"]=d["text"].asString()+droppedClause(d);c.facts["related_history"].append(d);}
     return c;
 }
 void Store::recordInference(const std::string &job,const Json::Value &records) {
@@ -201,7 +204,7 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
         event["turn"] = row["turn"];
         event["actor"] = document["actor"];
         // Saved events hold their outcome as text; the chronicle prompt calls it a description.
-        event["description"] = document.isMember("text") ? document["text"] : document["description"];
+        event["description"] = (document.isMember("text") ? document["text"] : document["description"]).asString() + droppedClause(document);
         if (document.isMember("effects")) event["effects"] = document["effects"];
         out.append(event);
     }
@@ -258,7 +261,7 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             item["actors"].append(x["actor"]);
             if (documents.contains(target)) {
                 auto &d = documents[target];
-                for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes", "effects", "breaches", "blocked_by",
+                for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes", "effects", "breaches", "blocked_by", "partial", "failed",
                                "regional_actor", "initiative_type", "identity_changes"})
                     if (d.isMember(k)) item[k] = d[k];
                 // Events saved before significance existed count as major only for a breach, a new flag or a severe effect.

@@ -369,6 +369,32 @@ static Json::Value treatyTerms(const Json::Value &terms) {
     return out;
 }
 static bool securityTreaty(const std::string &kind){return kind=="ceasefire"||kind=="peace_treaty"||kind=="non_aggression_pact"||kind=="alliance"||kind=="defence_pact"||kind=="union";}
+std::string droppedClause(const Json::Value &event) {
+    bool failed=event.get("failed",false).asBool();
+    if(!failed&&!event.get("partial",false).asBool())return "";
+    std::vector<std::string> phrases;
+    for(auto &d:event["dropped_operations"]) {
+        auto a=d["action"].asString();std::string p;
+        if(a=="occupy"||a=="transfer_territory"||a=="restore_control")p="no territory changed hands";
+        else if(a=="move_entity")p="no forces moved";
+        else if(a=="build")p="no construction began";
+        else if(a=="open_conflict")p="no war began";
+        else if(a=="set_conflict_intensity")p="the war did not change course";
+        else if(a=="add_commitment"||a=="amend_commitment")p="no agreement was concluded";
+        else if(a.rfind("resolve_",0)==0)p="nothing was ended";
+        else if(a=="create_actor")p="no new state formed";
+        else if(a=="set_entity_status")p="no unit was affected";
+        else if(a=="change_identity")p="no identity change took effect";
+        else if(a=="regional_initiative"||a=="respond_regional")p="no regional change was recorded";
+        else if(a.rfind("term ",0)==0)p="not every treaty term took effect";
+        else p=failed?"none of it happened":"part of it did not happen";
+        if(std::find(phrases.begin(),phrases.end(),p)==phrases.end())phrases.push_back(p);
+    }
+    if(phrases.empty())phrases.push_back(failed?"none of it happened":"part of it did not happen");
+    std::string out=" (In fact: ";
+    for(size_t n=0;n<phrases.size();++n)out+=(n?"; ":"")+phrases[n];
+    return out+".)";
+}
 WorldDelta compileOperations(const WorldState &w,const Json::Value &response,const Adjacency &adjacency,const Json::Value &responses) {
     require(response.isObject()&&response["events"].isArray()&&response["events"].size()<=37&&(!response.isMember("world_events")||(response["world_events"].isArray()&&response["world_events"].size()<=3)),"Invalid operation response");
     for(auto &k:response.getMemberNames())require(k=="events"||k=="world_events","Invalid operation response");
@@ -796,7 +822,10 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         }
         actors.insert(ev);
         if(!breaches.empty()&&blocked=="none")text+=" This breached the commitment: "+w.commitments[breaches]["text"].asString();
-        Json::Value event;event["id"]=id;event["actor"]=ev;if(blocked!="none")event["blocked_by"]=blocked;if(!breaches.empty()&&blocked=="none")event["breaches"]=breaches;event["text"]=text.substr(0,2000);if(!dropped.empty())event["dropped_operations"]=dropped;event["background"]=e["background"];event["causes"]=e["causes"];
+        Json::Value event;event["id"]=id;event["actor"]=ev;if(blocked!="none")event["blocked_by"]=blocked;if(!breaches.empty()&&blocked=="none")event["breaches"]=breaches;event["text"]=text.substr(0,2000);if(!dropped.empty())event["dropped_operations"]=dropped;
+        // What players and later prompts are told about dropped operations: a flag, never the reasons.
+        bool failed=blocked=="none"&&!seenOps.empty()&&failedOps==int(seenOps.size());
+        if(failed)event["failed"]=true;else if(blocked=="none"&&!dropped.empty())event["partial"]=true;event["background"]=e["background"];event["causes"]=e["causes"];
         for(auto [key,values]:std::initializer_list<std::pair<const char*,std::set<std::string>*>>{{"actors",&actors},{"regions",&regions},{"entities",&entities},{"conflicts",&conflicts},{"commitments",&commitments}}) {
             event[key]=Json::arrayValue;for(auto &v:*values)event[key].append(v);
         }
