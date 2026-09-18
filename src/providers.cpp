@@ -152,7 +152,7 @@ std::string LocalProvider::chronicle(const Json::Value &input, const std::string
         "Write this nation's history up to the month in facts.date, in at most 250 words, oldest to newest. "
         "Start from previous_chronicle when given, otherwise condense the real history in reference_only into a few sentences. "
         "Give more space to recent years and to campaign_events since January 2026, which happened in this fictional campaign and override real history. "
-        "Name the wars, treaties, policies and unresolved tensions that shape the nation's choices now. Do not invent events beyond these inputs.",
+        "Name the wars, treaties, policies and unresolved tensions that shape the nation's choices now. Do not invent events beyond these inputs. Write years, not month counts.",
         0, 0.3, "chronicle", actor);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"summary"} || !j["summary"].isString() ||
         j["summary"].asString().empty() || j["summary"].asString().size() > 2400)

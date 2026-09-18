@@ -119,7 +119,7 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
         war["id"] = id;
         war["name"] = displayName(w, "conflict", id);
         war["intensity"] = c.get("intensity", "unknown");
-        if (c["started_turn"].isInt()) war["months"] = w.turn - c["started_turn"].asInt();
+        if (c["started_turn"].isInt()) war["since"] = campaignDate(c["started_turn"].asInt());
         war["casualties"] = integer(c, "casualties");
         war["against"] = Json::arrayValue;
         for (auto &p : c["actors"]) if (p != a && war["against"].size() < 4) war["against"].append(w.actors[p.asString()]["name"]);
@@ -280,6 +280,16 @@ Json::Value allNationalStatus(const WorldState &w) {
     for (auto &a : w.actors.getMemberNames()) out[a] = buildStatus(w, a, t[a]);
     return out;
 }
+std::string campaignDate(int turn) {
+    static const char *months[] = {"January", "February", "March", "April", "May", "June",
+                                   "July", "August", "September", "October", "November", "December"};
+    return std::string(months[((turn % 12) + 12) % 12]) + " " + std::to_string(2026 + int(std::floor(turn / 12.0)));
+}
+bool chronicleDue(const Json::Value &current, int turn, bool sourceAvailable) {
+    if (!current.isObject() || !current.isMember("summary") || !current["summary"].isString()) return true;
+    if (turn - current.get("through_turn", 0).asInt() >= chronicleInterval) return true;
+    return sourceAvailable && !current.get("with_source", false).asBool();
+}
 std::string displayName(const WorldState &w, const std::string &kind, const std::string &id) {
     auto &v = kind == "conflict" ? w.conflicts[id] : w.commitments[id];
     if (v["name"].isString() && !v["name"].asString().empty()) return v["name"].asString();
@@ -299,7 +309,8 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
     }
     d["status"] = v["status"];
     d["text"] = v["text"];
-    if (v["started_turn"].isInt()) d["months_in_force"] = w.turn - v["started_turn"].asInt();
+    // A start date rather than a month count, which models turn into "active for nearly 295 months".
+    if (v["started_turn"].isInt()) d["since"] = campaignDate(v["started_turn"].asInt());
     if (v["expires_turn"].isInt() && v["status"] == "open") d["months_left"] = v["expires_turn"].asInt() - w.turn;
     // Terms already carried out, in words: a treaty's obligations shape what its parties may do next.
     auto name = [&](const Json::Value &a) { return w.actors[a.asString()].get("name", a).asString(); };

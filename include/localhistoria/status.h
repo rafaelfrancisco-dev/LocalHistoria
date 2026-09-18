@@ -19,6 +19,12 @@ std::string formatMoney(double usd, const Json::Value &status);
 // A conflict or commitment as the model and UI should see it: name, kind, parties, intensity and totals.
 Json::Value describeAgreement(const WorldState &, const std::string &kind, const std::string &id);
 std::string displayName(const WorldState &, const std::string &kind, const std::string &id);
+// "January 2026" for turn 0; negative turns are months before the campaign.
+std::string campaignDate(int turn);
+// Chronicles are rewritten at most once a year per nation.
+constexpr int chronicleInterval = 12;
+// Missing, a year old, or written before the nation's history source was cached and it now is.
+bool chronicleDue(const Json::Value &current, int turn, bool sourceAvailable);
 // Historians' naming: keeps a specific proposed name, replaces generic ones and numbers repeats.
 std::string realisticName(const WorldState &, const std::string &kind, const std::string &type,
                           const std::string &proposed, const std::vector<std::string> &parties,

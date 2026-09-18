@@ -1,5 +1,7 @@
 # 06 · Chronicles: fewer, and re-sourced when the reference arrives
 
+**Status: done (2026-09-18).** Chronicles only for the player and reactive nations in an open conflict or ≤3-party open commitment with it (`chronicleNations` in the turn route); `chronicleDue` and `campaignDate` (negative turns fixed) in `status.cpp`; a source-less chronicle is rebuilt from the source with all campaign events once `history_source` exists; `describeAgreement` and national wars give `since` instead of month counts; chronicle prompt asks for years. Tests: core (`campaignDate`), status (`chronicleDue`, `since`), integration (Mock chronicle branch, no chronicle for independent-slot actors).
+
 ## Goal
 Stop spending 22–36 s a month on chronicles for nations that do not matter, and fix the bug that keeps a
 source-less chronicle for twelve months.

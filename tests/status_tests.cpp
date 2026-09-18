@@ -69,6 +69,9 @@ int main() {
         w.conflicts["c1-1"] = parse(R"({"name":"Border War of the Hills","kind":"war","actors":["AA","BB"],"status":"open","text":"War","started_turn":0,"set_intensity":"medium","intensity":"medium","affected_regions":[],"casualties":0,"displaced":0})");
         auto start = Resolution{w, {}};
         start.state.turn = 1;
+        auto described = describeAgreement(start.state, "conflict", "c1-1");
+        check(described["since"] == "January 2026" && !described.isMember("months_in_force"), "Agreements give a start date: " + dump(described));
+        check(nationalStatus(start.state, "AA")["wars"][0]["since"] == "January 2026", "Wars give a start date");
         // No demographic trend, so only the war changes population.
         start.state.actors["AA"]["status"]["pop_growth"] = 0.0;
         auto total = people(start.state);
@@ -187,6 +190,12 @@ int main() {
         // Order of magnitude of 2023–25: roughly 100k–250k deaths a year, displacement in the hundreds of thousands to millions.
         check(ruWar["intensity"] == "high" && killed > 80000 && killed < 300000, "Russo-Ukrainian War toll");
         check(ruWar["displaced"].asInt64() > 100000 && ruWar["displaced"].asInt64() < 5000000, "Russo-Ukrainian War displacement");
+        // Chronicles: missing, a year old, or source-less once the source exists.
+        auto chronicle = parse(R"({"summary":"Old","through_turn":2,"with_source":true})");
+        check(chronicleDue(Json::Value(), 3, false) && chronicleDue(Json::objectValue, 3, true), "Missing chronicle is due");
+        check(!chronicleDue(chronicle, 5, true) && chronicleDue(chronicle, 14, false), "Sourced chronicle is due after a year");
+        chronicle["with_source"] = false;
+        check(chronicleDue(chronicle, 3, true) && !chronicleDue(chronicle, 3, false), "Source-less chronicle is due once the source exists");
         std::cout << "National status, consequences, naming, effects and the January 2026 world passed\n";
         return 0;
     } catch (const std::exception &e) {

@@ -72,14 +72,8 @@ class Worker {
     }
 };
 const size_t maxAiActors = 4;
-// Chronicles are rewritten at most once a year per nation, and only a few per month to bound turn time.
-const int chronicleInterval = 12;
+// Only a few chronicles per month, to bound turn time.
 const unsigned maxChroniclesPerTurn = 3;
-static std::string campaignDate(int turn) {
-    static const char *months[] = {"January", "February", "March", "April", "May", "June",
-                                   "July", "August", "September", "October", "November", "December"};
-    return std::string(months[turn % 12]) + " " + std::to_string(2026 + turn / 12);
-}
 int main(int argc, char **argv) {
     try {
         std::string configPath, llamaFlagValue;
@@ -423,6 +417,15 @@ int main(int argc, char **argv) {
                   // One action each; two for nations the player named or is fighting, the only ones whose month usually matters.
                   std::map<std::string,int> reactiveCounts;
                   for(auto &a:actors){int count=1;if(mentions.actors.contains(a))count=2;for(auto &v:w.conflicts)if(engaged(v)&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(a))!=v["actors"].end())count=2;reactiveCounts[a]=count;}
+                  // Chronicles only for nations whose history shapes the player's month: those at war or in a small pact
+                  // with the player. Named or independent actors keep the excerpt, or an earlier chronicle.
+                  std::vector<std::string> chronicleNations{w.player};
+                  for(auto &a:actors) {
+                      bool bound=false;
+                      for(auto collection:{&w.conflicts,&w.commitments})for(auto &v:*collection)
+                          if(engaged(v)&&(collection==&w.conflicts||v["actors"].size()<=3)&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(a))!=v["actors"].end())bound=true;
+                      if(bound)chronicleNations.push_back(a);
+                  }
                   auto allocations=scheduleInitiatives(w,actors);
                   auto prior=store.query("SELECT slots FROM monthly_allocations WHERE campaign=? AND month=?",{w.campaignId,std::to_string(w.turn+1)});
                   if(!prior.empty())allocations=parse(prior[0]["slots"].asString());
@@ -454,32 +457,30 @@ int main(int argc, char **argv) {
                   for(auto &k:refs.getMemberNames())if(refs[k].isObject())refs[k].removeMember("history_source");
                   prepareReferences(w);
                   try {
-                      worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts, reactiveCounts] {
+                      worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts, reactiveCounts, chronicleNations] {
                           bool committed = false;
                           try {
                               auto turnContexts=contexts;auto turnIndependent=independentContexts;auto turnRefs=refs;
-                              // Acting nations ground their choices in a chronicle, written when missing or a year old.
-                              std::vector<std::string> nations{w.player};
-                              nations.insert(nations.end(),actors.begin(),actors.end());
-                              for(auto &slot:allocations)if(slot["region"]=="")nations.push_back(slot["actor"].asString());
+                              // Engaged nations ground their choices in a chronicle, written when missing, a year old or source-less.
                               std::set<std::string> chronicled;unsigned written=0;
-                              for(auto &a:nations) {
+                              for(auto &a:chronicleNations) {
                                   if(!chronicled.insert(a).second)continue;
                                   Json::Value current,input;
                                   {
                                       std::lock_guard l(mutex);
                                       current=store.chronicle(a);
-                                      bool due=!current["summary"].isString()||w.turn-current["through_turn"].asInt()>=chronicleInterval;
-                                      if(due&&written<maxChroniclesPerTurn) {
+                                      auto background=store.background(a);
+                                      bool sourceAvailable=background["history_source"].isString();
+                                      if(chronicleDue(current,w.turn,sourceAvailable)&&written<maxChroniclesPerTurn) {
                                           auto &facts=turnContexts.at(a).facts;
                                           for(auto k:{"actor_name","status","conflicts","commitments"})input["facts"][k]=facts[k];
                                           input["facts"]["date"]=campaignDate(w.turn);
-                                          bool first=!current["summary"].isString();
+                                          // A chronicle written before the source was cached is rebuilt from it, not built upon.
+                                          bool first=!current["summary"].isString()||(sourceAvailable&&!current.get("with_source",false).asBool());
                                           if(!first)input["previous_chronicle"]=current["summary"];
                                           input["campaign_events"]=store.chronicleEvents(a,first?0:current["through_turn"].asInt());
-                                          auto background=store.background(a);
-                                          // Later rewrites build on the previous chronicle, unless it was written without a source.
-                                          if((first||!current.get("with_source",false).asBool())&&background["history_source"].isString())
+                                          // Later rewrites build on the previous chronicle instead of the source.
+                                          if(first&&sourceAvailable)
                                               input["reference_only"]["history_source"]=background["history_source"];
                                           input["reference_only"]["title"]=background["title"];
                                       }

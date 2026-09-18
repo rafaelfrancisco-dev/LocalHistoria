@@ -44,6 +44,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
      e['operations']=[{'action':'change_identity','actor':i['actor'],'name':'Atlantic Republic','change_type':'rename' if 'refound' not in i['action'] else 'refounding','reason':'Explicit constitutional settlement','flag_design':{'layout':'horizontal','palette':['#123456','#abcdef','#987654'],'emblem':'circle','explanation':'Shared civic future'}}]
   elif 'authoritative_events' in raw:
    result={'text':'A quiet month of fictional administration.'}
+  elif 'previous_chronicle' in raw or 'campaign_events' in raw:
+   result={'summary':'Fixture chronicle'}
   else:
    value=json.loads(raw);facts=value.get('facts',{});result={'actions':[{'text':'Discuss a local civic initiative' if facts.get('initiative_type')=='independent_regional' else 'Discuss a national civic initiative'}] if facts.get('initiative_type','').startswith('independent_') else []}
   content=json.dumps(result)
@@ -146,6 +148,12 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    for body in Mock.requests:
     inp=json.loads(body['messages'][1]['content']);facts=inp.get('facts',{})
     if facts.get('initiative_type','').startswith('independent_'):assert 'player_actions' not in facts and 'intentions' not in inp
+   # Chronicles only for the player and nations at war or in a small pact with it, never one-off independent actors.
+   bound={'PT'}|{a for c in [*current['conflicts'].values(),*current['commitments'].values()] if 'PT' in c['actors'] and len(c['actors'])<=3 for a in c['actors']}
+   names={current['actors'][a]['name'] for a in bound}
+   chronicled=[json.loads(b['messages'][1]['content'])['facts']['actor_name'] for b in Mock.requests if 'campaign_events' in json.loads(b['messages'][1]['content'])]
+   independent={current['actors'][slot['actor']]['name'] for turn in export['turns'] for slot in turn['reference']['allocations'] if slot['region']=='' and slot['actor'] not in bound}
+   assert chronicled and set(chronicled)<=names and not set(chronicled)&independent,(chronicled,independent)
    export['turns'][0]['state']['turn']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],capture_output=True).returncode==1
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)

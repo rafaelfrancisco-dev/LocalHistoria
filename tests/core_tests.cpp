@@ -1,5 +1,6 @@
 #include "localhistoria/history.h"
 #include "localhistoria/providers.h"
+#include "localhistoria/status.h"
 #include "localhistoria/store.h"
 #include <filesystem>
 #include <fstream>
@@ -27,6 +28,9 @@ int main(int argc, char **argv) {
             std::cout << dump(j) << "\n";
             return j["available"].asBool() ? 0 : 1;
         }
+        check(campaignDate(0) == "January 2026" && campaignDate(-3) == "October 2025" && campaignDate(13) == "February 2027" &&
+                  campaignDate(-12) == "January 2025",
+              "Campaign dates, including months before January 2026");
         WorldState w;
         w.player = "PT";
         w.campaignId = "test";
