@@ -2,6 +2,7 @@
 #include "localhistoria/providers.h"
 #include "localhistoria/status.h"
 #include "localhistoria/store.h"
+#include "localhistoria/world.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -32,6 +33,31 @@ int main(int argc, char **argv) {
         check(campaignDate(0) == "January 2026" && campaignDate(-3) == "October 2025" &&
                   campaignDate(13) == "February 2027" && campaignDate(-12) == "January 2025",
               "Campaign dates, including months before January 2026");
+        check(isCountryCode("GB") && !isCountryCode("gb") && !isCountryCode("GBR") &&
+                  !isCountryCode("G") && !isCountryCode(""),
+              "Country codes are two capital letters");
+        check(isHexColor("#a1B2c3") && !isHexColor("#abc") && !isHexColor("a1b2c3f") &&
+                  !isHexColor("#a1b2cg") && !isHexColor("#a1b2c3d"),
+              "Colours are #rrggbb");
+        check(isEntityId("Q42") && !isEntityId("Q") && !isEntityId("q42") && !isEntityId("Q4x"),
+              "Wikidata entity IDs");
+        check(isPermanentId("army-1_b") && !isPermanentId("") &&
+                  !isPermanentId(std::string(101, 'a')) && isPermanentId(std::string(100, 'a')) &&
+                  !isPermanentId("a b") && !isPermanentId("a/b"),
+              "Permanent IDs");
+        check(lowercase("São PAULO") == "são paulo", "Lowercase leaves non-ASCII bytes alone");
+        {
+            auto war = parse(R"({"status":"open","actors":["PT","ES"]})"),
+                 over = parse(R"({"status":"resolved","actors":["PT"]})");
+            check(isOpen(war) && !isOpen(over) && isParty(war, "ES") && !isParty(war, "FR") &&
+                      !isParty(Json::Value(), "PT") &&
+                      controllerOf(parse(R"({"controller":"PT"})")) == "PT",
+                  "Conflict helpers");
+            Adjacency adjacency{{"a", {"b"}}};
+            check(adjacent(adjacency, "a", "b") && adjacent(adjacency, "c", "c") &&
+                      !adjacent(adjacency, "b", "a") && !adjacent(adjacency, "a", "c"),
+                  "Adjacency");
+        }
         WorldState w;
         w.player = "PT";
         w.campaignId = "test";
@@ -191,8 +217,8 @@ int main(int argc, char **argv) {
                           audit[0]["context_limit"].asInt() == ctx,
                       "Thinking budget follows context size and consequential actions");
             }
-        rejects([&] { LocalProvider bad(""); });
-        rejects([&] { LocalProvider bad("not-a-url"); });
+        rejects([&] { LocalProvider bad("", 1); });
+        rejects([&] { LocalProvider bad("not-a-url", 1); });
         auto path = (std::filesystem::temp_directory_path() / "localhistoria-test.sqlite").string();
         std::filesystem::remove(path);
         {

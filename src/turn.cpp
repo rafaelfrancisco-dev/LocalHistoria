@@ -89,7 +89,7 @@ Json::Value adjudicationInput(const WorldState &w,
     for (auto &[a, c] : contexts) {
         bool fighting = false;
         for (auto &id : w.conflicts.getMemberNames())
-            if (w.conflicts[id]["status"] == "open")
+            if (isOpen(w.conflicts[id]))
                 for (auto &party : w.conflicts[id]["actors"])
                     fighting = fighting || party == a;
         // The player, nations at war and nations in a war, land or treaty action this month need
@@ -125,7 +125,7 @@ Json::Value adjudicationInput(const WorldState &w,
         bool involved = false;
         for (auto &a : c["actors"])
             involved = involved || acting.contains(a.asString());
-        if (c["status"] == "open" && involved)
+        if (isOpen(c) && involved)
             for (auto &r : c["affected_regions"])
                 if (r.isString() && relevant.size() < 36) {
                     relevant.insert(r.asString());
@@ -209,10 +209,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
             candidates.insert(candidates.begin(), p["from"].asString());
     // Large blocs (NATO, the EU) would otherwise fill every month with the same
     // alphabetical members.
-    auto engaged = [&](const Json::Value &v) {
-        return v["status"] == "open" && std::find(v["actors"].begin(), v["actors"].end(),
-                                                  Json::Value(w.player)) != v["actors"].end();
-    };
+    auto engaged = [&](const Json::Value &v) { return isOpen(v) && isParty(v, w.player); };
     for (auto &v : w.conflicts)
         if (engaged(v))
             for (auto &a : v["actors"])
@@ -226,8 +223,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
                     for (auto &k : w.commitments) {
                         auto kind = k["kind"].asString();
                         auto &members = k["actors"];
-                        if (k["status"] != "open" ||
-                            (kind != "alliance" && kind != "defence_pact") ||
+                        if (!isOpen(k) || (kind != "alliance" && kind != "defence_pact") ||
                             std::find(members.begin(), members.end(), enemy) == members.end() ||
                             std::find(members.begin(), members.end(), Json::Value(w.player)) !=
                                 members.end())
@@ -337,9 +333,9 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
                              "event_links WHERE kind='regions' AND target=?) AND " +
                                  Store::happened + " ORDER BY turn DESC LIMIT 12",
                              {r})) {
-                auto d = parse(row["document"].asString());
-                d["text"] = d["text"].asString() + droppedClause(d);
-                c.facts["related_history"].append(d);
+                auto event = parse(row["document"].asString());
+                event["text"] = event["text"].asString() + droppedClause(event);
+                c.facts["related_history"].append(event);
             }
             c.reference = store.background(r);
             refs[r] = c.reference;
@@ -400,13 +396,13 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         for (auto &a : chronicleNations) {
             if (!chronicled.insert(a).second)
                 continue;
-            Json::Value current, input;
+            Json::Value previous, input;
             {
                 std::lock_guard l(mutex);
-                current = store.chronicle(a);
+                previous = store.chronicle(a);
                 auto background = store.background(a);
                 bool sourceAvailable = background["history_source"].isString();
-                if (chronicleDue(current, w.turn, sourceAvailable) &&
+                if (chronicleDue(previous, w.turn, sourceAvailable) &&
                     written < maxChroniclesPerTurn) {
                     auto &facts = turnContexts.at(a).facts;
                     for (auto k : {"actor_name", "status", "conflicts", "commitments"})
@@ -414,12 +410,12 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                     input["facts"]["date"] = campaignDate(w.turn);
                     // A chronicle written before the source was cached is
                     // rebuilt from it, not built upon.
-                    bool first = !current["summary"].isString() ||
-                                 (sourceAvailable && !current.get("with_source", false).asBool());
+                    bool first = !previous["summary"].isString() ||
+                                 (sourceAvailable && !previous.get("with_source", false).asBool());
                     if (!first)
-                        input["previous_chronicle"] = current["summary"];
+                        input["previous_chronicle"] = previous["summary"];
                     input["campaign_events"] =
-                        store.chronicleEvents(a, first ? 0 : current["through_turn"].asInt());
+                        store.chronicleEvents(a, first ? 0 : previous["through_turn"].asInt());
                     // Later rewrites build on the previous chronicle instead of
                     // the source.
                     if (first && sourceAvailable)
@@ -435,13 +431,13 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                     document["summary"] = summary;
                     document["through_turn"] = w.turn;
                     document["with_source"] = input["reference_only"].isMember("history_source") ||
-                                              current.get("with_source", false).asBool();
+                                              previous.get("with_source", false).asBool();
                     document["events_covered"] = input["campaign_events"].size();
                     std::lock_guard l(mutex);
                     document["source_revision"] = store.background(a)["revision"];
                     store.saveChronicle(a, document);
                     store.recordInference(id, provider.takeAudit());
-                    current = document;
+                    previous = document;
                 } catch (const std::exception &) {
                     // Optional like narration: the nation keeps its earlier
                     // chronicle or the raw excerpt.
@@ -449,13 +445,13 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                     store.recordInference(id, provider.takeAudit());
                 }
             }
-            if (!current["summary"].isString())
+            if (!previous["summary"].isString())
                 continue;
-            turnContexts.at(a).reference["chronicle"] = current["summary"];
-            turnRefs[a]["chronicle"] = current["summary"];
+            turnContexts.at(a).reference["chronicle"] = previous["summary"];
+            turnRefs[a]["chronicle"] = previous["summary"];
             for (Json::ArrayIndex n = 0; n < allocations.size(); ++n)
                 if (allocations[n]["actor"] == a && allocations[n]["region"] == "")
-                    turnIndependent[n].reference["chronicle"] = current["summary"];
+                    turnIndependent[n].reference["chronicle"] = previous["summary"];
         }
         std::map<std::string, TurnOrders> intentions{{w.player, orders}};
         for (auto &a : actors) {

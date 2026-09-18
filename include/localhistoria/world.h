@@ -25,12 +25,18 @@ WorldDelta compileOperations(const WorldState &, const Json::Value &response,
 // description.
 std::string droppedClause(const Json::Value &event);
 int constructionMonths(const std::string &kind);
+// A colour from the fixed actor palette, picked by hashing the actor ID.
+std::string paletteColor(const std::string &id);
+// Colours every actor from the palette so that no two bordering actors share one.
+void assignActorColors(WorldState &,
+                       const std::vector<std::pair<std::string, std::string>> &neighbors);
+// The same region, or regions that share a border.
+bool adjacent(const Adjacency &, const std::string &from, const std::string &to);
 // Whether an actor can project force into a region this month (bordering controlled land, or a
 // nearby army/fleet).
 bool reaches(const WorldState &, const Adjacency &, const std::string &actor,
              const std::string &region);
 bool containsPoint(const Json::Value &geometry, double longitude, double latitude);
-std::string lowercase(const std::string &);
 // Whole-word match on lowercased text.
 bool containsWord(const std::string &text, const std::string &word);
 // Wars, invasions, territory and treaties: an action whose outcome history can change, worth

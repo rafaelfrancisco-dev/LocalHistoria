@@ -1,4 +1,5 @@
 #pragma once
+#include "keys.h"
 #include <json/json.h>
 #include <map>
 #include <set>
@@ -57,4 +58,11 @@ CountryContext context(const WorldState &, const std::string &, const Json::Valu
 Json::Value briefReference(const Json::Value &, size_t excerpt, size_t history);
 std::string dump(const Json::Value &);
 Json::Value parse(const std::string &);
+std::string lowercase(const std::string &);
+// Identifier shapes, checked by hand: two capital letters, #rrggbb, a Wikidata item and a permanent
+// ID of up to 100 letters, digits, '_' or '-'.
+bool isCountryCode(const std::string &);
+bool isHexColor(const std::string &);
+bool isEntityId(const std::string &);
+bool isPermanentId(const std::string &);
 } // namespace lh

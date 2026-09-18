@@ -65,7 +65,7 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished.
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
 - **Event sites.** An `event_site` marks where a notable incident happened. It is active at once with `expires_turn` three months ahead (`eventMapMonths`), and `resolve` makes it `inactive` when that month arrives, without a journal line. A later feasible event renews it for another three months when it involves the site or cites the site's originating event as a cause. Only active event sites carry `expires_turn`; sites saved before expiry existed keep none until an event touches them, so replay is unchanged.
-- **New states.** At most one new state per month, and it must receive territory in the same event.
+- **New states.** At most one new state per month, and it must receive territory in the same event. A new state takes the model's `#rrggbb` colour, or one from the fixed actor palette when the colour is missing or invalid. A new campaign colours every country from that palette so that no two bordering countries share a colour.
 
 **Authority.** An actor changes only what it has a say in:
 - Only a party can open, escalate, scale down or end a war, and only a party can sign or end a treaty.

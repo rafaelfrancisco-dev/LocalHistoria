@@ -1,7 +1,6 @@
 #include "localhistoria/politics.h"
 #include <algorithm>
 #include <cstdio>
-#include <regex>
 namespace lh {
 bool identityCorrection(const std::string &a, const std::string &b) {
     auto norm = [](auto &s) {
@@ -143,7 +142,7 @@ std::string renderFlag(const Json::Value &d) {
         if (k != "layout" && k != "emblem" && k != "palette" && k != "explanation")
             throw ValidationError("Unknown flag property");
     for (auto &c : d["palette"])
-        if (!c.isString() || !std::regex_match(c.asString(), std::regex("#[0-9a-fA-F]{6}")))
+        if (!c.isString() || !isHexColor(c.asString()))
             throw ValidationError("Invalid flag color");
     auto a = d["palette"][0].asString(), b = d["palette"][1].asString(),
          c = d["palette"][2].asString();

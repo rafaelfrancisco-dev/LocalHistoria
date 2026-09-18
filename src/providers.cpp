@@ -43,7 +43,7 @@ void LocalProvider::setDeadline(std::chrono::steady_clock::time_point t) {
     deadline = t;
 }
 void LocalProvider::clearDeadline() { setDeadline(std::chrono::steady_clock::time_point::max()); }
-Json::Value LocalProvider::call(const std::string &endpoint, const std::string &path,
+Json::Value LocalProvider::call(const std::string &url, const std::string &path,
                                 const Json::Value &body) {
     std::chrono::steady_clock::time_point until;
     {
@@ -62,7 +62,7 @@ Json::Value LocalProvider::call(const std::string &endpoint, const std::string &
         limit = std::min(
             limit, std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count());
     try {
-        return transport(endpoint, path, body, limit);
+        return transport(url, path, body, limit);
     } catch (const std::exception &) {
         // A request cut short by the budget reports the budget, not the transport error.
         check();
@@ -74,7 +74,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
                                       double temperature, const std::string &kind,
                                       const std::string &actor) {
     std::lock_guard lock(inference);
-    auto endpoint = endpointValue();
+    auto url = endpointValue();
     auto selected = input;
     auto started = std::chrono::steady_clock::now();
     Json::Value b;
@@ -99,14 +99,14 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     // The server's context and model rarely change; a minute-old answer saves a round trip per
     // request.
     auto props = cachedProps;
-    if (props.isNull() || propsEndpoint != endpoint ||
+    if (props.isNull() || propsEndpoint != url ||
         std::chrono::steady_clock::now() - propsAt > std::chrono::seconds(60)) {
-        props = call(endpoint, "/props", Json::nullValue);
+        props = call(url, "/props", Json::nullValue);
         if (!props["default_generation_settings"]["n_ctx"].isInt() ||
             props["default_generation_settings"]["n_ctx"].asInt() < 8192)
             throw ValidationError("Model must expose a verified context of at least 8192 tokens");
         cachedProps = props;
-        propsEndpoint = endpoint;
+        propsEndpoint = url;
         propsAt = std::chrono::steady_clock::now();
     }
     const unsigned contextLimit = props["default_generation_settings"]["n_ctx"].asUInt();
@@ -136,14 +136,14 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     else
         for (;;) {
             b["messages"][1]["content"] = dump(selected);
-            auto templated = call(endpoint, "/apply-template", b);
+            auto templated = call(url, "/apply-template", b);
             if (!templated["prompt"].isString())
                 throw ValidationError("Chat template unavailable");
             Json::Value request;
             request["content"] = templated["prompt"];
             request["add_special"] = true;
             request["parse_special"] = true;
-            auto counted = call(endpoint, "/tokenize", request);
+            auto counted = call(url, "/tokenize", request);
             if (!counted["tokens"].isArray())
                 throw ValidationError("Tokenizer unavailable");
             tokens = counted["tokens"].size();
@@ -197,7 +197,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
                 continue;
             throw ValidationError("Mandatory current facts and commitments exceed token budget");
         }
-    auto response = call(endpoint, "/v1/chat/completions", b);
+    auto response = call(url, "/v1/chat/completions", b);
     Json::Value record;
     record["input"] = selected;
     record["messages"] = b["messages"];

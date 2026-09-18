@@ -296,6 +296,29 @@ int main() {
             t["initial_affiliation"] = t["owner"] = t["controller"] = r["affiliation"];
             t["kind"] = r["kind"];
         }
+        {
+            // Bordering countries never share a map colour.
+            auto coloured = world;
+            std::vector<std::pair<std::string, std::string>> borders;
+            for (auto &n : reference.query("SELECT a,b FROM neighbors"))
+                borders.emplace_back(n["a"].asString(), n["b"].asString());
+            assignActorColors(coloured, borders);
+            std::set<std::string> used;
+            for (auto &[a, b] : borders) {
+                if (!coloured.hasActor(a) || !coloured.hasActor(b))
+                    continue;
+                check(coloured.actors[a]["color"] != coloured.actors[b]["color"],
+                      "Neighbours " + a + " and " + b + " share a colour");
+            }
+            for (auto &id : coloured.actors.getMemberNames()) {
+                check(isHexColor(coloured.actors[id]["color"].asString()), "Palette colour");
+                used.insert(coloured.actors[id]["color"].asString());
+            }
+            check(used.size() >= 20, "Actors spread across the palette");
+            auto again = world;
+            assignActorColors(again, borders);
+            check(again.actors == coloured.actors, "Colours are deterministic");
+        }
         Adjacency realAdjacency;
         for (auto &r : reference.query("SELECT a,b FROM region_neighbors"))
             realAdjacency[r["a"].asString()].insert(r["b"].asString());

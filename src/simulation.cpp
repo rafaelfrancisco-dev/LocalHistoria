@@ -1,7 +1,32 @@
 #include "localhistoria/simulation.h"
 #include "localhistoria/status.h"
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 namespace lh {
+std::string lowercase(const std::string &s) {
+    std::string o;
+    for (unsigned char c : s)
+        o += char(std::tolower(c));
+    return o;
+}
+// ASCII only, independent of the locale.
+static bool upper(char c) { return c >= 'A' && c <= 'Z'; }
+static bool digit(char c) { return c >= '0' && c <= '9'; }
+static bool alnum(char c) { return upper(c) || digit(c) || (c >= 'a' && c <= 'z'); }
+bool isCountryCode(const std::string &s) { return s.size() == 2 && upper(s[0]) && upper(s[1]); }
+bool isHexColor(const std::string &s) {
+    return s.size() == 7 && s[0] == '#' && std::all_of(s.begin() + 1, s.end(), [](char c) {
+               return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+           });
+}
+bool isEntityId(const std::string &s) {
+    return s.size() >= 2 && s[0] == 'Q' && std::all_of(s.begin() + 1, s.end(), digit);
+}
+bool isPermanentId(const std::string &s) {
+    return !s.empty() && s.size() <= 100 &&
+           std::all_of(s.begin(), s.end(), [](char c) { return alnum(c) || c == '_' || c == '-'; });
+}
 std::string dump(const Json::Value &j) {
     Json::StreamWriterBuilder b;
     b["indentation"] = "";
@@ -177,7 +202,7 @@ Resolution resolve(const WorldState &w) {
     for (auto &id : r.state.commitments.getMemberNames()) {
         auto &k = r.state.commitments[id];
         auto expires = k.get("expires_turn", Json::nullValue);
-        if (k["status"] != "open" || !expires.isInt() || expires.asInt() > r.state.turn)
+        if (!isOpen(k) || !expires.isInt() || expires.asInt() > r.state.turn)
             continue;
         k["status"] = "resolved";
         k["ended_turn"] = r.state.turn;
@@ -218,12 +243,6 @@ Resolution resolve(const WorldState &w) {
                                 (region.empty() ? "" : " in " + region) + "."});
     }
     return r;
-}
-static bool involves(const Json::Value &v, const std::string &a) {
-    for (auto &x : v["actors"])
-        if (x == a)
-            return true;
-    return false;
 }
 CountryContext context(const WorldState &w, const std::string &a, const Json::Value &recent,
                        const Json::Value &reference) {
@@ -267,13 +286,13 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         auto &collection = conflict ? w.conflicts : w.commitments;
         f[kind] = Json::objectValue;
         for (auto &id : collection.getMemberNames())
-            if (collection[id]["status"] == "open" && involves(collection[id], a))
+            if (isOpen(collection[id]) && isParty(collection[id], a))
                 f[kind][id] = describeAgreement(w, conflict ? "conflict" : "commitment", id);
     }
     // Treaties offered to or by this nation that still await the player's answer.
     for (auto &id : w.proposals.getMemberNames()) {
         auto &p = w.proposals[id];
-        if (p["status"] != "pending" || !involves(p, a))
+        if (p["status"] != "pending" || !isParty(p, a))
             continue;
         Json::Value o;
         o["from"] = w.actors[p["from"].asString()]["name"];
@@ -287,16 +306,15 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     for (auto &kid : w.commitments.getMemberNames()) {
         auto &k = w.commitments[kid];
         auto kind = k["kind"].asString();
-        if (k["status"] != "open" || (kind != "alliance" && kind != "defence_pact") ||
-            !involves(k, a))
+        if (!isOpen(k) || (kind != "alliance" && kind != "defence_pact") || !isParty(k, a))
             continue;
         for (auto &cid : w.conflicts.getMemberNames()) {
             auto &c = w.conflicts[cid];
-            if (c["status"] != "open" || involves(c, a) || f["allied_wars"].size() >= 4 ||
+            if (!isOpen(c) || isParty(c, a) || f["allied_wars"].size() >= 4 ||
                 f["allied_wars"].isMember(cid))
                 continue;
             for (auto &ally : c["actors"])
-                if (involves(k, ally.asString())) {
+                if (isParty(k, ally.asString())) {
                     Json::Value war;
                     war["name"] = displayName(w, "conflict", cid);
                     war["ally"] = w.actors[ally.asString()]["name"];

@@ -4,7 +4,6 @@
 #include "localhistoria/status.h"
 #include "worker.h"
 #include <algorithm>
-#include <regex>
 namespace lh {
 ReferencePreparer::ReferencePreparer(Store &store, Store &reference, std::mutex &mutex,
                                      Transport transport)
@@ -30,10 +29,7 @@ ReferencePreparer::relevance(const WorldState &w) {
         if (w.hasActor(a))
             closeness[a] = std::max(closeness[a], tier);
     };
-    auto party = [&](const Json::Value &v) {
-        return v["status"] == "open" && std::find(v["actors"].begin(), v["actors"].end(),
-                                                  Json::Value(w.player)) != v["actors"].end();
-    };
+    auto party = [&](const Json::Value &v) { return isOpen(v) && isParty(v, w.player); };
     for (auto &v : w.conflicts)
         if (party(v))
             for (auto &a : v["actors"])
@@ -161,7 +157,7 @@ Json::Value ReferencePreparer::prepareAll(const std::set<std::string> &actors) {
     auxiliary[id] = j;
     worker->add([&, actors, id] {
         for (auto &a : actors) {
-            if (!std::regex_match(a, std::regex("[A-Z]{2}")))
+            if (!isCountryCode(a))
                 continue;
             auto result = fetchHistory(a, transport);
             std::lock_guard l(mutex);

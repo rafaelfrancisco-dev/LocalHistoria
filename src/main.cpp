@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
         if (lockfd < 0)
             throw std::runtime_error("Save is already open by another server");
 #else
+        // Never closed: the flock is held for the life of the process and released when it exits.
         int lockfd = open((save + ".lock").c_str(), O_CREAT | O_RDWR, 0600);
         if (lockfd < 0 || flock(lockfd, LOCK_EX | LOCK_NB) != 0)
             throw std::runtime_error("Save is already open by another server");
@@ -94,7 +95,9 @@ int main(int argc, char **argv) {
             return httpJson(host, path, body, timeout);
         };
         ReferencePreparer references(store, reference, mutex, referenceTransport);
-        Worker worker;
+        // Shutdown drops a queued month; Store::recover() marks one that was running interrupted on
+        // the next start.
+        Worker worker(false);
         TurnRunner turns(
             {store, reference, provider, references, geography, adjacency, mutex, budgetSeconds});
         {

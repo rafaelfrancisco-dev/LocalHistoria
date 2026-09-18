@@ -1,9 +1,16 @@
 #pragma once
 #include "simulation.h"
+#include <optional>
 #include <sqlite3.h>
 namespace lh {
 class Store {
     sqlite3 *db = nullptr;
+    // Every event-log item of one campaign month, unfiltered and newest month first:
+    // [{turn, items}]. Saved rows change only by committing a month or replacing the campaign.
+    std::optional<std::pair<std::pair<std::string, int>, Json::Value>> eventLogCache;
+    // Brings an older save's schema up to date; PRAGMA user_version records how far it got.
+    void migrate();
+    Json::Value eventLogMonths(const WorldState &);
 
   public:
     // Events rolled back as infeasible stay in the audit but never reach history as if they

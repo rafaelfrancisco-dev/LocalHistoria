@@ -35,18 +35,10 @@ Int integer(const Json::Value &v, const char *k) {
 double number(const Json::Value &v, const char *k, double fallback = 0) {
     return v[k].isNumeric() ? v[k].asDouble() : fallback;
 }
-bool involves(const Json::Value &v, const std::string &a) {
-    return std::find(v["actors"].begin(), v["actors"].end(), Json::Value(a)) != v["actors"].end();
-}
 int level(const std::string &intensity) {
     return intensity == "high" ? 2 : intensity == "medium" ? 1 : intensity == "low" ? 0 : -1;
 }
 double round1(double v) { return std::round(v * 10) / 10; }
-std::string lower(std::string s) {
-    for (auto &c : s)
-        c = char(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
 std::string grouped(Int n) {
     auto s = std::to_string(n < 0 ? -n : n);
     for (int i = int(s.size()) - 3; i > 0; i -= 3)
@@ -170,7 +162,7 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
     s["wars"] = Json::arrayValue;
     for (auto &id : w.conflicts.getMemberNames()) {
         auto &c = w.conflicts[id];
-        if (c["status"] != "open" || !involves(c, a))
+        if (!isOpen(c) || !isParty(c, a))
             continue;
         Json::Value war;
         war["id"] = id;
@@ -188,7 +180,7 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
     s["treaties"] = Json::arrayValue;
     for (auto &id : w.commitments.getMemberNames()) {
         auto &c = w.commitments[id];
-        if (c["status"] != "open" || !involves(c, a))
+        if (!isOpen(c) || !isParty(c, a))
             continue;
         Json::Value treaty;
         treaty["id"] = id;
@@ -269,13 +261,9 @@ namespace {
 const Json::Value &inventory(const WorldState &w, const std::string &a) {
     return w.actors[a]["status"]["military"];
 }
-bool near(const Adjacency &adj, const std::string &from, const std::string &to) {
-    return from == to || (adj.contains(from) && adj.at(from).contains(to));
-}
 bool mobilised(const WorldState &w, const std::string &a) {
     for (const auto &c : w.conflicts)
-        if (c["status"] == "open" && (c["kind"] == "war" || c["kind"] == "civil_war") &&
-            involves(c, a))
+        if (isOpen(c) && (c["kind"] == "war" || c["kind"] == "civil_war") && isParty(c, a))
             return true;
     return false;
 }
@@ -321,7 +309,7 @@ int constructionCapacity(const WorldState &w, const std::string &a) {
 int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
     std::set<std::string> enemies;
     for (const auto &c : w.conflicts)
-        if (c["status"] == "open" && involves(c, a))
+        if (isOpen(c) && isParty(c, a))
             for (const auto &p : c["actors"])
                 if (p != a)
                     enemies.insert(p.asString());
@@ -348,7 +336,7 @@ double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::
     for (const auto &e : w.entities)
         if (e["actor"] == a && e["kind"] == "army" && e["status"] == "active")
             for (const auto &r : regions)
-                if (near(adj, e["region"].asString(), r)) {
+                if (adjacent(adj, e["region"].asString(), r)) {
                     n += e.get("personnel", 10000).asInt();
                     break;
                 }
@@ -368,7 +356,7 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
                 if (at == region &&
                     (e["kind"] == "port" || e["kind"] == "fleet" || e.get("port", false).asBool()))
                     naval = true;
-                if (e["actor"] != a || !near(adj, at, region))
+                if (e["actor"] != a || !adjacent(adj, at, region))
                     continue;
                 if (e["kind"] == "army")
                     land += e.get("personnel", 10000).asInt();
@@ -382,7 +370,7 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
     double cp = quality(w, a) * (land + air + sea) * (defending ? 1.5 : 1);
     if (defending) {
         for (const auto &c : w.conflicts)
-            if (c["status"] == "open" && c["kind"] == "civil_war" && involves(c, a)) {
+            if (isOpen(c) && c["kind"] == "civil_war" && isParty(c, a)) {
                 cp *= 0.6;
                 break;
             }
@@ -401,8 +389,8 @@ Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string
     double attack = committedForce(w, adj, a, r, false)["cp"].asDouble();
     double defend = committedForce(w, adj, d, r, true)["cp"].asDouble();
     for (const auto &c : w.conflicts)
-        if (c["status"] == "open" && involves(c, a) && involves(c, d) &&
-            c["started_turn"].isInt() && w.turn - c["started_turn"].asInt() >= 12) {
+        if (isOpen(c) && isParty(c, a) && isParty(c, d) && c["started_turn"].isInt() &&
+            w.turn - c["started_turn"].asInt() >= 12) {
             attack *= 0.6;
             break;
         }
@@ -709,7 +697,7 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
     // months".
     if (v["started_turn"].isInt())
         d["since"] = campaignDate(v["started_turn"].asInt());
-    if (v["expires_turn"].isInt() && v["status"] == "open")
+    if (v["expires_turn"].isInt() && isOpen(v))
         d["months_left"] = v["expires_turn"].asInt() - w.turn;
     // Terms already carried out, in words: a treaty's obligations shape what its parties may do
     // next.
@@ -771,12 +759,13 @@ std::string realisticName(const WorldState &w, const std::string &kind, const st
             word.clear();
         }
     }
-    if (name.size() < 4 || name.size() > 120 || !specific || lower(name) == lower(trim(text)))
+    if (name.size() < 4 || name.size() > 120 || !specific ||
+        lowercase(name) == lowercase(trim(text)))
         name = fallbackName(w, kind, type, parties);
     static const char *ordinals[] = {"Second",  "Third",  "Fourth", "Fifth", "Sixth",
                                      "Seventh", "Eighth", "Ninth",  "Tenth"};
     auto unique = name;
-    for (int n = 0; taken.contains(lower(unique)); ++n)
+    for (int n = 0; taken.contains(lowercase(unique)); ++n)
         unique = n < 9 ? std::string(ordinals[n]) + " " + name
                        : name + " (" + std::to_string(n + 2) + ")";
     return unique.substr(0, 160);
@@ -962,7 +951,7 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta,
     std::set<std::string> allAffected;
     for (auto &id : w.conflicts.getMemberNames()) {
         const Json::Value &c = w.conflicts[id];
-        if (c["status"] != "open")
+        if (!isOpen(c))
             continue;
         Front f{id, {}, {}, -1, false};
         for (auto &a : c["actors"])
@@ -1020,7 +1009,7 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta,
         bool ceasefire = false;
         for (const auto &k : static_cast<const Json::Value &>(w.commitments)) {
             auto kind = k["kind"].asString();
-            if (k["status"] != "open" || (kind != "ceasefire" && kind != "peace_treaty"))
+            if (!isOpen(k) || (kind != "ceasefire" && kind != "peace_treaty"))
                 continue;
             int shared = 0;
             for (auto &a : k["actors"])

@@ -80,8 +80,8 @@ std::string recentHistory(const std::string &html, size_t limit) {
     auto end = next == std::string::npos ? html.size() : next;
     // Take the section's tail before extracting text, so huge articles stay bounded.
     auto from = end - start > 600000 ? end - 600000 : start;
-    auto text = std::regex_replace(plainText(html.substr(from, end - from), 400000),
-                                   std::regex(R"( ?\[ ?[0-9a-z]{1,4} ?\])"), "");
+    static const std::regex citation(R"( ?\[ ?[0-9a-z]{1,4} ?\])");
+    auto text = std::regex_replace(plainText(html.substr(from, end - from), 400000), citation, "");
     while (!text.empty() && text.back() == ' ')
         text.pop_back();
     if (text.size() <= limit)
@@ -97,7 +97,7 @@ Json::Value fetchRegionalHistory(const std::string &name, const std::string &cou
     Json::Value unavailable;
     unavailable["available"] = false;
     try {
-        if (name.empty() || name.size() > 200 || !std::regex_match(country, std::regex("[A-Z]{2}")))
+        if (name.empty() || name.size() > 200 || !isCountryCode(country))
             throw ValidationError("Regional identity unavailable");
         // Exact English label, current country and direct national administrative parent: no fuzzy
         // name guesses.
@@ -112,7 +112,7 @@ Json::Value fetchRegionalHistory(const std::string &name, const std::string &cou
             throw ValidationError("Regional mapping missing or ambiguous");
         auto uri = rows[0]["item"]["value"].asString();
         auto qid = uri.substr(uri.find_last_of('/') + 1);
-        if (!std::regex_match(qid, std::regex("Q[0-9]+")))
+        if (!isEntityId(qid))
             throw ValidationError("Invalid regional entity");
         // Reuse bounded article extraction after a verified regional mapping.
         Transport mapped = [&](const std::string &host, const std::string &path,
@@ -137,7 +137,7 @@ Json::Value fetchRegionalHistory(const std::string &name, const std::string &cou
     }
 }
 Json::Value fetchHistory(const std::string &code, Transport get) {
-    if (!std::regex_match(code, std::regex("[A-Z]{2}")))
+    if (!isCountryCode(code))
         throw ValidationError("Invalid country code");
     Json::Value out;
     out["available"] = false;
@@ -163,7 +163,7 @@ Json::Value fetchHistory(const std::string &code, Transport get) {
             auto uri = rows[0]["item"]["value"].asString();
             qid = uri.substr(uri.find_last_of('/') + 1);
         }
-        if (!std::regex_match(qid, std::regex("Q[0-9]+")))
+        if (!isEntityId(qid))
             throw std::runtime_error("Invalid entity");
         auto entity =
             get("https://www.wikidata.org", "/wiki/Special:EntityData/" + qid + ".json", {}, 12);

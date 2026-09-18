@@ -1092,6 +1092,29 @@ int main() {
                   "Old events leave the map but stay in the log");
             check(log.campaignContext(current, "old-state").facts["related_history"].size() == 1,
                   "Rolled-back events stay out of history");
+            {
+                // One query builds the journal; it matches reading each month's events alone.
+                auto journal = log.journal();
+                for (auto &month : journal) {
+                    Json::Value expected(Json::arrayValue);
+                    for (auto &row : log.query("SELECT document FROM events WHERE turn=? ORDER BY "
+                                               "rowid",
+                                               {month["turn"].asString()}))
+                        expected.append(parse(row["document"].asString()));
+                    check(dump(month["structured_events"]) == dump(expected),
+                          "Journal groups events by month");
+                }
+                check(journal.size() == Json::ArrayIndex(eventMapMonths + 1) &&
+                          !journal[eventMapMonths]["structured_events"].empty(),
+                      "Journal covers every month");
+                // The event log is cached per month; filters still apply to the cached items.
+                auto once = log.eventLog(current, parse(R"({})"));
+                check(dump(log.eventLog(current, parse(R"({})"))) == dump(once) &&
+                          log.eventLog(current, parse(R"({"q":"harvest"})"))["events"].size() ==
+                              1 &&
+                          dump(log.eventLog(current, parse(R"({})"))) == dump(once),
+                      "Cached event log");
+            }
             auto paged = log.eventLog(current, parse(R"({"limit":1,"before_turn":1})"));
             check(paged["events"].empty() && !paged["more"].asBool(),
                   "Paging before the first month is empty");

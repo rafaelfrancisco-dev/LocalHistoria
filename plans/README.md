@@ -30,7 +30,7 @@ Recommended order (dependencies in parentheses):
 | 11 | clang-format | code | S (do alone, separate commit) | done 2026-09-18 |
 | 12 | split-main (after 11) | code | L | done 2026-09-18 |
 | 13 | operation-compiler (after 11, 01, 03) | code | L | done 2026-09-18 |
-| 14 | typed-keys-and-small-fixes (after 11) | code | M | |
+| 14 | typed-keys-and-small-fixes (after 11) | code | M | done 2026-09-18 |
 | 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | measured 2026-09-18, not adopted (no gain) |
 | 16 | windows-followups | portability | S | |
 | 17 | independent-slot-relevance | simulation | S || done 2026-09-18 |

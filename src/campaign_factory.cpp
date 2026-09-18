@@ -41,13 +41,11 @@ WorldState newCampaign(Store &reference, const StatusSeed &statusSeed, const std
         auto id = c["code"].asString();
         w.actors[id]["name"] = c["name"];
         w.actors[id]["static_flag"] = id;
-        unsigned hash = 0;
-        for (unsigned char ch : id)
-            hash = hash * 31 + ch;
-        char color[8];
-        snprintf(color, sizeof(color), "#%06x", 0x405050 + (hash * 7919) % 0x909090);
-        w.actors[id]["color"] = color;
     }
+    std::vector<std::pair<std::string, std::string>> neighbors;
+    for (auto &n : reference.query("SELECT a,b FROM neighbors"))
+        neighbors.emplace_back(n["a"].asString(), n["b"].asString());
+    assignActorColors(w, neighbors);
     for (auto &r : reference.query("SELECT id,name,affiliation,kind FROM regions")) {
         auto &t = w.territories[r["id"].asString()];
         t["name"] = r["name"];

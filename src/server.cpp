@@ -6,12 +6,16 @@
 #include <drogon/drogon.h>
 #include <filesystem>
 #include <fstream>
-#include <regex>
 namespace lh {
 using namespace drogon;
 namespace {
 using CB = std::function<void(const HttpResponsePtr &)>;
 using Handler = void (*)(Server &, const HttpRequestPtr &, Json::Value, const CB &);
+// Up to six decimal digits: a revision or a query-string number.
+bool isSmallNumber(const std::string &s) {
+    return !s.empty() && s.size() <= 6 &&
+           std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; });
+}
 void reply(const CB &cb, const Json::Value &j, int status = 200) {
     auto r = HttpResponse::newHttpJsonResponse(j);
     r->setStatusCode(static_cast<HttpStatusCode>(status));
@@ -145,7 +149,7 @@ Json::Value changeSummaries(const Json::Value &changes, const WorldState &w) {
         } else if (kind == "conflict") {
             if (before.isNull())
                 parts.push_back(name + " opened");
-            else if (before["status"] != after["status"] && after["status"] != "open")
+            else if (before["status"] != after["status"] && !isOpen(after))
                 parts.push_back(name + " ended");
             else if (before["intensity"] != after["intensity"]) {
                 static const std::map<std::string, int> level{
@@ -158,7 +162,7 @@ Json::Value changeSummaries(const Json::Value &changes, const WorldState &w) {
         } else if (kind == "commitment") {
             if (before.isNull())
                 parts.push_back(name + " signed");
-            else if (before["status"] != after["status"] && after["status"] != "open")
+            else if (before["status"] != after["status"] && !isOpen(after))
                 parts.push_back(name + " ended");
         } else if (kind == "actor") {
             if (!before.isNull() && before["name"] != after["name"])
@@ -204,27 +208,27 @@ void campaign(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb)
     else
         reply(cb, j);
 }
-void flag(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void flag(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard lock(s.mutex);
-    auto w = decode(s.store.campaign());
+    const auto w = decode(s.store.campaign());
     auto a = req->getParameter("actor"), rev = req->getParameter("revision");
     if (req->getParameter("campaign") != w.campaignId || !w.hasActor(a))
         throw ValidationError("Unknown campaign flag");
-    auto actor = w.actors[a];
+    const auto &actor = w.actors[a];
     std::string svg;
     if (rev == "fallback")
         svg = makeFlag(Json::nullValue, w.campaignId + a, "legacy")["svg"].asString();
     else {
-        if (!std::regex_match(rev, std::regex("[0-9]{1,6}")))
+        if (!isSmallNumber(rev))
             throw ValidationError("Invalid flag revision");
         auto n = std::stoul(rev);
         if (!actor["identity_revisions"].isArray() || n >= actor["identity_revisions"].size())
             throw ValidationError("Unknown flag revision");
-        auto r = actor["identity_revisions"][Json::ArrayIndex(n)];
+        const auto &r = actor["identity_revisions"][Json::ArrayIndex(n)];
         svg = r["svg"].asString();
         if (svg.empty()) {
             auto code = r["static_flag"].asString();
-            if (!std::regex_match(code, std::regex("[A-Z]{2}")))
+            if (!isCountryCode(code))
                 throw ValidationError("No static flag");
             std::ifstream f("web/flags/" + lowercase(code) + ".svg");
             svg = std::string(std::istreambuf_iterator<char>(f), {});
@@ -238,7 +242,7 @@ void flag(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     response->addHeader("Cache-Control", "private, max-age=31536000, immutable");
     cb(response);
 }
-void modelConfig(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void modelConfig(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     if (!b["llama_endpoint"].isString())
         throw ValidationError("llama_endpoint is required");
     auto endpoint = validateEndpoint(b["llama_endpoint"].asString());
@@ -251,7 +255,7 @@ void modelConfig(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &
     j["llama_endpoint"] = endpoint;
     reply(cb, j);
 }
-void countries(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void countries(Server &s, const HttpRequestPtr &, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto w = decode(s.store.campaign());
     auto rows = s.reference.query("SELECT code,name FROM countries ORDER BY name");
@@ -260,14 +264,13 @@ void countries(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb
         std::set<std::string> neighbors;
         for (auto &n : s.reference.query("SELECT b FROM neighbors WHERE a=?", {w.player}))
             neighbors.insert(n["b"].asString());
-        static const std::regex iso("[A-Z]{2}");
         for (auto &a : w.actors.getMemberNames()) {
             Json::Value c;
             c["code"] = a;
             c["name"] = w.actors[a]["name"];
             // Landless actors without a flag of their own are listed only when searched for.
-            c["has_flag"] = std::regex_match(a, iso) &&
-                            std::filesystem::exists("web/flags/" + lowercase(a) + ".svg");
+            c["has_flag"] =
+                isCountryCode(a) && std::filesystem::exists("web/flags/" + lowercase(a) + ".svg");
             if (neighbors.contains(a))
                 c["neighbor"] = true;
             rows.append(c);
@@ -275,7 +278,7 @@ void countries(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb
     }
     reply(cb, rows);
 }
-void country(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void country(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto code = req->getParameter("code");
     auto rows = s.reference.query("SELECT * FROM countries WHERE code=?", {code});
@@ -302,13 +305,13 @@ void country(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) 
     j["background"] = s.store.background(code);
     reply(cb, j);
 }
-void jobs(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void jobs(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto id = req->getParameter("id");
     auto job = s.references.job(id);
     reply(cb, job.isNull() ? s.store.job(id) : job);
 }
-void turns(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     std::lock_guard l(s.mutex);
     if (!b["expected_turn"].isInt() || !b["idempotency_key"].isString() ||
         b["idempotency_key"].asString().size() < 8 || b["idempotency_key"].asString().size() > 128)
@@ -370,7 +373,7 @@ void turns(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     }
     reply(cb, s.store.job(id), 202);
 }
-void cancelTurn(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void cancelTurn(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto id = b.get("job", "").asString();
     auto job = s.store.job(id);
@@ -390,7 +393,7 @@ void history(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) 
     }
     reply(cb, s.references.refresh(code), 202);
 }
-void inference(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void inference(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     // "since" (a previously seen row id) lets a live log poll for only what is new.
     auto since = req->getParameter("since");
@@ -406,7 +409,7 @@ void inference(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb
     }
     reply(cb, records);
 }
-void map(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void map(Server &s, const HttpRequestPtr &, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto w = decode(s.store.campaign());
     Json::Value j;
@@ -415,7 +418,7 @@ void map(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     j["turn"] = w.turn;
     reply(cb, j);
 }
-void entities(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void entities(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto w = decode(s.store.campaign());
     Json::Value j(Json::arrayValue);
@@ -454,7 +457,7 @@ void entities(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb)
     }
     reply(cb, j);
 }
-void events(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void events(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto w = decode(s.store.campaign());
     Json::Value filter;
@@ -491,8 +494,7 @@ void events(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
         auto p = req->getParameter(key);
         if (p.empty())
             return fallback;
-        static const std::regex digits("[0-9]{1,6}");
-        if (!std::regex_match(p, digits))
+        if (!isSmallNumber(p))
             throw ValidationError(std::string("Invalid ") + key);
         return std::clamp(std::stoi(p), low, high);
     };
@@ -507,7 +509,7 @@ void events(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     j["turn"] = w.turn;
     reply(cb, j);
 }
-void prepare(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void prepare(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto w = decode(s.store.campaign());
     if (w.player.empty())
@@ -519,7 +521,7 @@ void prepare(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) 
     }
     reply(cb, s.references.prepareAll(actors), 202);
 }
-void replay(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+void replay(Server &s, const HttpRequestPtr &, Json::Value, const CB &cb) {
     std::lock_guard l(s.mutex);
     Json::Value j;
     j["campaign"] = s.store.campaign();
@@ -544,9 +546,9 @@ void replay(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
             status || t["reference"].asString().find("\"status_version\"") != std::string::npos;
     if (status) {
         j["adjacency"] = Json::objectValue;
-        for (auto &[a, bs] : s.adjacency)
-            for (auto &b : bs)
-                j["adjacency"][a].append(b);
+        for (auto &[from, to] : s.adjacency)
+            for (auto &region : to)
+                j["adjacency"][from].append(region);
     }
     for (auto &t : j["turns"])
         for (auto k : {"state", "intentions", "events", "reference"})

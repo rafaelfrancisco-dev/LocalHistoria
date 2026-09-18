@@ -40,14 +40,14 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     // timeout.
     std::atomic<bool> cancelRequested{false};
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
-    Json::Value call(const std::string &endpoint, const std::string &path, const Json::Value &body);
+    Json::Value call(const std::string &url, const std::string &path, const Json::Value &body);
     Json::Value completion(const Json::Value &, const Json::Value &, const std::string &,
                            unsigned reasoningBudget, double temperature,
                            const std::string &kind = "", const std::string &actor = "");
 
   public:
-    explicit LocalProvider(std::string endpoint, double timeout = 20,
-                           Transport transport = httpJson, double estimateShare = 0.8);
+    explicit LocalProvider(std::string endpoint, double timeout, Transport transport = httpJson,
+                           double estimateShare = 0.8);
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);

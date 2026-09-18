@@ -34,6 +34,19 @@ Store::Store(const std::string &p, bool readOnly) {
         "INTEGER); CREATE TABLE IF NOT EXISTS background(code TEXT PRIMARY KEY,document TEXT); "
         "CREATE TABLE IF NOT EXISTS initial_world(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT "
         "NOT NULL); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);");
+    migrate();
+}
+void Store::migrate() {
+    switch (query("PRAGMA user_version")[0]["user_version"].asInt()) {
+    case 0:
+        // Version 1: the tables above, all created if missing.
+        sql("PRAGMA user_version = 1");
+        [[fallthrough]];
+    case 1:
+        break;
+    default:
+        throw std::runtime_error("Save was written by a newer version");
+    }
 }
 Store::~Store() { sqlite3_close(db); }
 void Store::sql(const std::string &s) {
@@ -89,6 +102,7 @@ void Store::create(const WorldState &w, bool replace) {
         throw ValidationError("A turn is running");
     sql("BEGIN IMMEDIATE");
     try {
+        eventLogCache.reset();
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
             "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; "
             "DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
@@ -173,13 +187,15 @@ Json::Value Store::journal() {
     auto j =
         query("SELECT t.turn,t.events,n.text AS narration,n.fallback AS narration_fallback FROM "
               "turns t LEFT JOIN narration n ON t.job=n.job ORDER BY t.turn DESC LIMIT 24");
-    for (auto &x : j)
-        x["events"] = parse(x["events"].asString());
+    std::map<int, Json::Value> structured;
+    for (auto &row : query("SELECT turn,document FROM events WHERE turn IN (SELECT turn FROM turns "
+                           "ORDER BY turn DESC LIMIT 24) ORDER BY rowid"))
+        structured[row["turn"].asInt()].append(parse(row["document"].asString()));
     for (auto &month : j) {
-        month["structured_events"] = Json::arrayValue;
-        for (auto &row : query("SELECT document FROM events WHERE turn=? ORDER BY rowid",
-                               {month["turn"].asString()}))
-            month["structured_events"].append(parse(row["document"].asString()));
+        month["events"] = parse(month["events"].asString());
+        auto found = structured.find(month["turn"].asInt());
+        month["structured_events"] =
+            found == structured.end() ? Json::Value(Json::arrayValue) : found->second;
     }
     // Prompts read what actually happened; the journal shows the model's text with a badge.
     for (auto &month : j)
@@ -267,25 +283,63 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
     return out;
 }
 Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
+    auto key = std::pair{w.campaignId, w.turn};
+    if (!eventLogCache || eventLogCache->first != key)
+        eventLogCache.emplace(key, eventLogMonths(w));
+    std::set<std::string> categories;
+    for (auto &c : filter["categories"])
+        categories.insert(c.asString());
+    auto who = filter["scope"] == "actor" ? filter["actor"].asString() : std::string();
+    auto needle = lowercase(filter.get("q", "").asString());
+    bool onMapOnly = filter.get("on_map", false).asBool(),
+         majorOnly = filter.get("major", false).asBool();
+    unsigned limit = std::clamp(filter.get("limit", 50).asUInt(), 1u, 500u);
+    Json::Value out;
+    out["events"] = Json::arrayValue;
+    out["more"] = false;
+    int before = filter.get("before_turn", w.turn + 1).asInt();
+    for (const auto &month : eventLogCache->second) {
+        int turn = month["turn"].asInt();
+        if (turn >= before)
+            continue;
+        // Pages hold whole months, so paging by turn never skips an event.
+        if (out["events"].size() >= limit) {
+            out["more"] = true;
+            break;
+        }
+        for (const auto &item : month["items"]) {
+            if (majorOnly && !item["major"].asBool())
+                continue;
+            if (onMapOnly && !item["on_map"].asBool())
+                continue;
+            if (!categories.empty() && !categories.contains(item["category"].asString()))
+                continue;
+            if (!needle.empty() &&
+                lowercase(item["text"].asString()).find(needle) == std::string::npos)
+                continue;
+            if (!who.empty()) {
+                bool related = false;
+                for (auto &a : item["actors"])
+                    related = related || a == who;
+                for (auto &r : item["regions"])
+                    related = related || w.territories[r.asString()]["owner"] == who ||
+                              w.territories[r.asString()]["controller"] == who;
+                if (!related)
+                    continue;
+            }
+            out["events"].append(item);
+        }
+        out["next_before_turn"] = turn;
+    }
+    return out;
+}
+Json::Value Store::eventLogMonths(const WorldState &w) {
     // A later event citing one as its cause renews its time on the map.
     std::map<std::string, int> cited;
     for (auto &row : query("SELECT l.target,MAX(e.turn) AS turn FROM event_links l JOIN events e "
                            "ON e.id=l.event WHERE l.kind='causes' AND " +
                            happened + " GROUP BY l.target"))
         cited[row["target"].asString()] = row["turn"].asInt();
-    auto lowered = [](std::string v) {
-        for (auto &ch : v)
-            ch = char(std::tolower(static_cast<unsigned char>(ch)));
-        return v;
-    };
-    std::set<std::string> categories;
-    for (auto &c : filter["categories"])
-        categories.insert(c.asString());
-    auto who = filter["scope"] == "actor" ? filter["actor"].asString() : std::string();
-    auto needle = lowered(filter.get("q", "").asString());
-    bool onMapOnly = filter.get("on_map", false).asBool(),
-         majorOnly = filter.get("major", false).asBool();
-    unsigned limit = std::clamp(filter.get("limit", 50).asUInt(), 1u, 500u);
     // Where an event without places happened: the acting nation's most populous region.
     std::map<std::string, std::string> heartland;
     for (auto &id : w.territories.getMemberNames()) {
@@ -298,23 +352,17 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             t["population"].asInt64() > w.territories[heartland[owner]]["population"].asInt64())
             heartland[owner] = id;
     }
-    Json::Value out;
-    out["events"] = Json::arrayValue;
-    out["more"] = false;
-    auto rows = query("SELECT turn,events FROM turns WHERE turn<? ORDER BY turn DESC",
-                      {std::to_string(filter.get("before_turn", w.turn + 1).asInt())});
-    for (auto &row : rows) {
-        // Pages hold whole months, so paging by turn never skips an event.
-        if (out["events"].size() >= limit) {
-            out["more"] = true;
-            break;
-        }
+    Json::Value months(Json::arrayValue);
+    for (auto &row : query("SELECT turn,events FROM turns ORDER BY turn DESC")) {
         int turn = row["turn"].asInt();
         // Only feasible events reach a month's events, and structured documents add their places
         // and links.
         std::map<std::string, Json::Value> documents;
         for (auto &d : query("SELECT id,document FROM events WHERE turn=?", {std::to_string(turn)}))
             documents[d["id"].asString()] = parse(d["document"].asString());
+        Json::Value month;
+        month["turn"] = turn;
+        month["items"] = Json::arrayValue;
         for (auto &x : parse(row["events"].asString())) {
             auto action = x["action"].asString(), target = x["target"].asString();
             Json::Value item;
@@ -376,28 +424,9 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             // open.
             bool onMap = w.turn - active < eventMapMonths;
             for (auto &c : item["conflicts"])
-                onMap = onMap || w.conflicts[c.asString()]["status"] == "open";
+                onMap = onMap || isOpen(w.conflicts[c.asString()]);
             onMap = onMap && item["major"].asBool();
             item["on_map"] = onMap;
-            if (majorOnly && !item["major"].asBool())
-                continue;
-            if (onMapOnly && !onMap)
-                continue;
-            if (!categories.empty() && !categories.contains(item["category"].asString()))
-                continue;
-            if (!needle.empty() &&
-                lowered(item["text"].asString()).find(needle) == std::string::npos)
-                continue;
-            if (!who.empty()) {
-                bool related = false;
-                for (auto &a : item["actors"])
-                    related = related || a == who;
-                for (auto &r : item["regions"])
-                    related = related || w.territories[r.asString()]["owner"] == who ||
-                              w.territories[r.asString()]["controller"] == who;
-                if (!related)
-                    continue;
-            }
             item["location"] = Json::arrayValue;
             std::set<std::pair<double, double>> seen;
             auto place = [&](const Json::Value &v) {
@@ -417,11 +446,11 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
                 place(w.entities[e.asString()]);
             if (item["location"].empty() && heartland.contains(x["actor"].asString()))
                 place(w.territories[heartland[x["actor"].asString()]]);
-            out["events"].append(item);
+            month["items"].append(item);
         }
-        out["next_before_turn"] = turn;
+        months.append(month);
     }
-    return out;
+    return months;
 }
 void Store::cache(const std::string &c, const Json::Value &j) {
     execute("INSERT OR REPLACE INTO background VALUES(?,?)", {c, dump(j)});

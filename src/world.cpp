@@ -2,10 +2,11 @@
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <map>
-#include <regex>
+#include <numbers>
 #include <utility>
 namespace lh {
 static void require(bool b, const char *message) {
@@ -46,12 +47,6 @@ bool containsPoint(const Json::Value &g, double x, double y) {
             if (polygon(p))
                 return true;
     return false;
-}
-std::string lowercase(const std::string &s) {
-    std::string o;
-    for (unsigned char c : s)
-        o += char(std::tolower(c));
-    return o;
 }
 bool containsWord(const std::string &text, const std::string &word) {
     for (auto at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
@@ -160,7 +155,7 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
                     c["rationale"].asString().size() <= 1000,
                 "Invalid change metadata");
         auto id = c["id"].asString(), kind = c["kind"].asString();
-        require(std::regex_match(id, std::regex("[A-Za-z0-9_-]{1,100}")), "Invalid permanent ID");
+        require(isPermanentId(id), "Invalid permanent ID");
         require(seen.insert(kind + ":" + id).second && eventIds.contains(c["event"].asString()),
                 "Conflicting change or unknown event");
         Json::Value *collection = nullptr;
@@ -218,11 +213,11 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
                     require(last["svg"] != revs[revs.size() - 2]["svg"],
                             "Replacement flag must differ");
             }
-            require(
-                c["after"]["name"].isString() && !c["after"]["name"].asString().empty() &&
-                    c["after"]["name"].asString().size() <= 120 && c["after"]["color"].isString() &&
-                    std::regex_match(c["after"]["color"].asString(), std::regex("#[0-9a-fA-F]{6}")),
-                "Invalid actor identity");
+            require(c["after"]["name"].isString() && !c["after"]["name"].asString().empty() &&
+                        c["after"]["name"].asString().size() <= 120 &&
+                        c["after"]["color"].isString() &&
+                        isHexColor(c["after"]["color"].asString()),
+                    "Invalid actor identity");
         }
         if (kind == "regional") {
             auto &p = c["after"];
@@ -267,12 +262,11 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
                 require(t.isObject() && t["action"].isString(), "Invalid treaty proposal terms");
             require(player && from, "A proposal is offered by a party to the player");
             if (c["before"].isNull())
-                require(
-                    status == "pending" && p["proposed_turn"] == w.turn &&
-                        p["event"] == c["event"] &&
-                        (!p.isMember("amends") ||
-                         std::as_const(w.commitments)[p["amends"].asString()]["status"] == "open"),
-                    "A new proposal is pending");
+                require(status == "pending" && p["proposed_turn"] == w.turn &&
+                            p["event"] == c["event"] &&
+                            (!p.isMember("amends") ||
+                             isOpen(std::as_const(w.commitments)[p["amends"].asString()])),
+                        "A new proposal is pending");
             else {
                 // Answered once, in a later month; nothing else about it changes.
                 auto expected = c["before"];
@@ -412,8 +406,8 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
         for (auto &id : collection.getMemberNames()) {
             const Json::Value &v = collection[id];
             require(v["actors"].isArray() && v["actors"].size() >= 2 && v["status"].isString() &&
-                        (v["status"] == "open" || v["status"] == "resolved") &&
-                        v["text"].isString() && v["text"].asString().size() <= 1000,
+                        (isOpen(v) || v["status"] == "resolved") && v["text"].isString() &&
+                        v["text"].asString().size() <= 1000,
                     "Invalid conflict or commitment");
             for (auto &a : v["actors"])
                 require(a.isString() && w.hasActor(a.asString()), "Unknown commitment actor");
@@ -434,7 +428,7 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
             // A treaty in force ends after its term; resolve() closes it when that month arrives.
             require(!v.isMember("expires_turn") ||
                         (v["expires_turn"].isInt() &&
-                         (v["status"] != "open" || v["expires_turn"].asInt() > w.turn)),
+                         (!isOpen(v) || v["expires_turn"].asInt() > w.turn)),
                     "Invalid treaty expiry");
             if (v.isMember("terms")) {
                 require(v["terms"].isArray() && v["terms"].size() <= 8, "Invalid treaty terms");
@@ -453,8 +447,8 @@ Resolution applyDelta(const Resolution &base, const WorldDelta &d, const Json::V
             for (auto k : {"affected_regions", "theatre"})
                 if (v.isMember(k)) {
                     require(v[k].isArray(), "Invalid conflict regions");
-                    for (auto &r : v[k])
-                        require(r.isString() && w.territories.isMember(r.asString()),
+                    for (auto &region : v[k])
+                        require(region.isString() && w.territories.isMember(region.asString()),
                                 "Unknown conflict region");
                 }
         }
@@ -539,10 +533,10 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     if (w.hasActor(w.player))
         actors.insert(w.player);
     for (auto &id : w.conflicts.getMemberNames())
-        if (w.conflicts[id]["status"] == "open")
+        if (isOpen(w.conflicts[id]))
             conflicts.insert(id);
     for (auto &id : w.commitments.getMemberNames())
-        if (w.commitments[id]["status"] == "open")
+        if (isOpen(w.commitments[id]))
             commitments.insert(id);
     collectEventIds(facts, causes);
     auto string = [](int max) {
@@ -811,22 +805,59 @@ int constructionMonths(const std::string &kind) {
                                                    {"port", 6}, {"city", 24}, {"event_site", 0}};
     return months.contains(kind) ? months.at(kind) : 0;
 }
+// Qualitative, mid-lightness colours that stay apart on the dark map and from the gold selection.
+static const std::array<const char *, 24> actorPalette{
+    "#3b6fb6", "#c8553d", "#4f9d69", "#8e5ea2", "#d4a017", "#2a9d8f", "#b5485d", "#6b8e23",
+    "#c97b2a", "#5b6bbf", "#8c6d46", "#3f8fb5", "#7fa7e0", "#e8998d", "#8fd19e", "#c3a1d6",
+    "#7d8fa0", "#7fcdc3", "#e39bb0", "#b5c96a", "#f0b27a", "#a3acec", "#6f9a8d", "#9fd3e8"};
+static size_t paletteIndex(const std::string &id) {
+    unsigned hash = 0;
+    for (unsigned char ch : id)
+        hash = hash * 31 + ch;
+    return hash % actorPalette.size();
+}
+std::string paletteColor(const std::string &id) { return actorPalette[paletteIndex(id)]; }
+void assignActorColors(WorldState &w,
+                       const std::vector<std::pair<std::string, std::string>> &neighbors) {
+    std::map<std::string, std::set<std::string>> borders;
+    for (auto &[a, b] : neighbors) {
+        borders[a].insert(b);
+        borders[b].insert(a);
+    }
+    // Greedy in ID order: each actor avoids the colours of the neighbours already coloured.
+    std::set<std::string> done;
+    for (auto &id : w.actors.getMemberNames()) {
+        std::set<std::string> taken;
+        for (auto &n : borders[id])
+            if (done.contains(n))
+                taken.insert(w.actors[n]["color"].asString());
+        auto start = paletteIndex(id), pick = start;
+        for (size_t i = 0; i < actorPalette.size(); ++i)
+            if (!taken.contains(actorPalette[(start + i) % actorPalette.size()])) {
+                pick = (start + i) % actorPalette.size();
+                break;
+            }
+        w.actors[id]["color"] = actorPalette[pick];
+        done.insert(id);
+    }
+}
+bool adjacent(const Adjacency &adjacency, const std::string &from, const std::string &to) {
+    return from == to || (adjacency.contains(from) && adjacency.at(from).contains(to));
+}
 bool reaches(const WorldState &w, const Adjacency &adjacency, const std::string &a,
              const std::string &r) {
     // Reach is judged from the start of the month: controlled land (residual slivers excepted) or
     // active armies and fleets.
-    auto near = [&](const std::string &from) {
-        return from == r || (adjacency.contains(from) && adjacency.at(from).contains(r));
-    };
     for (auto &id : w.territories.getMemberNames()) {
         auto &t = w.territories[id];
-        if (t["controller"] == a && t["kind"] != "residual" && near(id))
+        if (t["controller"] == a && t["kind"] != "residual" && adjacent(adjacency, id, r))
             return true;
     }
     for (auto &id : w.entities.getMemberNames()) {
         auto &e = w.entities[id];
         if (e["actor"] == a && e["status"] == "active" &&
-            (e["kind"] == "army" || e["kind"] == "fleet") && near(e["region"].asString()))
+            (e["kind"] == "army" || e["kind"] == "fleet") &&
+            adjacent(adjacency, e["region"].asString(), r))
             return true;
     }
     return false;
@@ -837,7 +868,7 @@ struct Infeasible : ValidationError {
     using ValidationError::ValidationError;
 };
 static double kilometres(const Json::Value &a, const Json::Value &b) {
-    const double rad = 3.14159265358979323846 / 180;
+    const double rad = std::numbers::pi / 180;
     double la1 = a["latitude"].asDouble() * rad, la2 = b["latitude"].asDouble() * rad,
            dl = (b["longitude"].asDouble() - a["longitude"].asDouble()) * rad;
     return 6371 * std::acos(std::clamp(std::sin(la1) * std::sin(la2) +
@@ -1219,7 +1250,7 @@ int OperationCompiler::settleProposals(Json::Value &all, const Json::Value &resp
         for (auto &a : p["actors"])
             standing = standing && w.hasActor(a.asString());
         if (p["amends"].isString())
-            standing = standing && w.commitments[p["amends"].asString()]["status"] == "open";
+            standing = standing && isOpen(w.commitments[p["amends"].asString()]);
         if (!standing)
             answer = "expired";
         auto from = p["from"].asString();
@@ -1425,7 +1456,7 @@ void OperationCompiler::breachTreaties(EventScope &s, OpScope &op) {
         for (auto &kid : w.commitments.getMemberNames()) {
             auto treaty = pending.current("commitment", w.commitments, kid);
             auto &p = treaty["actors"];
-            if (treaty["status"] != "open" || !securityTreaty(treaty["kind"].asString()) ||
+            if (!isOpen(treaty) || !securityTreaty(treaty["kind"].asString()) ||
                 std::find(p.begin(), p.end(), Json::Value(s.ev)) == p.end() ||
                 std::find(p.begin(), p.end(), Json::Value(target)) == p.end())
                 continue;
@@ -1526,7 +1557,7 @@ void OperationCompiler::opChangeIdentity(EventScope &s, OpScope &op) {
     // Capture original static identity before updating its name.
     if (!v["identity_revisions"].isArray()) {
         Json::Value old;
-        if (!std::regex_match(a, std::regex("[A-Z]{2}")))
+        if (!isCountryCode(a))
             old = makeFlag(Json::nullValue, w.campaignId + a, "legacy");
         else {
             old["static_flag"] = v.get("static_flag", a);
@@ -1552,7 +1583,8 @@ void OperationCompiler::opCreateActor(EventScope &s, OpScope &op) {
     aliases["~" + alphanumeric(requested)] = a;
     Json::Value identity;
     identity["name"] = str(op, "name");
-    identity["color"] = str(op, "color");
+    auto color = op.o.get("color", "").asString();
+    identity["color"] = isHexColor(color) ? color : paletteColor(a);
     reviseIdentity(identity, op.o["flag_design"], w.campaignId + a + s.id, s.id);
     pending.touch("actor", a, Json::nullValue, s.id, op.why) = identity;
     s.actors.insert(a);
@@ -1680,14 +1712,14 @@ void OperationCompiler::opResolve(EventScope &s, OpScope &op) {
         if (kind == "conflict")
             v["intensity"] = "none";
     }
-    if (kind == "commitment" && treaty["status"] == "open")
+    if (kind == "commitment" && isOpen(treaty))
         ending(s, treaty, op.why);
 }
 void OperationCompiler::opAmend(EventScope &s, OpScope &op) {
     auto &o = op.o;
     auto cid = str(op, "commitment");
     auto treaty = pending.current("commitment", w.commitments, cid);
-    if (!treaty.isObject() || treaty["status"] != "open")
+    if (!treaty.isObject() || !isOpen(treaty))
         throw Infeasible("no such treaty in force");
     std::vector<std::string> members;
     for (auto &a : treaty["actors"])
@@ -1787,7 +1819,7 @@ void OperationCompiler::acceptProposal(EventScope &s, OpScope &op, const std::st
 void OperationCompiler::opIntensity(EventScope &s, OpScope &op) {
     auto cid = str(op, "conflict");
     auto level = str(op, "intensity");
-    if (!w.conflicts.isMember(cid) || w.conflicts[cid]["status"] != "open")
+    if (!w.conflicts.isMember(cid) || !isOpen(w.conflicts[cid]))
         throw Infeasible("no such open conflict");
     if (level != "low" && level != "medium" && level != "high")
         throw Infeasible("invalid intensity");
@@ -1949,9 +1981,7 @@ void OperationCompiler::setEntityStatus(EventScope &s, OpScope &op, const std::s
 // At war since before this month, or declared earlier in this month's outcomes.
 bool OperationCompiler::atWar(const std::string &a, const std::string &b) const {
     auto fighting = [&](const Json::Value &c) {
-        auto &p = c["actors"];
-        return c["status"] == "open" && std::find(p.begin(), p.end(), Json::Value(a)) != p.end() &&
-               std::find(p.begin(), p.end(), Json::Value(b)) != p.end();
+        return isOpen(c) && isParty(c, a) && isParty(c, b);
     };
     bool war = false;
     for (auto &c : w.conflicts)
@@ -1993,7 +2023,7 @@ void OperationCompiler::transfer(EventScope &s, const OpScope &op, const std::st
     if (s.createdHere.contains(to) && !cession) {
         bool established = false;
         for (auto &conflict : w.conflicts)
-            if (conflict["status"] == "open") {
+            if (isOpen(conflict)) {
                 auto &parties = conflict["actors"];
                 bool acting =
                     std::find(parties.begin(), parties.end(), Json::Value(ev)) != parties.end();
@@ -2068,7 +2098,7 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
     if (clause == "end_conflict") {
         auto cid = field("conflict");
         auto c = pending.current("conflict", w.conflicts, cid);
-        if (!c.isObject() || c["status"] != "open")
+        if (!c.isObject() || !isOpen(c))
             throw Infeasible("no such open conflict");
         for (auto &a : c["actors"])
             if (!party(a.asString()))
@@ -2188,7 +2218,7 @@ bool OperationCompiler::known(const std::string &a) const {
     return w.hasActor(a) || pending.contains("actor", a);
 }
 bool OperationCompiler::adjacent(const std::string &from, const std::string &to) const {
-    return from == to || (adjacency.contains(from) && adjacency.at(from).contains(to));
+    return lh::adjacent(adjacency, from, to);
 }
 bool OperationCompiler::reaches(const std::string &a, const std::string &r) const {
     return lh::reaches(w, adjacency, a, r);
