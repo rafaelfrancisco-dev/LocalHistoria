@@ -535,6 +535,17 @@ int main(int argc, char **argv) {
                   // Large blocs (NATO, the EU) would otherwise fill every month with the same alphabetical members.
                   auto engaged=[&](const Json::Value &v){return v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end();};
                   for(auto &v:w.conflicts)if(engaged(v))for(auto &a:v["actors"])candidates.push_back(a.asString());
+                  // An opponent's allies weigh in: every partner in a small pact, the largest economy of a bloc.
+                  for(auto &v:w.conflicts)if(engaged(v))for(auto &enemy:v["actors"])if(enemy!=w.player)for(auto &k:w.commitments) {
+                      auto kind=k["kind"].asString();auto &members=k["actors"];
+                      if(k["status"]!="open"||(kind!="alliance"&&kind!="defence_pact")||std::find(members.begin(),members.end(),enemy)==members.end()||std::find(members.begin(),members.end(),Json::Value(w.player))!=members.end())continue;
+                      std::string largest;double best=-1;
+                      for(auto &a:members)if(a!=enemy&&w.hasActor(a.asString())) {
+                          if(members.size()<=3){candidates.push_back(a.asString());continue;}
+                          double gdp=nationalStatus(w,a.asString())["gdp_usd"].asDouble();if(gdp>best){best=gdp;largest=a.asString();}
+                      }
+                      if(!largest.empty())candidates.push_back(largest);
+                  }
                   for(auto &v:w.commitments)if(engaged(v)&&v["actors"].size()<=3)for(auto &a:v["actors"])candidates.push_back(a.asString());
                   auto neighbors=reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player});
                   if(!neighbors.empty())candidates.push_back(neighbors[w.turn%neighbors.size()]["b"].asString());
@@ -648,8 +659,7 @@ int main(int argc, char **argv) {
                               for(auto &slot:independent){unsigned index=0;for(auto &i:adjudication["intentions"])if(i["actor"]==slot["actor"]&&index++==slot["actor_action_index"].asUInt()){i["initiative_type"]=slot["initiative_type"];if(slot.isMember("regional_actor"))i["regional_actor"]=slot["regional_actor"];break;}}
                               adjudication["facts"]["regional_politics"]=Json::objectValue;
                               for(auto &slot:allocations)if(slot["region"]!=""){auto r=slot["region"].asString();adjudication["facts"]["regional_politics"][r]=regionalState(w,r);}
-                              auto delta=provider.adjudicate(result.state,adjudication,adjacency);
-                              settleProposals(result.state,delta,turnRefs.get("proposal_responses",Json::arrayValue));
+                              auto delta=provider.adjudicate(result.state,adjudication,adjacency,turnRefs.get("proposal_responses",Json::arrayValue));
                               {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                               result=applyDelta(result,delta,geography);
                               result=applyMonthlyStatus(result,delta,adjacency);

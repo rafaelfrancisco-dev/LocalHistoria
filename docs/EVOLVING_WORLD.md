@@ -64,12 +64,28 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - A nation builds only for itself (or for a state it creates in that event); event sites follow the same rule.
 - Destroying another nation's entity needs an open war between the two, from before this month or declared earlier in the same month's outcomes, on top of reach.
 
-**Treaty proposals.** A treaty an AI nation signs with the player, when the player's own actions that month do not name that nation, becomes a proposal instead of being dropped. It is stored in `proposals` under the commitment ID it will take (`{from, actors, kind, name, text, status, proposed_turn, event}`), and the event text adds that it awaits the player's answer. The next month the player answers it in the side panel; `POST /turns` carries `responses`. As that month resolves, `settleProposals` adds to the delta:
-- accepted: the treaty under the reserved ID, and an event by the player citing the offer (a trade agreement or union lifts every party's economy, as when signed outright);
-- declined: an event by the player saying so;
-- unanswered: the proposal lapses with an event by the proposer.
+**Treaty terms and duration.** The model drafts what a treaty changes when it writes `add_commitment`: `months` (how long it lasts, 0 = open-ended, at most 120) and up to four `terms`. The parties' signatures authorize the terms, and each clause is checked on its own; an impossible one is dropped (`dropped_operations` action `term <clause>`) and the treaty still stands:
+- `end_conflict`: ends a war whose every side is a party (a peace treaty).
+- `cede`: a party that owns a region hands it to another party, without the occupy-then-annex steps force needs.
+- `occupy`: a party that owns a region lets another party hold it while the treaty lasts (an agreed occupation).
+- `withdraw`: a party occupying another party's region hands it back.
 
-Proposals are answered once, only in a later month, and are part of the recorded delta, so replay needs no extra input. Pending proposals appear in each party's decision facts (`treaty_proposals`), and the proposer acts in the month the answer arrives.
+Clauses that took effect are kept on the treaty as `terms` (a cession records the previous owner as `from`), and `expires_turn` marks the end of its term. Trade and other economic treaties usually carry no terms: signing one lifts the parties' economies, and ending one early costs them. An open ceasefire or peace treaty silences its war's toll (see `status.cpp`), so a war resumes when its ceasefire expires or breaks.
+
+**Expiry.** `resolve` closes a treaty when its `expires_turn` month arrives, with a journal line ("… expired."). An agreed occupation ends with its treaty: the region returns to its owner if the occupier still holds it. The same happens when a treaty ends any other way.
+
+**Amendment and renewal.** `amend_commitment` lets a party renew a treaty in force (`months` from now; 0 keeps its end date), revise its `text` and add `terms`, with the same consent rule as signing. At most eight terms are kept.
+
+**Breach.** Acting against a treaty partner, by opening a war, occupying its land, destroying its units or escalating a war with it beyond low intensity, breaches any open ceasefire, peace treaty, non-aggression pact, alliance, defence pact or union between them. The event records `breaches` and becomes major. A two-party treaty is also broken and ended, which revives its war and ends its agreed occupations; a bloc such as NATO keeps standing.
+
+**Allies.** A nation's decision facts list up to four wars that its alliance or defence-pact partners fight without it (`allied_wars`). Each month's reacting nations include the allies of the player's war opponents: every partner in a pact of up to three, and the largest economy of a larger bloc. Every treaty in the facts carries `months_left` and its terms in words.
+
+**Treaty proposals.** A treaty or amendment an AI nation agrees with the player, when the player's own actions that month do not name that nation, becomes a proposal instead of being dropped. It is stored in `proposals` (`{from, actors, kind, name, text, months, terms, status, proposed_turn, event}`, plus `amends` for an amendment). A new treaty is keyed by the commitment ID it will take; an amendment by `<treaty>-r<turn>`. The event text adds that it awaits the player's answer, and its terms do nothing yet. The next month the player answers it in the side panel; `POST /turns` carries `responses`. `compileOperations` settles every due proposal first, as the month opens, before the month's actions:
+- accepted: the treaty is created (or amended), its terms are carried out against the current map, and the player gets an event citing the offer. A trade agreement or union lifts every party's economy, as when signed outright.
+- declined: an event by the player saying so.
+- unanswered, or no longer possible (a party is gone or the amended treaty has ended): the proposal lapses with an event by the proposer.
+
+Only these settlements carry the internal `settle_proposal` operation, so a model cannot answer for the player. Proposals are answered once, only in a later month, and are part of the recorded delta, so replay needs no extra input. Pending proposals appear in each party's decision facts (`treaty_proposals`), and the proposer acts in the month the answer arrives.
 
 An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
 

@@ -1,6 +1,6 @@
 # 01 · Authority checks in `compileOperations`
 
-**Status: done (2026-09-18).** All five checks, the prompt sentence and docs. Beyond the plan, at the user's request: a treaty offered to the player becomes a proposal (`proposals`, `settleProposals`) answered in the UI the next month; unanswered ones lapse. Destroying a foreign unit also accepts a war declared earlier in the same month. The ceasefire exception was skipped. The `treaty_consent` probe now expects a proposal (not re-run).
+**Status: done (2026-09-18).** All five checks, the prompt sentence and docs. Destroying a foreign unit also accepts a war declared earlier in the same month. The ceasefire exception was skipped. The `treaty_consent` probe now expects a proposal (not re-run). The user's additions are in the addendum at the end.
 
 ## Goal
 No actor can change a war, treaty, construction or foreign unit it has no authority over. Today any acting
@@ -60,3 +60,20 @@ build in the player's regions, or destroy a reachable foreign entity without bei
 
 ## Acceptance
 All new checks pass, existing suites pass, `docs/EVOLVING_WORLD.md` documents the rules.
+
+## Addendum (user requests, done 2026-09-18)
+1. **Offers to the player.** A treaty an AI nation agrees with the player, when the player's own actions do not name it, becomes a proposal (`WorldState::proposals`) instead of being dropped.
+   - The side panel shows it the next month with its terms and duration, and the player accepts or declines (`responses` on `POST /turns`). Unanswered ones lapse.
+   - `compileOperations(..., responses)` settles due proposals first, through the internal `settle_proposal` operation, which only C++-built settlement events may carry.
+   - `applyDelta` validates proposals: pending on creation, answered once, only in a later month, and an accepted one must create or amend its treaty.
+2. **Treaty terms drafted by the model.** `add_commitment` gains `months` (0–120, 0 = open-ended) and up to four `terms`: `end_conflict`, `cede`, `occupy` (an agreed occupation) and `withdraw`.
+   - Terms are carried out when the treaty is signed, or when the player accepts it. The parties' signatures authorize them, and each clause is checked on its own.
+   - Carried-out clauses are kept on the treaty as `terms`, alongside `expires_turn`.
+3. **Expiry.** `resolve` ends a treaty when its term runs out, with a journal line, and hands an agreed occupation back to the owner. Ending a treaty any other way also ends its occupations.
+4. **Amendment and renewal.** `amend_commitment` (renew with months from now, revise the text, add terms) follows the same consent rule. An amendment offered to the player is a proposal with `amends`.
+5. **Treaties weigh on every action.**
+   - Acting against a partner (war, occupation, destroying units, escalation) breaches ceasefires, peace treaties, non-aggression pacts, alliances, defence pacts and unions between the two. A two-party treaty is also ended, so its war resumes.
+   - Ending a trade treaty or union costs its parties' economies.
+   - Decision facts show each treaty's `months_left` and terms, and the wars allies fight (`allied_wars`). The allies of the player's war opponents get to act.
+
+   The treaties that exist at game start (NATO, EU, CSTO, USMCA, Mercosur…) follow all of these rules. Their ongoing economic effect is already in the real-world growth trends.

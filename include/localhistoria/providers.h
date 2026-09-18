@@ -38,7 +38,8 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);
     // Condenses a nation's real and campaign history into a short chronicle; input holds facts, previous_chronicle, campaign_events and reference_only.
     std::string chronicle(const Json::Value &input, const std::string &actor);
-    WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &);
+    // responses: the player's answers to last month's treaty offers (see compileOperations).
+    WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &, const Json::Value &responses = Json::Value(Json::arrayValue));
     Json::Value takeAudit();
     void setEndpoint(const std::string &);
     std::string endpointValue() const;

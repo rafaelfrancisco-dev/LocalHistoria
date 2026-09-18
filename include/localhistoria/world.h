@@ -12,10 +12,8 @@ using Adjacency = std::map<std::string, std::set<std::string>>;
 std::string actionOpening(const std::string &);
 Json::Value operationSchema(const WorldState &, const Json::Value &facts, const std::vector<std::pair<std::string, std::string>> &actions);
 // Physically impossible operations (reach, pacing, ownership) block only their event.
-WorldDelta compileOperations(const WorldState &, const Json::Value &response, const Adjacency &adjacency);
-// Answers last month's treaty proposals to the player: accepted ones become treaties, unanswered ones lapse.
-// responses: [{proposal, accept}] from the player's submitted month. Appends changes and events to the delta.
-void settleProposals(const WorldState &, WorldDelta &, const Json::Value &responses);
+// responses: the player's [{proposal, accept}] answers to last month's treaty offers, settled first; unanswered offers lapse.
+WorldDelta compileOperations(const WorldState &, const Json::Value &response, const Adjacency &adjacency, const Json::Value &responses = Json::Value(Json::arrayValue));
 int constructionMonths(const std::string &kind);
 // Whether an actor can project force into a region this month (bordering controlled land, or a nearby army/fleet).
 bool reaches(const WorldState &, const Adjacency &, const std::string &actor, const std::string &region);

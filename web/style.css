@@ -548,6 +548,12 @@ footer {
 .proposal .chips {
   margin: 6px 0;
 }
+.terms {
+  margin: 4px 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .chip.chosen {
   background: var(--accent);
   color: #18252a;

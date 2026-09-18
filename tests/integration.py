@@ -31,7 +31,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
    proposing=any('proposal-fixture' in o for o in intentions)
    for i,e in zip(value['intentions'],result['events']):
     if proposing and i['actor']!='PT' and not i.get('regional_actor'):
-     e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','name':'Fixture Accord','text':'Tariffs cut'}];proposing=False
+     e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','months':6,'name':'Fixture Accord','terms':[],'text':'Tariffs cut'}];proposing=False
     if 'railway' in i['action']:e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
@@ -126,7 +126,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    current=s.get('campaign')['state'];offers=[k for k,p in current['proposals'].items() if p['status']=='pending'];assert len(offers)==1 and offers[0] not in current['commitments'],current['proposals']
    s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True}]),409)
    j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);assert s.poll(j['id'])['status']=='complete'
-   current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord',current['commitments']
+   current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord' and current['commitments'][offers[0]]['expires_turn']==current['turn']+6,current['commitments']
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
    replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)

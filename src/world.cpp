@@ -124,8 +124,10 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
             auto &p=c["after"];auto status=p["status"].asString();
             require(p["from"].isString()&&p["from"]!=w.player&&p["actors"].isArray()&&p["actors"].size()>=2&&p["kind"].isString()&&validCommitmentKind(p["kind"].asString())&&p["name"].isString()&&!p["name"].asString().empty()&&p["name"].asString().size()<=160&&p["text"].isString()&&p["text"].asString().size()<=1000&&p["proposed_turn"].isInt()&&p["event"].isString(),"Invalid treaty proposal");
             bool player=false,from=false;for(auto &a:p["actors"]){require(a.isString(),"Invalid treaty proposal");player=player||a==w.player;from=from||a==p["from"];}
+            require((!p.isMember("months")||(p["months"].isInt()&&p["months"].asInt()>=0&&p["months"].asInt()<=120))&&(!p.isMember("terms")||(p["terms"].isArray()&&p["terms"].size()<=4))&&(!p.isMember("amends")||p["amends"].isString()),"Invalid treaty proposal terms");
+            for(auto &t:p["terms"])require(t.isObject()&&t["action"].isString(),"Invalid treaty proposal terms");
             require(player&&from,"A proposal is offered by a party to the player");
-            if(c["before"].isNull())require(status=="pending"&&p["proposed_turn"]==w.turn&&p["event"]==c["event"],"A new proposal is pending");
+            if(c["before"].isNull())require(status=="pending"&&p["proposed_turn"]==w.turn&&p["event"]==c["event"]&&(!p.isMember("amends")||std::as_const(w.commitments)[p["amends"].asString()]["status"]=="open"),"A new proposal is pending");
             else {
                 // Answered once, in a later month; nothing else about it changes.
                 auto expected=c["before"];expected["status"]=p["status"];expected["answered_turn"]=w.turn;
@@ -160,7 +162,8 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         auto &p=w.proposals[id];if(p==base.state.proposals[id])continue;
         for(auto &a:p["actors"])require(w.hasActor(a.asString()),"Unknown proposal party");
         // An accepted proposal becomes the treaty under its reserved ID, in the same month.
-        if(p["status"]=="accepted")require(base.state.commitments[id].isNull()&&std::as_const(w.commitments)[id]["actors"]==p["actors"]&&std::as_const(w.commitments)[id]["name"]==p["name"],"An accepted proposal needs its treaty");
+        if(p["status"]=="accepted"&&p["amends"].isString()){auto cid=p["amends"].asString();require(std::as_const(w.commitments)[cid]!=base.state.commitments[cid]&&std::as_const(w.commitments)[cid]["text"]==p["text"],"An accepted amendment changes its treaty");}
+        else if(p["status"]=="accepted")require(base.state.commitments[id].isNull()&&std::as_const(w.commitments)[id]["actors"]==p["actors"]&&std::as_const(w.commitments)[id]["name"]==p["name"],"An accepted proposal needs its treaty");
     }
     for(auto &id:w.actors.getMemberNames())if(!base.state.actors.isMember(id)) {
         bool land=false;for(auto &t:w.territories)land=land||t["owner"]==id;require(land,"New actor requires territory allocation");
@@ -192,6 +195,9 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
             require(!v.isMember("name")||(v["name"].isString()&&!v["name"].asString().empty()&&v["name"].asString().size()<=160),"Invalid conflict or commitment name");
             require(!v.isMember("kind")||(v["kind"].isString()&&(conflict?validConflictKind(v["kind"].asString()):validCommitmentKind(v["kind"].asString()))),"Invalid conflict or commitment kind");
             for(auto k:{"started_turn","ended_turn"})require(!v.isMember(k)||v[k].isInt(),"Invalid conflict or commitment dates");
+            // A treaty in force ends after its term; resolve() closes it when that month arrives.
+            require(!v.isMember("expires_turn")||(v["expires_turn"].isInt()&&(v["status"]!="open"||v["expires_turn"].asInt()>w.turn)),"Invalid treaty expiry");
+            if(v.isMember("terms")){require(v["terms"].isArray()&&v["terms"].size()<=8,"Invalid treaty terms");for(auto &t:v["terms"])require(t.isObject()&&(t["action"]=="end_conflict"||t["action"]=="cede"||t["action"]=="occupy"||t["action"]=="withdraw"),"Invalid treaty term");}
             for(auto k:{"intensity","set_intensity"})require(!v.isMember(k)||(v[k].isString()&&validIntensity(v[k].asString())),"Invalid conflict intensity");
             for(auto k:{"casualties","displaced"})require(!v.isMember(k)||(v[k].isIntegral()&&v[k].asInt64()>=0),"Invalid conflict totals");
             for(auto k:{"affected_regions","theatre"})if(v.isMember(k)){require(v[k].isArray(),"Invalid conflict regions");for(auto &r:v[k])require(r.isString()&&w.territories.isMember(r.asString()),"Unknown conflict region");}
@@ -263,7 +269,24 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     }
     // Kind leads name alphabetically, so the model decides what it is before naming it.
     p=Json::objectValue;p["actors"]=parties;p["intensity"]=parse(R"({"type":"string","enum":["low","medium","high"]})");p["kind"]=parse(R"({"type":"string","enum":["war","border_conflict","insurgency","civil_war"]})");p["name"]=string(120);p["text"]=string(500);op("open_conflict",p);
-    p=Json::objectValue;p["actors"]=parties;p["kind"]=parse(R"({"type":"string","enum":["alliance","defence_pact","non_aggression_pact","trade_agreement","ceasefire","peace_treaty","union","other"]})");p["name"]=string(120);p["text"]=string(500);op("add_commitment",p);
+    // Terms are what signing changes at once; months how long a treaty lasts (0 = open-ended).
+    Json::Value clauses(Json::arrayValue);
+    auto clause=[&](const char *name,Json::Value properties){
+        Json::Value o;o["type"]="object";o["additionalProperties"]=false;o["required"]=Json::arrayValue;o["required"].append("action");
+        for(auto &k:properties.getMemberNames())o["required"].append(k);
+        properties["action"]["type"]="string";properties["action"]["enum"]=Json::arrayValue;properties["action"]["enum"].append(name);
+        o["properties"]=properties;clauses.append(o);
+    };
+    if(!conflicts.empty()){p=Json::objectValue;p["conflict"]=enumeration(conflicts);clause("end_conflict",p);}
+    if(!regions.empty()) {
+        p=Json::objectValue;p["region"]=region;p["to"]=actorId;clause("cede",p);
+        p=Json::objectValue;p["region"]=region;p["by"]=actorId;clause("occupy",p);
+        p=Json::objectValue;p["region"]=region;clause("withdraw",p);
+    }
+    auto terms=parse(R"({"type":"array","maxItems":4})");if(clauses.empty())terms["maxItems"]=0;else terms["items"]["anyOf"]=clauses;
+    auto months=parse(R"({"type":"integer","minimum":0,"maximum":120})");
+    p=Json::objectValue;p["actors"]=parties;p["kind"]=parse(R"({"type":"string","enum":["alliance","defence_pact","non_aggression_pact","trade_agreement","ceasefire","peace_treaty","union","other"]})");p["months"]=months;p["name"]=string(120);p["terms"]=terms;p["text"]=string(500);op("add_commitment",p);
+    if(!commitments.empty()){p=Json::objectValue;p["commitment"]=enumeration(commitments);p["months"]=months;p["terms"]=terms;p["text"]=string(500);op("amend_commitment",p);}
     if(!regions.empty()) {
         p=Json::objectValue;p["kind"]=parse(R"({"type":"string","enum":["city","port","base","army","fleet","event_site"]})");p["name"]=string(120);p["actor"]=actor;p["region"]=region;op("build",p);
         p=Json::objectValue;p["region"]=region;p["to"]=actorId;op("transfer_territory",p);
@@ -334,11 +357,40 @@ static double kilometres(const Json::Value &a,const Json::Value &b) {
 static int rank(const std::string &effect){return effect=="severe_decline"?0:effect=="decline"?1:effect=="none"?2:effect=="growth"?3:4;}
 static std::string weaker(const std::string &a,const std::string &b){return rank(a)<=rank(b)?a:b;}
 static std::string stronger(const std::string &a,const std::string &b){return rank(a)>=rank(b)?a:b;}
-WorldDelta compileOperations(const WorldState &w,const Json::Value &response,const Adjacency &adjacency) {
+// Treaty terms a small model may attach: normalized to known clause fields, at most four.
+static Json::Value treatyTerms(const Json::Value &terms) {
+    Json::Value out(Json::arrayValue);
+    if(!terms.isArray())return out;
+    for(auto &t:terms) {
+        if(out.size()>=4||!t.isObject()||!t["action"].isString())continue;
+        Json::Value kept;for(auto k:{"action","conflict","region","to","by"})if(t[k].isString())kept[k]=t[k];
+        out.append(kept);
+    }
+    return out;
+}
+static bool securityTreaty(const std::string &kind){return kind=="ceasefire"||kind=="peace_treaty"||kind=="non_aggression_pact"||kind=="alliance"||kind=="defence_pact"||kind=="union";}
+WorldDelta compileOperations(const WorldState &w,const Json::Value &response,const Adjacency &adjacency,const Json::Value &responses) {
     require(response.isObject()&&response["events"].isArray()&&response["events"].size()<=37&&(!response.isMember("world_events")||(response["world_events"].isArray()&&response["world_events"].size()<=3)),"Invalid operation response");
     for(auto &k:response.getMemberNames())require(k=="events"||k=="world_events","Invalid operation response");
     // Outcomes of this month's actions first, then background developments.
     Json::Value all(Json::arrayValue);
+    // Last month's treaty offers to the player are settled first, as the month opens: accepted, declined, or lapsed unanswered.
+    int settlements=0;
+    for(auto &pid:w.proposals.getMemberNames()) {
+        auto &p=w.proposals[pid];
+        if(p["status"]!="pending"||p["proposed_turn"].asInt()>=w.turn)continue;
+        std::string answer="expired";
+        for(auto &r:responses)if(r["proposal"]==pid&&r["accept"].isBool())answer=r["accept"].asBool()?"accepted":"declined";
+        bool standing=true;for(auto &a:p["actors"])standing=standing&&w.hasActor(a.asString());
+        if(p["amends"].isString())standing=standing&&w.commitments[p["amends"].asString()]["status"]=="open";
+        if(!standing)answer="expired";
+        auto from=p["from"].asString();auto player=w.actors[w.player]["name"].asString(),proposer=w.actors[from]["name"].asString();
+        auto what=p["amends"].isString()?"amendment to the "+p["name"].asString():p["name"].asString();
+        Json::Value e;e["actor"]=answer=="expired"?from:w.player;e["blocked_by"]="none";e["background"]=false;e["causes"]=Json::arrayValue;e["causes"].append(p["event"]);
+        e["description"]=answer=="accepted"?player+" accepts the "+what+" proposed by "+proposer+".":answer=="declined"?player+" declines the "+what+" proposed by "+proposer+".":"The "+what+" offered by "+proposer+" lapses unanswered.";
+        Json::Value o;o["action"]="settle_proposal";o["proposal"]=pid;o["answer"]=answer;e["operations"].append(o);
+        all.append(e);++settlements;
+    }
     for(auto e:response["events"]){if(e.isObject()){e.removeMember("action");if(!e.isMember("background"))e["background"]=false;}all.append(e);}
     for(auto e:response["world_events"]){if(e.isObject()){if(e["actor"]==w.player||!e["operations"].empty())continue;e["background"]=true;e["blocked_by"]="none";e["operations"]=Json::arrayValue;}all.append(e);}
     struct Pending{std::string kind,id,event,rationale;Json::Value before,after;};
@@ -377,7 +429,10 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
     std::map<std::string,std::set<std::string>> consenting;
     for(auto &e:response["events"])if(e.isObject()&&e["actor"].isString()&&e["description"].isString())
         for(auto &b:w.actors.getMemberNames())if(b!=e["actor"].asString()&&w.actors[b]["name"].isString()&&containsWord(lowered(e["description"].asString()),lowered(w.actors[b]["name"].asString())))consenting[e["actor"].asString()].insert(b);
+    int position=-1;
     for(auto &e:all) {
+        // Only the settlements C++ wrote above may carry settle_proposal; a model cannot answer for the player.
+        bool trusted=++position<settlements;
         require(e.isObject()&&e["description"].isString()&&e["actor"].isString()&&e["blocked_by"].isString()&&e["background"].isBool()&&e["causes"].isArray()&&e["operations"].isArray()&&e["operations"].size()<=8,"Invalid operation event");
         auto ev=e["actor"].asString();require(w.hasActor(ev),"Unknown event actor");
         // Background developments exist only for what changes something; those without an effect are noise.
@@ -390,7 +445,9 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         std::set<std::string> actors,regions,entities,createdHere,conflicts,commitments;
         // What this month makes obvious: parties to a war opened or escalated here (and whoever took land by force), to a trade treaty, and owners whose land was taken.
         std::set<std::string> warParties,tradeParties,seizedOwners;
-        std::vector<Json::Value> seenOps;
+        // Parties to a trade treaty or union that ended here: their economies lose what it brought.
+        std::set<std::string> tradeLoss;
+        std::vector<Json::Value> seenOps;int failedOps=0;
         // Whether an operation changed the map or a war: such events are major whatever the model calls them.
         bool structural=false;
         std::string blocked=e["blocked_by"].asString(),breaches;
@@ -401,6 +458,59 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         auto snapshot=std::make_tuple(pending,index,created,newActors,taken,aliases,names);
         // Why operations were dropped: kept for the audit, never in the event text players and later prompts read.
         Json::Value dropped(Json::arrayValue);
+        // Executes a treaty's terms, which its parties' signatures authorize; an impossible clause is dropped on its own.
+        auto applyTerms=[&](const Json::Value &terms,const std::vector<std::string> &members,const std::string &why) {
+            Json::Value done(Json::arrayValue);
+            auto party=[&](const std::string &a){return std::find(members.begin(),members.end(),a)!=members.end();};
+            for(auto &t:treatyTerms(terms)) {
+                auto clause=t["action"].asString();
+                try {
+                    auto field=[&](const char *k){if(!t[k].isString()||t[k].asString().empty())throw Infeasible("incomplete "+clause);return t[k].asString();};
+                    Json::Value kept;kept["action"]=clause;
+                    if(clause=="end_conflict") {
+                        auto cid=field("conflict");auto c=current("conflict",w.conflicts,cid);
+                        if(!c.isObject()||c["status"]!="open")throw Infeasible("no such open conflict");
+                        for(auto &a:c["actors"])if(!party(a.asString()))throw Infeasible("every side must sign to end "+displayName(w,"conflict",cid));
+                        auto &v=touch("conflict",cid,w.conflicts[cid],id,why);v["status"]="resolved";v["ended_turn"]=w.turn;v["intensity"]="none";
+                        conflicts.insert(cid);kept["conflict"]=cid;
+                    } else {
+                        auto r=field("region");if(!w.territories.isMember(r))throw Infeasible("unknown region");
+                        auto now=current("territory",w.territories,r);auto owner=now["owner"].asString(),controller=now["controller"].asString(),place=w.territories[r]["name"].asString();
+                        if(clause=="cede") {
+                            auto to=actorRef(field("to"));
+                            if(!party(to)||!party(owner)||owner==to)throw Infeasible("only its owner can cede "+place+" to another party");
+                            auto &v=touch("territory",r,w.territories[r],id,why);v["owner"]=to;v["controller"]=to;kept["from"]=owner;kept["to"]=to;actors.insert(to);
+                        } else if(clause=="occupy") {
+                            auto by=actorRef(field("by"));
+                            if(!party(by)||!party(owner)||by==owner)throw Infeasible("an agreed occupation of "+place+" needs its owner and the occupier as parties");
+                            touch("territory",r,w.territories[r],id,why)["controller"]=by;kept["by"]=by;actors.insert(by);
+                        } else if(clause=="withdraw") {
+                            if(!party(controller)||!party(owner)||controller==owner)throw Infeasible("no party occupies "+place);
+                            touch("territory",r,w.territories[r],id,why)["controller"]=owner;kept["by"]=controller;
+                        } else throw Infeasible("unknown term "+clause);
+                        regions.insert(r);actors.insert(owner);kept["region"]=r;
+                    }
+                    done.append(kept);
+                } catch(const Infeasible &x){Json::Value d;d["action"]="term "+clause;d["reason"]=x.what();dropped.append(d);}
+            }
+            return done;
+        };
+        // Parties to a treaty signed, amended or answered here, and whether anyone must still agree.
+        auto consent=[&](const std::vector<std::string> &members,bool &proposal) {
+            for(auto &m:members)if(m!=ev&&!createdHere.contains(m)&&!consenting[m].contains(ev)) {
+                if(m==w.player){proposal=true;continue;}
+                throw Infeasible("needs agreement from "+current("actor",w.actors,m)["name"].asString());
+            }
+        };
+        auto awaiting=[&]{auto awaits=" It awaits "+w.actors[w.player]["name"].asString()+"'s answer.";if(text.find(awaits)==std::string::npos)text+=awaits;};
+        // A treaty ended here: occupations it allowed end with it, and trade it brought is lost.
+        auto ending=[&](const Json::Value &treaty,const std::string &why) {
+            for(auto &t:treaty["terms"])if(t["action"]=="occupy"&&t["region"].isString()&&w.territories.isMember(t["region"].asString())) {
+                auto r=t["region"].asString();auto now=current("territory",w.territories,r);
+                if(now["controller"]==t["by"]&&now["owner"]!=t["by"]){touch("territory",r,w.territories[r],id,why)["controller"]=now["owner"];regions.insert(r);}
+            }
+            auto kind=treaty["kind"].asString();if(kind=="trade_agreement"||kind=="union")for(auto &a:treaty["actors"])tradeLoss.insert(a.asString());
+        };
         try {
         for(auto &o:e["operations"]) {
             if(blocked!="none")break;
@@ -410,9 +520,11 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             seenOps.push_back(o);
             auto name=o["action"].asString();auto why=name+": "+text.substr(0,300);
             // An impossible operation is dropped on its own; the rest of the event still happens.
-            auto before=std::make_tuple(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners);
+            auto before=std::make_tuple(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners,tradeLoss);
             // A treaty offered to the player is only proposed: it changes nothing until the player answers next month.
-            bool proposal=false;
+            bool proposal=false,shaped=false;
+            // Whoever this operation acts against: a treaty of peace or alliance with them is breached.
+            std::set<std::string> hostile;
             try {
             auto str=[&](const char *k){if(!o[k].isString()||o[k].asString().empty())throw Infeasible("incomplete "+name);return o[k].asString();};
             auto region=[&]{auto r=str("region");if(!w.territories.isMember(r))throw Infeasible("unknown region");return r;};
@@ -474,10 +586,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 for(auto &a:o["actors"]){if(!a.isString())throw Infeasible("unknown party");auto ref=actorRef(a.asString());if(!known(ref))throw Infeasible("unknown party "+ref);if(std::find(members.begin(),members.end(),ref)!=members.end())continue;members.push_back(ref);v["actors"].append(ref);actors.insert(ref);}
                 if(members.size()<2)throw Infeasible("needs two parties");
                 if(std::find(members.begin(),members.end(),ev)==members.end())throw Infeasible("only a party can open or sign this");
-                if(kind=="commitment")for(auto &m:members)if(m!=ev&&!createdHere.contains(m)&&!consenting[m].contains(ev)) {
-                    if(m==w.player){proposal=true;continue;}
-                    throw Infeasible("needs agreement from "+current("actor",w.actors,m)["name"].asString());
-                }
+                if(kind=="commitment")consent(members,proposal);
+                else for(auto &m:members)if(m!=ev)hostile.insert(m);
                 auto type=o["kind"].asString();
                 if(kind=="conflict"?!validConflictKind(type):!validCommitmentKind(type))type=kind=="conflict"?"war":"other";
                 // Pending creations are not in w yet; name them against what they will be.
@@ -485,12 +595,20 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 v["name"]=realisticName(named,kind,type,o["name"].isString()?o["name"].asString():"",members,v["text"].asString(),names);names.insert(lowered(v["name"].asString()));
                 v["kind"]=type;v["started_turn"]=w.turn;
                 if(kind=="conflict"){auto level=o["intensity"].asString();v["set_intensity"]=v["intensity"]=(level=="low"||level=="high")?level:"medium";v["affected_regions"]=Json::arrayValue;v["casualties"]=v["displaced"]=Json::Int64(0);}
+                // How long it lasts (0 = open-ended) and what signing changes at once, both drafted by the model.
+                int months=kind=="commitment"&&o["months"].isInt()?std::clamp(o["months"].asInt(),0,120):0;
                 if(proposal) {
                     // Keyed by the commitment ID it will take, so acceptance never clashes with a later treaty.
                     v.removeMember("status");v.removeMember("started_turn");v["from"]=ev;v["status"]="pending";v["proposed_turn"]=w.turn;v["event"]=id;
+                    v["months"]=months;v["terms"]=treatyTerms(o["terms"]);
                     touch("proposal",cid,Json::nullValue,id,why)=v;
-                    auto awaits=" It awaits "+w.actors[w.player]["name"].asString()+"'s answer.";if(text.find(awaits)==std::string::npos)text+=awaits;
+                    awaiting();
                     continue;
+                }
+                if(kind=="commitment") {
+                    auto done=applyTerms(o["terms"],members,why);
+                    if(!done.empty()){v["terms"]=done;shaped=true;}
+                    if(months)v["expires_turn"]=w.turn+months;
                 }
                 touch(kind,cid,Json::nullValue,id,why)=v;(kind=="conflict"?conflicts:commitments).insert(cid);
                 if(kind=="conflict"?(type=="war"||type=="civil_war"||v["set_intensity"]=="high"):(type=="trade_agreement"||type=="union"))for(auto &m:members)(kind=="conflict"?warParties:tradeParties).insert(m);
@@ -499,7 +617,57 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 auto cid=str(kind.c_str());auto &collection=kind=="conflict"?w.conflicts:w.commitments;
                 if(!collection.isMember(cid))throw Infeasible("unknown "+kind);
                 if(std::find(collection[cid]["actors"].begin(),collection[cid]["actors"].end(),Json::Value(ev))==collection[cid]["actors"].end())throw Infeasible("only a party can end "+displayName(w,kind,cid));
-                auto &v=touch(kind,cid,collection[cid],id,why);(kind=="conflict"?conflicts:commitments).insert(cid);v["status"]="resolved";v["ended_turn"]=w.turn;if(kind=="conflict")v["intensity"]="none";
+                auto treaty=current(kind,collection,cid);
+                {auto &v=touch(kind,cid,collection[cid],id,why);(kind=="conflict"?conflicts:commitments).insert(cid);v["status"]="resolved";v["ended_turn"]=w.turn;if(kind=="conflict")v["intensity"]="none";}
+                if(kind=="commitment"&&treaty["status"]=="open")ending(treaty,why);
+            } else if(name=="amend_commitment") {
+                auto cid=str("commitment");auto treaty=current("commitment",w.commitments,cid);
+                if(!treaty.isObject()||treaty["status"]!="open")throw Infeasible("no such treaty in force");
+                std::vector<std::string> members;for(auto &a:treaty["actors"])members.push_back(a.asString());
+                if(std::find(members.begin(),members.end(),ev)==members.end())throw Infeasible("only a party can amend "+displayName(w,"commitment",cid));
+                consent(members,proposal);
+                // Renewal: months from now; 0 keeps the current end date.
+                int months=o["months"].isInt()?std::clamp(o["months"].asInt(),0,120):0;
+                auto revised=o["text"].isString()?o["text"].asString().substr(0,1000):"";
+                for(auto &m:members)actors.insert(m);
+                if(proposal) {
+                    auto pid=cid+"-r"+std::to_string(w.turn);
+                    for(int n=2;w.proposals.isMember(pid)||index.contains("proposal:"+pid);++n)pid=cid+"-r"+std::to_string(w.turn)+"-"+std::to_string(n);
+                    Json::Value v;v["from"]=ev;v["actors"]=treaty["actors"];v["kind"]=validCommitmentKind(treaty.get("kind","").asString())?treaty["kind"]:Json::Value("other");
+                    v["name"]=displayName(w,"commitment",cid);v["text"]=revised.empty()?treaty["text"]:Json::Value(revised);v["months"]=months;v["terms"]=treatyTerms(o["terms"]);
+                    v["amends"]=cid;v["status"]="pending";v["proposed_turn"]=w.turn;v["event"]=id;
+                    touch("proposal",pid,Json::nullValue,id,why)=v;
+                    awaiting();
+                    continue;
+                }
+                auto done=applyTerms(o["terms"],members,why);
+                auto &v=touch("commitment",cid,w.commitments[cid],id,why);commitments.insert(cid);
+                if(!revised.empty())v["text"]=revised;
+                if(months)v["expires_turn"]=w.turn+months;
+                for(auto &t:done){v["terms"].append(t);if(v["terms"].size()>8)v["terms"].removeIndex(0,nullptr);}
+                shaped=!done.empty();
+            } else if(name=="settle_proposal") {
+                if(!trusted)throw Infeasible("unknown operation "+name);
+                auto pid=str("proposal"),answer=str("answer");auto &p=w.proposals[pid];
+                auto after=p;after["status"]=answer;after["answered_turn"]=w.turn;touch("proposal",pid,p,id,why)=after;
+                for(auto &a:p["actors"])actors.insert(a.asString());
+                if(answer=="accepted") {
+                    std::vector<std::string> members;for(auto &a:p["actors"])members.push_back(a.asString());
+                    auto done=applyTerms(p["terms"],members,why);int months=p.get("months",0).asInt();
+                    auto kind=p["kind"].asString();
+                    if(p["amends"].isString()) {
+                        auto cid=p["amends"].asString();auto &v=touch("commitment",cid,w.commitments[cid],id,why);
+                        v["text"]=p["text"];if(months)v["expires_turn"]=w.turn+months;
+                        for(auto &t:done){v["terms"].append(t);if(v["terms"].size()>8)v["terms"].removeIndex(0,nullptr);}
+                        commitments.insert(cid);shaped=!done.empty();
+                    } else {
+                        Json::Value v;for(auto k:{"actors","kind","name","text"})v[k]=p[k];v["status"]="open";v["started_turn"]=w.turn;
+                        if(!done.empty())v["terms"]=done;if(months)v["expires_turn"]=w.turn+months;
+                        touch("commitment",pid,Json::nullValue,id,why)=v;commitments.insert(pid);
+                        if(kind=="trade_agreement"||kind=="union")for(auto &m:members)tradeParties.insert(m);
+                        shaped=!done.empty()||(kind!="trade_agreement"&&kind!="other");
+                    }
+                }
             } else if(name=="set_conflict_intensity") {
                 auto cid=str("conflict");auto level=str("intensity");
                 if(!w.conflicts.isMember(cid)||w.conflicts[cid]["status"]!="open")throw Infeasible("no such open conflict");
@@ -507,6 +675,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 auto &parties=w.conflicts[cid]["actors"];
                 if(std::find(parties.begin(),parties.end(),Json::Value(ev))==parties.end())throw Infeasible("only a party can escalate or scale down "+displayName(w,"conflict",cid));
                 touch("conflict",cid,w.conflicts[cid],id,why)["set_intensity"]=level;conflicts.insert(cid);
+                if(level!="low")for(auto &a:parties)hostile.insert(a.asString());
                 for(auto &a:parties){actors.insert(a.asString());if(level=="high")warParties.insert(a.asString());}
             } else if(name=="build") {
                 auto r=region();auto builder=party("actor");auto kind=str("kind");
@@ -546,6 +715,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                         bool war=false;for(auto &c:w.conflicts)war=war||fighting(c);
                         for(auto &c:pending)war=war||(c.kind=="conflict"&&fighting(c.after));
                         if(!war)throw Infeasible("not at war with "+w.actors[owner]["name"].asString());
+                        hostile.insert(owner);
                     }
                     v["status"]=status;if(status!="under_construction")v.removeMember("completes_turn");
                     if(status!="active")v.removeMember("expires_turn");
@@ -571,7 +741,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 } else if(name=="occupy") {
                     auto by=party("by");
                     if(by!=ev&&!createdHere.contains(by))throw Infeasible("an occupation must be carried out by the acting nation");
-                    if(controller!=by){take(ev,r);if(!owner.empty()&&owner!=by){seizedOwners.insert(owner);warParties.insert(ev);}}
+                    if(controller!=by){take(ev,r);if(!owner.empty()&&owner!=by){seizedOwners.insert(owner);warParties.insert(ev);}hostile.insert(owner);hostile.insert(controller);}
                     t["controller"]=by;
                 } else {
                     if(ev==owner&&controller!=owner)take(ev,r);
@@ -582,18 +752,26 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             } else throw Infeasible("unknown operation "+name);
             static const std::set<std::string> shaping{"occupy","transfer_territory","restore_control","open_conflict","resolve_conflict","set_conflict_intensity","create_actor","change_identity","resolve_commitment"};
             auto kind=o["kind"].asString();
-            if(!proposal)structural=structural||shaping.contains(name)||(name=="add_commitment"&&kind!="trade_agreement"&&kind!="other")||(name=="build"&&kind=="event_site")||(name=="set_entity_status"&&o["status"]=="destroyed");
+            if(!proposal)structural=structural||shaped||shaping.contains(name)||(name=="add_commitment"&&kind!="trade_agreement"&&kind!="other")||(name=="build"&&kind=="event_site")||(name=="set_entity_status"&&o["status"]=="destroyed");
+            // Acting against a partner breaches the treaties of peace or alliance between them; a two-party one is broken.
+            hostile.erase(ev);hostile.erase("");
+            for(auto &target:hostile)for(auto &kid:w.commitments.getMemberNames()) {
+                auto treaty=current("commitment",w.commitments,kid);auto &p=treaty["actors"];
+                if(treaty["status"]!="open"||!securityTreaty(treaty["kind"].asString())||std::find(p.begin(),p.end(),Json::Value(ev))==p.end()||std::find(p.begin(),p.end(),Json::Value(target))==p.end())continue;
+                if(breaches.empty())breaches=kid;
+                if(p.size()==2){auto &v=touch("commitment",kid,w.commitments[kid],id,"Broken: "+why);v["status"]="resolved";v["ended_turn"]=w.turn;commitments.insert(kid);ending(treaty,"Broken: "+why);structural=true;}
+            }
             } catch(const Infeasible &x) {
-                std::tie(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners)=before;
-                Json::Value d;d["action"]=name;d["reason"]=x.what();dropped.append(d);
+                std::tie(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners,tradeLoss)=before;
+                Json::Value d;d["action"]=name;d["reason"]=x.what();dropped.append(d);++failedOps;
             }
         }
         // Nothing was breached if every operation was dropped.
-        if(!breaches.empty()&&dropped.size()==seenOps.size())breaches.clear();
+        if(!breaches.empty()&&failedOps==int(seenOps.size()))breaches.clear();
         for(auto &a:createdHere){bool land=false;for(auto &c:pending)land=land||(c.kind=="territory"&&c.after["owner"]==a);if(!land)throw Infeasible("a new state needs territory");}
         } catch(const Infeasible &x) {
             std::tie(pending,index,created,newActors,taken,aliases,names)=snapshot;
-            actors.clear();regions.clear();entities.clear();conflicts.clear();commitments.clear();warParties.clear();tradeParties.clear();seizedOwners.clear();structural=false;
+            actors.clear();regions.clear();entities.clear();conflicts.clear();commitments.clear();warParties.clear();tradeParties.clear();seizedOwners.clear();tradeLoss.clear();structural=false;
             blocked="infeasible";
             Json::Value d;d["action"]="event";d["reason"]=x.what();dropped.append(d);
         }
@@ -643,6 +821,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             for(auto &p:warParties){auto &f=entry(p,"none","none");f.economy=weaker(f.economy,"decline");if(p!=ev)f.stability=weaker(f.stability,"decline");}
             for(auto &p:tradeParties){auto &f=entry(p,"none","none");f.economy=stronger(f.economy,"growth");}
             for(auto &p:seizedOwners){auto &f=entry(p,"none","none");f.stability=weaker(f.stability,"decline");}
+            for(auto &p:tradeLoss){auto &f=entry(p,"none","none");f.economy=weaker(f.economy,"decline");}
             std::erase_if(effects,[](const Effect &f){return f.economy=="none"&&f.stability=="none";});
             // Forced entries survive the cap; among the model's own, the weightiest stay.
             auto weight=[](const Effect &f){return std::abs(rank(f.economy)-2)+std::abs(rank(f.stability)-2);};
@@ -668,36 +847,5 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             Json::Value j;j["kind"]=c.kind;j["id"]=c.id;j["before"]=c.before;j["after"]=c.after;j["event"]=c.event;j["rationale"]=c.rationale;d.changes.append(j);
         }
     return parseDelta(encode(d));
-}
-void settleProposals(const WorldState &w,WorldDelta &delta,const Json::Value &responses) {
-    std::set<std::string> ids;for(auto &e:delta.events)ids.insert(e["id"].asString());
-    auto name=[&](const std::string &a){return w.actors[a]["name"].asString();};
-    for(auto &pid:w.proposals.getMemberNames()) {
-        auto &p=w.proposals[pid];
-        if(p["status"]!="pending"||p["proposed_turn"].asInt()>=w.turn)continue;
-        std::string status="expired";
-        for(auto &r:responses)if(r["proposal"]==pid&&r["accept"].isBool())status=r["accept"].asBool()?"accepted":"declined";
-        bool parties=true;for(auto &a:p["actors"])parties=parties&&w.hasActor(a.asString());
-        if(!parties)status="expired";
-        auto from=p["from"].asString(),treaty=p["name"].asString();
-        auto text=status=="accepted"?name(w.player)+" accepts the "+treaty+" proposed by "+name(from)+".":status=="declined"?name(w.player)+" declines the "+treaty+" proposed by "+name(from)+".":"The "+treaty+" offered by "+name(from)+" lapses unanswered.";
-        auto base="t"+std::to_string(w.turn)+"-"+slug(text,32);auto id=base;
-        for(int n=2;!ids.insert(id).second;++n)id=base+"-"+std::to_string(n);
-        auto kind=p["kind"].asString();
-        Json::Value event;event["id"]=id;event["actor"]=status=="expired"?from:w.player;event["text"]=text;event["background"]=false;
-        event["causes"]=Json::arrayValue;event["causes"].append(p["event"]);
-        for(auto k:{"actors","regions","entities","conflicts","commitments"})event[k]=Json::arrayValue;
-        for(auto &a:p["actors"])if(w.hasActor(a.asString()))event["actors"].append(a);
-        event["major"]=status=="accepted"&&kind!="trade_agreement"&&kind!="other";
-        auto change=[&](const char *k,const Json::Value &before,const Json::Value &after){Json::Value c;c["kind"]=k;c["id"]=pid;c["before"]=before;c["after"]=after;c["event"]=id;c["rationale"]=text;delta.changes.append(c);};
-        if(status=="accepted") {
-            Json::Value v;for(auto k:{"actors","kind","name","text"})v[k]=p[k];v["status"]="open";v["started_turn"]=w.turn;
-            change("commitment",Json::nullValue,v);event["commitments"].append(pid);
-            // As when signed outright, a trade treaty or union lifts every party's economy.
-            if(kind=="trade_agreement"||kind=="union"){event["effects"]=Json::arrayValue;for(auto &a:p["actors"])if(event["effects"].size()<3){Json::Value x;x["actor"]=a;x["economy"]="growth";x["stability"]="none";event["effects"].append(x);}}
-        }
-        auto after=p;after["status"]=status;after["answered_turn"]=w.turn;change("proposal",p,after);
-        delta.events.append(event);
-    }
 }
 }

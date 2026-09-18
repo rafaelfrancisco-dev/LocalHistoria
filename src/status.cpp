@@ -300,6 +300,16 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
     d["status"] = v["status"];
     d["text"] = v["text"];
     if (v["started_turn"].isInt()) d["months_in_force"] = w.turn - v["started_turn"].asInt();
+    if (v["expires_turn"].isInt() && v["status"] == "open") d["months_left"] = v["expires_turn"].asInt() - w.turn;
+    // Terms already carried out, in words: a treaty's obligations shape what its parties may do next.
+    auto name = [&](const Json::Value &a) { return w.actors[a.asString()].get("name", a).asString(); };
+    for (auto &t : v["terms"]) {
+        auto region = w.territories[t["region"].asString()].get("name", t["region"]).asString();
+        if (t["action"] == "end_conflict") d["terms"].append("ended " + displayName(w, "conflict", t["conflict"].asString()));
+        else if (t["action"] == "cede") d["terms"].append(name(t["from"]) + " ceded " + region + " to " + name(t["to"]));
+        else if (t["action"] == "occupy") d["terms"].append(name(t["by"]) + " holds " + region + " while in force");
+        else if (t["action"] == "withdraw") d["terms"].append(name(t["by"]) + " withdrew from " + region);
+    }
     if (kind == "conflict") {
         d["intensity"] = v.get("intensity", "unknown");
         d["casualties"] = integer(v, "casualties");

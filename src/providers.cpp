@@ -164,7 +164,7 @@ std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e,const Cou
     return j["text"].asString();
 }
 Json::Value LocalProvider::takeAudit() {std::lock_guard lock(inference);auto result=audit;audit=Json::arrayValue;return result;}
-WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &input, const Adjacency &adjacency) {
+WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &input, const Adjacency &adjacency, const Json::Value &responses) {
     std::vector<std::pair<std::string,std::string>> actions;
     for(auto &i:input["intentions"])actions.emplace_back(i["actor"].asString(),i["action"].asString());
     auto schema=operationSchema(w,input["facts"],actions);
@@ -192,6 +192,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "Name every new war and treaty the way historians and newspapers would: specific, never generic. Wars after places, peoples or causes (Second Iberian War, Galician War, Douro Border Conflict, Rif Insurgency); treaties after the signing city or purpose (Treaty of Porto, Lisbon Defence Pact, Madrid Trade Accord). Choose kind (war, border_conflict, insurgency, civil_war; alliance, defence_pact, non_aggression_pact, trade_agreement, ceasefire, peace_treaty, union, other) and a war's starting intensity (low, medium, high). "
         "set_conflict_intensity lets a party escalate (a major offensive) or scale down (a lull, withdrawal) an existing war; a ceasefire or peace treaty is add_commitment with that kind, and resolve_conflict only when the war has actually ended. "
         "Only a party can open, escalate, end or sign; a treaty needs every party's own action this month to mention the partner; nations only build for themselves. "
+        "Treaties: months is how long one lasts (0 = open-ended); terms are what signing changes at once: end_conflict (a peace treaty ends that war), cede (its owner hands a region to another party), occupy (its owner lets another party hold a region while the treaty lasts), withdraw (an occupier hands a region back); a ceasefire pauses its war while in force; trade and economic treaties usually have no terms. amend_commitment renews a treaty (months from now; 0 keeps its end date) or revises its text and terms, with every party's agreement. Acting against a treaty partner breaches the treaty. "
         "Regional intentions are attributed by regional_actor: only regional_initiative is permitted, recording agenda, relations and an optional pending demand. They cannot authorize national actions. National actors may explicitly respond_regional with demand_id and accepted/rejected; pending demands never imply consent. Independence requires explicit national agreement or an established relevant campaign conflict; never autonomous armed rebellion. change_identity requires actor, name, change_type (rename or refounding), reason, and flag_design. Only substantive national renames or explicit constitutional/regime refoundings qualify; elections, border changes and alignments retain flags. create_actor also proposes flag_design (layout horizontal/vertical/cross/diagonal, three hex palette colors, emblem none/circle/diamond, explanation). Use conservative campaign-grounded symbolism, never invented historical claims. "
         "Operations: build (starts constructing a city, port, base, army or fleet in a region the actor controls, which takes months to finish; or marks an event_site where a notable incident happened, such as a disaster, summit, protest or battle, which appears at once and fades after three months unless later events involve it), "
         "occupy (military control of a bordering region, owner unchanged), restore_control, transfer_territory (the owner cedes a region, or an occupier annexes a region it held before this month), "
@@ -219,7 +220,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         if(intent["regional_actor"].isString()&&(event["operations"].size()!=1||event["operations"][0]["action"]!="regional_initiative"||event["operations"][0]["region"]!=intent["regional_actor"]))throw ValidationError("Regional outcome requires its bounded agenda operation");
         for(auto k:{"initiative_type","regional_actor"}){event.removeMember(k);if(intent.isMember(k))event[k]=intent[k];}
     }
-    return compileOperations(w, response, adjacency);
+    return compileOperations(w, response, adjacency, responses);
 }
 void LocalProvider::setEndpoint(const std::string &e) {
     auto v = validateEndpoint(e);

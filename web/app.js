@@ -527,7 +527,7 @@ function renderProposals() {
     offered.className = "meta";
     offered.textContent = `Offered by ${actorName(p.from)}` + (others.length ? `, with ${others.join(", ")}` : "");
     const terms = document.createElement("p");
-    terms.textContent = p.text;
+    terms.textContent = p.text + (p.months ? ` Lasts ${p.months} month${p.months === 1 ? "" : "s"}.` : p.amends ? "" : " Open-ended.");
     const choice = document.createElement("div");
     choice.className = "chips";
     const note = document.createElement("small");
@@ -544,7 +544,9 @@ function renderProposals() {
     decline.setAttribute("aria-pressed", String(answers[id] === false));
     note.textContent = id in answers ? "Takes effect as the month ends" : "Lapses if unanswered this month";
     choice.append(accept, decline, note);
-    card.append(cardHead(p.name, [[kindLabel(p.kind), ""]]), offered, terms, choice);
+    card.append(cardHead(p.amends ? `Amendment to the ${p.name}` : p.name, [[kindLabel(p.kind), ""]]), offered, terms);
+    if (p.terms?.length) card.append(termList(p.terms));
+    card.append(choice);
     box.append(card);
   }
 }
@@ -704,6 +706,26 @@ let diplomacyTab = "wars";
 function kindLabel(kind) {
   return (kind || "other").replaceAll("_", " ");
 }
+// A treaty clause in words. Offered clauses name no previous owner yet; carried-out ones record it.
+function termText(t) {
+  const region = state.territories[t.region]?.name || t.region;
+  const conflict = state.conflicts[t.conflict]?.name || t.conflict;
+  if (t.action === "end_conflict") return `Ends the ${conflict}`;
+  if (t.action === "cede") return `${t.from ? actorName(t.from) + " cedes" : "Cedes"} ${region} to ${actorName(t.to)}`;
+  if (t.action === "occupy") return `${actorName(t.by)} holds ${region} while in force`;
+  if (t.action === "withdraw") return `${t.by ? actorName(t.by) + " withdraws" : "Withdrawal"} from ${region}`;
+  return kindLabel(t.action);
+}
+function termList(terms) {
+  const list = document.createElement("ul");
+  list.className = "terms";
+  for (const t of terms || []) {
+    const item = document.createElement("li");
+    item.textContent = termText(t);
+    list.append(item);
+  }
+  return list;
+}
 function zoomToRegions(ids) {
   const bounds = [];
   layers?.eachLayer((l) => { if (ids.includes(l.feature.properties.id)) bounds.push(l.getBounds()); });
@@ -754,12 +776,13 @@ function renderDiplomacy() {
     if (v.actors.length > 10) parties.append(` +${v.actors.length - 10} more`);
     const meta = document.createElement("p");
     meta.className = "meta";
-    const dates = [v.started_turn !== undefined ? `Since ${month(v.started_turn)}` : null, v.ended_turn !== undefined ? `ended ${month(v.ended_turn)}` : null].filter(Boolean).join(", ");
+    const dates = [v.started_turn !== undefined ? `Since ${month(v.started_turn)}` : null, v.ended_turn !== undefined ? `ended ${month(v.ended_turn)}` : v.expires_turn !== undefined ? `until ${month(v.expires_turn)}` : null].filter(Boolean).join(", ");
     const toll = kind === "conflict" && (v.casualties || v.displaced) ? `${(v.casualties || 0).toLocaleString()} killed · ${(v.displaced || 0).toLocaleString()} displaced since 2026` + (v.last_month_casualties ? ` (${v.last_month_casualties.toLocaleString()} killed last month)` : "") : "";
     meta.textContent = [dates, toll].filter(Boolean).join(" · ");
     const text = document.createElement("p");
     text.textContent = v.text;
     card.append(head, parties, meta, text);
+    if (v.terms?.length) card.append(termList(v.terms));
     const regions = document.createElement("div");
     regions.className = "chips";
     chipRow(regions, "Front:", (v.affected_regions || []).map((r) => [state.territories[r]?.name || r, () => { highlight = { kind, id }; $("diplomacy").close(); setMapMode("diplomacy"); zoomToRegions([r]); }]));

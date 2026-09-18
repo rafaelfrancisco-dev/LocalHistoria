@@ -142,6 +142,25 @@ Resolution resolve(const WorldState &w) {
         throw ValidationError("Campaign turn limit reached");
     Resolution r{w, {}};
     r.state.turn++;
+    // Treaties end when their term runs out; occupations they allowed end with them.
+    for (auto &id : r.state.commitments.getMemberNames()) {
+        auto &k = r.state.commitments[id];
+        auto expires = k.get("expires_turn", Json::nullValue);
+        if (k["status"] != "open" || !expires.isInt() || expires.asInt() > r.state.turn) continue;
+        k["status"] = "resolved";
+        k["ended_turn"] = r.state.turn;
+        auto text = displayName(r.state, "commitment", id) + " expired.";
+        for (auto &t : k["terms"]) {
+            auto region = t["region"].asString();
+            if (t["action"] != "occupy" || !r.state.territories.isMember(region)) continue;
+            auto &territory = r.state.territories[region];
+            if (territory["controller"] != t["by"] || territory["owner"] == t["by"]) continue;
+            territory["controller"] = territory["owner"];
+            auto by = t["by"].asString();
+            text += " " + (r.state.hasActor(by) ? std::as_const(r.state.actors)[by]["name"].asString() : by) + " handed " + territory["name"].asString() + " back.";
+        }
+        r.events.push_back({k["actors"][0].asString(), "expiry", id, text});
+    }
     for (auto &id : r.state.entities.getMemberNames()) {
         auto &e = r.state.entities[id];
         // An event site no later event renewed leaves the map without a journal line.
@@ -205,6 +224,25 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         Json::Value o;
         o["from"] = w.actors[p["from"].asString()]["name"]; o["name"] = p["name"]; o["kind"] = p["kind"]; o["text"] = p["text"];
         f["treaty_proposals"][id] = o;
+    }
+    // Wars an ally or defence partner is fighting without this nation: what its commitments may call on it to weigh.
+    for (auto &kid : w.commitments.getMemberNames()) {
+        auto &k = w.commitments[kid];
+        auto kind = k["kind"].asString();
+        if (k["status"] != "open" || (kind != "alliance" && kind != "defence_pact") || !involves(k, a)) continue;
+        for (auto &cid : w.conflicts.getMemberNames()) {
+            auto &c = w.conflicts[cid];
+            if (c["status"] != "open" || involves(c, a) || f["allied_wars"].size() >= 4 || f["allied_wars"].isMember(cid)) continue;
+            for (auto &ally : c["actors"])
+                if (involves(k, ally.asString())) {
+                    Json::Value war;
+                    war["name"] = displayName(w, "conflict", cid);
+                    war["ally"] = w.actors[ally.asString()]["name"];
+                    war["treaty"] = displayName(w, "commitment", kid);
+                    f["allied_wars"][cid] = war;
+                    break;
+                }
+        }
     }
     // Wars and treaties already appear in full above.
     f["status"].removeMember("wars");
