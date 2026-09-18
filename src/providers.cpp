@@ -67,7 +67,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     bool thinking=reasoningBudget>0&&contextLimit>=16384;
     // Every adjudicated action needs room for its description, effects and operations.
     unsigned outcomes=schema["properties"]["events"]["prefixItems"].size();
-    unsigned answer=schema["properties"].isMember("events")?std::clamp<unsigned>(768+256*outcomes,2048,6144):768;
+    unsigned answer=schema["properties"].isMember("events")?std::clamp<unsigned>(768+160*outcomes,1536,4096):768;
     // Unbounded, a 4B model reasons for thousands of tokens (minutes) about simple actions.
     b["max_tokens"]=answer+(thinking?reasoningBudget:0);
     b["chat_template_kwargs"]["enable_thinking"]=thinking;
@@ -183,13 +183,12 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "Then world_events: only unplanned developments historians would record, involving other listed nations (an earthquake, flood or epidemic, a revolt or mass protest, a coup, an election result, a major attack), at most two and usually none; they change nothing on the map. "
         "History (past_events, related_history) already happened in earlier months: never repeat or re-adjudicate it; use it only as context and for causes. "
         "Each event has the acting actor, blocked_by (none, or the ID of an open commitment that prevents the action, in which case it has no operations; a nation that knowingly breaks a treaty acts anyway), causes (earlier event IDs from related_history, or []), "
-        "a factual past-tense description of what happened, and then the operations that make the map match that description. "
+        "a factual past-tense description of what happened (one sentence, under 160 characters), and then the operations that make the map match that description. "
         "Realism: a turn is one month. Judge what can realistically be achieved in a month given the facts, history and ongoing efforts. "
         "Large goals such as conquering a country, winning a war, founding a city or transforming an economy only advance by a step: describe partial progress, never complete them at once. "
         "Actions without map effects (reforms, investment, research, trade, speeches, negotiations) are valid events with no operations; describe their plausible effect. "
         "Ground every outcome in each nation's status: population, GDP (real currency), stability, wars and treaties. A small or poor economy cannot fund what a large one can; unstable or war-weary nations face unrest, desertion and failed reforms; a nation fighting a high-intensity war has little to spare. "
-        "significance: major only for what would make international headlines (a disaster, a revolt, a coup, an election, a turning point in a war, a new state, a treaty); talks, visits, statements, investment, reforms, trade and preparations are routine. Most events are routine. "
-        "effects: economic and stability consequences of the event, as severe_decline, decline, growth or strong_growth, only for nations it clearly affects; never invent numbers, the game computes them. Most events have effects []; list a nation only when something changes. Wars, sanctions, blockades, coups and major reforms have strong ones. "
+        "effects: economic and stability consequences of the event, as severe_decline, decline, growth or strong_growth, only for nations it clearly affects; never invent numbers, the game computes them. Omit effects unless something changes; a world_event must list at least one. Wars, sanctions, blockades, coups and major reforms have strong ones; talks, visits, statements and preparations have none. "
         "Name every new war and treaty the way historians and newspapers would: specific, never generic. Wars after places, peoples or causes (Second Iberian War, Galician War, Douro Border Conflict, Rif Insurgency); treaties after the signing city or purpose (Treaty of Porto, Lisbon Defence Pact, Madrid Trade Accord). Choose kind (war, border_conflict, insurgency, civil_war; alliance, defence_pact, non_aggression_pact, trade_agreement, ceasefire, peace_treaty, union, other) and a war's starting intensity (low, medium, high). "
         "set_conflict_intensity lets a party escalate (a major offensive) or scale down (a lull, withdrawal) an existing war; a ceasefire or peace treaty is add_commitment with that kind, and resolve_conflict only when the war has actually ended. "
         "Regional intentions are attributed by regional_actor: only regional_initiative is permitted, recording agenda, relations and an optional pending demand. They cannot authorize national actions. National actors may explicitly respond_regional with demand_id and accepted/rejected; pending demands never imply consent. Independence requires explicit national agreement or an established relevant campaign conflict; never autonomous armed rebellion. change_identity requires actor, name, change_type (rename or refounding), reason, and flag_design. Only substantive national renames or explicit constitutional/regime refoundings qualify; elections, border changes and alignments retain flags. create_actor also proposes flag_design (layout horizontal/vertical/cross/diagonal, three hex palette colors, emblem none/circle/diamond, explanation). Use conservative campaign-grounded symbolism, never invented historical claims. "
@@ -199,12 +198,16 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "open_conflict, resolve_conflict, add_commitment (treaties, alliances, agreements), resolve_commitment (only when explicitly ended). "
         "Decisions within an actor's own authority over its own land take effect at once. Examples: build a port in R -> build port. Raise an army in R -> build army (only in its own regions). Send troops to occupy or attack a bordering region R -> occupy R by the actor + open_conflict unless already at war. Invade neighbor X -> occupy one or two of its regions within reach + open_conflict unless already at war. "
         "Grant R independence as NAME (by its owner) -> create_actor + transfer_territory to it. Sign an alliance with X -> add_commitment. Reform education -> no operations.";
+    // Reasoning is worth its generation time only for actions that can change wars, land or treaties; a month of
+    // reforms, talks and trade is answered directly. Generation is the slowest part of a month, so keep it tight.
+    unsigned weighed = 0;
+    for (auto &[actor, text] : actions) weighed += consequential(text);
+    unsigned budget = weighed ? std::clamp<unsigned>(256 + 128 * weighed, 384, 768) : 0;
     Json::Value response;
     try {
-        // Enough reasoning to weigh every action; generation is the slowest part of a month, so keep it tight.
-        response = completion(input, schema, instruction, std::clamp<unsigned>(256 + 128 * actions.size(), 384, 1024), 0.6,
-                              "adjudicate");
+        response = completion(input, schema, instruction, budget, 0.6, "adjudicate");
     } catch (const ValidationError &) {
+        if (!budget) throw;
         // A reasoning run can exhaust its budget before answering; retry once without thinking.
         response = completion(input, schema, instruction, 0, 0.6, "adjudicate");
     }

@@ -59,7 +59,7 @@ The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are projec
 
 1. Select a country using the map or searchable list, then choose **Play as this country**.
 2. Write up to eight actions for the month, e.g. *"Build a naval base in Faro"*, *"Propose a defensive alliance to Spain"* or *"Launch a national education reform"*. While an action is selected, click map regions to pin them as targets. This is optional, since regions and nations named in the text are recognized too.
-3. Click **End month**. The model writes the actions of the nations you addressed, your ongoing rivals and a neighbor. It then adjudicates everything together and narrates the month. Drafts survive a page reload.
+3. Click **End month**. The model writes the actions of the nations you addressed, your ongoing rivals and a neighbor: one action each, two for those you named or are at war with. It then adjudicates everything together (reasoning only when some action concerns war, land or treaties) and narrates the month. Drafts survive a page reload.
 4. The game autosaves each completed turn. Reload or restart to resume. A new campaign requires confirmation before replacing the active campaign and journal.
 
 A turn is one month, and the game keeps outcomes realistic:

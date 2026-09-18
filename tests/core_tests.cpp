@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
         auto validDecision = valid.decide(w, c);
         check(validDecision.orders.size() == 1 && validDecision.orders[0].text == "Open trade talks with Portugal",
               "Valid model adapter");
-        // Adjudication reasons only when the context can hold the reasoning; otherwise it answers directly.
-        for (int ctx : {8192, 32768}) {
+        // Adjudication reasons only for actions about war, land or treaties, and only when the context can hold the reasoning.
+        for (int ctx : {8192, 32768}) for (std::string action : {"Wait", "Invade Spain"}) {
             Json::Value seen;
             LocalProvider judge("http://127.0.0.1:8084", .1, [&](auto, auto path, auto b, double) {
                 if(path=="/props"){Json::Value j;j["default_generation_settings"]["n_ctx"]=ctx;return j;}
@@ -93,12 +93,13 @@ int main(int argc, char **argv) {
                 seen=b;
                 return parse(R"({"choices":[{"message":{"content":"{\"events\":[{\"actor\":\"PT\",\"blocked_by\":\"none\",\"causes\":[],\"description\":\"Waited\",\"operations\":[]}]}","reasoning_content":"Thinking"}}]})");
             });
-            Json::Value input;input["intentions"][0]["actor"]="PT";input["intentions"][0]["action"]="Wait";
+            Json::Value input;input["intentions"][0]["actor"]="PT";input["intentions"][0]["action"]=action;
             judge.adjudicate(w, input, {});
             auto audit = judge.takeAudit();
-            check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == (ctx == 32768) && seen["max_tokens"].asInt() == (ctx == 32768 ? 2048 + 384 : 2048) && seen.isMember("thinking_budget_tokens") == (ctx == 32768) &&
+            bool thinks = ctx == 32768 && action == "Invade Spain";
+            check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == thinks && seen["max_tokens"].asInt() == (thinks ? 1536 + 384 : 1536) && seen.isMember("thinking_budget_tokens") == thinks &&
                       audit[0]["context_limit"].asInt() == ctx,
-                  "Thinking budget follows context size");
+                  "Thinking budget follows context size and consequential actions");
         }
         rejects([&] { LocalProvider bad(""); });
         rejects([&] { LocalProvider bad("not-a-url"); });

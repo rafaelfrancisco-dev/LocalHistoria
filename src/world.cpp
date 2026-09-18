@@ -26,6 +26,28 @@ bool containsPoint(const Json::Value &g,double x,double y) {
     if(g["type"]=="MultiPolygon")for(auto &p:g["coordinates"])if(polygon(p))return true;
     return false;
 }
+std::string lowercase(const std::string &s) {
+    std::string o;
+    for (unsigned char c : s) o += char(std::tolower(c));
+    return o;
+}
+bool containsWord(const std::string &text, const std::string &word) {
+    for (auto at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+        auto boundary = [&](size_t i) { return i >= text.size() || !std::isalnum(static_cast<unsigned char>(text[i])); };
+        if ((at == 0 || boundary(at - 1)) && boundary(at + word.size())) return true;
+    }
+    return false;
+}
+bool consequential(const std::string &raw) {
+    static const std::vector<std::string> stems{"invad", "invasion", "annex", "occup", "troop", "militar", "mobili", "armies", "fleet", "naval",
+        "border", "offensive", "attack", "bombard", "treaty", "treaties", "alliance", "allied", "accord", "agreement", "ceasefire", "cease-fire",
+        "peace", "armistice", "independen", "secession", "seced", "autonom", "sanction", "blockade", "embargo", "territor", "sovereign", "rebel", "insurg"};
+    static const std::vector<std::string> words{"war", "wars", "pact", "army", "navy", "coup", "cede", "union"};
+    auto text = lowercase(raw);
+    for (auto &stem : stems) if (text.find(stem) != std::string::npos) return true;
+    for (auto &word : words) if (containsWord(text, word)) return true;
+    return false;
+}
 WorldDelta parseDelta(const Json::Value &j) {
     require(j.isObject() && j.getMemberNames()==std::vector<std::string>({"changes","events"}),"Invalid delta shape");
     require(j["changes"].isArray()&&j["changes"].size()<=120&&j["events"].isArray()&&j["events"].size()<=40,"Delta exceeds bounds");
@@ -224,14 +246,12 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     if(!commitments.empty()){p=Json::objectValue;p["commitment"]=enumeration(commitments);op("resolve_commitment",p);}
     Json::Value event;event["type"]="object";event["additionalProperties"]=false;
     // jsoncpp sorts keys and llama.cpp grammars keep that order: description precedes operations, action leads each operation.
-    for(auto k:{"actor","blocked_by","causes","description","effects","operations","significance"})event["required"].append(k);
+    for(auto k:{"actor","blocked_by","causes","description","operations"})event["required"].append(k);
     // Denials must cite a real commitment, so a small model cannot invent prerequisites; physical limits are checked by C++.
     event["properties"]["blocked_by"]=enumeration(commitments);event["properties"]["blocked_by"]["enum"].insert(0,"none");
-    event["properties"]["actor"]=actor;event["properties"]["description"]=string(300);
+    event["properties"]["actor"]=actor;event["properties"]["description"]=string(160);
     event["properties"]["causes"]=parse(R"({"type":"array","maxItems":4})");
-    // Decided last, once the outcome and its operations are written.
-    event["properties"]["significance"]=parse(R"({"type":"string","enum":["routine","major"]})");
-    // Economic and stability consequences are qualitative; C++ turns them into bounded numbers.
+    // Economic and stability consequences are qualitative; C++ turns them into bounded numbers. Optional: most events change nothing.
     auto effect=parse(R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
     event["properties"]["effects"]=parse(R"({"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["actor","economy","stability"]}})");
     event["properties"]["effects"]["items"]["properties"]["actor"]=actor;event["properties"]["effects"]["items"]["properties"]["economy"]=effect;event["properties"]["effects"]["items"]["properties"]["stability"]=effect;
@@ -252,7 +272,9 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     outcomes["minItems"]=outcomes["maxItems"]=Json::UInt(outcomes["prefixItems"].size());
     // World events are unplanned developments: narrative only, never decisions of the player's nation, so they cannot
     // invent construction, treaties or conquests that nobody ordered.
-    auto development=event;development["required"]=Json::arrayValue;for(auto k:{"actor","causes","description","effects","significance"})development["required"].append(k);
+    auto development=event;development["required"]=Json::arrayValue;for(auto k:{"actor","causes","description","effects"})development["required"].append(k);
+    // A development is kept only when it changes something, so it must name at least one effect.
+    development["properties"]["effects"]["minItems"]=1;
     development["properties"].removeMember("operations");development["properties"].removeMember("blocked_by");
     std::set<std::string> others(actors);others.erase(w.player);if(others.empty())others=actors;development["properties"]["actor"]=enumeration(others);
     schema["properties"]["world_events"]["type"]="array";schema["properties"]["world_events"]["maxItems"]=2;schema["properties"]["world_events"]["items"]=development;
@@ -297,6 +319,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
     auto reaches=[&](const std::string &a,const std::string &r){return lh::reaches(w,adjacency,a,r);};
     Json::Value events(Json::arrayValue);std::set<std::string> eventIds;int created=0,newActors=0,background=0;
     std::vector<Json::ArrayIndex> declared;
+    // How much an event's effects weigh: 2 per severe or strong one, 1 per mild one, ignoring malformed entries.
+    auto effectWeight=[](const Json::Value &effects){int score=0;if(!effects.isArray())return 0;for(auto &x:effects)for(auto k:{"economy","stability"}){auto v=x[k].isString()?x[k].asString():"";score+=v=="severe_decline"||v=="strong_growth"?2:v=="decline"||v=="growth"?1:0;}return score;};
     std::map<std::string,std::set<std::string>> taken;
     // New actors get IDs derived from their names; later references may use the requested ID or the name.
     std::map<std::string,std::string> aliases;
@@ -315,8 +339,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
     for(auto &e:all) {
         require(e.isObject()&&e["description"].isString()&&e["actor"].isString()&&e["blocked_by"].isString()&&e["background"].isBool()&&e["causes"].isArray()&&e["operations"].isArray()&&e["operations"].size()<=8,"Invalid operation event");
         auto ev=e["actor"].asString();require(w.hasActor(ev),"Unknown event actor");
-        // Background developments exist only for what historians would record; routine ones are noise.
-        if(e["background"].asBool()&&(e.get("significance","").asString()!="major"||++background>3))continue;
+        // Background developments exist only for what changes something; those without an effect are noise.
+        if(e["background"].asBool()&&(effectWeight(e.get("effects",Json::nullValue))==0||++background>3))continue;
         auto regional=e.get("regional_actor", "").asString();
         require(regional.empty()||(w.territories.isMember(regional)&&w.territories[regional]["controller"]==ev&&w.territories[regional]["kind"]!="residual"),"Invalid regional authority");
         auto text=e["description"].asString();
@@ -545,12 +569,13 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         event["identity_changes"]=Json::arrayValue;
         for(const auto &c:pending)if(c.kind=="actor"&&c.event==id&&c.after["flag_revision"].isUInt()&&c.after["flag_revision"]!=c.before["flag_revision"]){Json::Value link;link["actor"]=c.id;link["revision"]=c.after["flag_revision"];event["identity_changes"].append(link);}
         event["major"]=blocked=="none"&&(structural||event.isMember("breaches"));
-        if(blocked=="none"&&!event["major"].asBool()&&e["significance"]=="major")declared.push_back(events.size());
+        // A severe or strong effect declares a headline; the model no longer labels significance itself.
+        bool strong=false;for(auto &x:event.get("effects",Json::arrayValue))for(auto k:{"economy","stability"})strong=strong||x[k]=="severe_decline"||x[k]=="strong_growth";
+        if(blocked=="none"&&!event["major"].asBool()&&strong)declared.push_back(events.size());
         events.append(event);
     }
-    // A small model calls too much major: beyond what changed the map, a month keeps its three weightiest headlines.
-    auto weight=[&](Json::ArrayIndex n){int score=0;for(auto &x:events[n]["effects"])for(auto k:{"economy","stability"}){auto v=x[k].asString();score+=v=="severe_decline"||v=="strong_growth"?2:v=="none"?0:1;}return score;};
-    std::stable_sort(declared.begin(),declared.end(),[&](Json::ArrayIndex a,Json::ArrayIndex b){return weight(a)>weight(b);});
+    // Beyond what changed the map, a month keeps its three weightiest headlines.
+    std::stable_sort(declared.begin(),declared.end(),[&](Json::ArrayIndex a,Json::ArrayIndex b){return effectWeight(events[a].get("effects",Json::nullValue))>effectWeight(events[b].get("effects",Json::nullValue));});
     for(size_t n=0;n<declared.size()&&n<3;++n)events[declared[n]]["major"]=true;
     WorldDelta d;d.events=events;
     // Actors first so later territory and entity changes may reference them.

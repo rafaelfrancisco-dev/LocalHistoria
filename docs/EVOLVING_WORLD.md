@@ -16,9 +16,9 @@ Rebuild with `make geography-env` then `make data` when inputs change. For an ex
 
 There are no fixed action types or costs. National status (population, GDP, stability) grounds decisions and evolves deterministically; see [National status and war](#national-status-and-war). Each month the player writes up to eight free-text actions, each optionally pinned to up to four region/entity/actor targets (clicking a map region adds one to the selected action). A turn:
 
-1. Reserves two independent national actions and one independent regional action, then picks up to four reactive AI nations: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes up to three free-text actions of its own, without thinking.
+1. Reserves two independent national actions and one independent regional action, then picks up to four reactive AI nations: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes one free-text action of its own, without thinking; nations the player's actions name or that are in an open conflict with the player write up to two, since those are the months that matter.
 2. Runs `resolve`: advances the month and completes construction whose `completes_turn` has arrived, recording a factual completion event.
-3. Asks the model to adjudicate every action together (with thinking) and compiles its answer into a validated delta.
+3. Asks the model to adjudicate every action together and compiles its answer into a validated delta. It thinks only when at least one action concerns war, military moves, borders, territory, independence, sanctions or treaties (`consequential()` in `src/world.cpp`); a month of reforms, talks and trade is answered directly.
 4. Applies `applyMonthlyStatus`: demographic and economic trends, model effects, occupation, war fronts, casualties, displacement and stability.
 5. Commits state, delta, events and inference records in one transaction, then requests narration.
 
@@ -28,13 +28,13 @@ Actor IDs are independent of country codes. A landless actor keeps playing.
 
 The model does not write deltas directly. Asking a 4B model for exact `before`/`after` objects produced invalid output in most scenarios. Instead it returns compact **operations nested in events**, and `compileOperations` in `src/world.cpp` derives the exact delta:
 
-- **Events.** Each event has `actor`, `background`, `blocked_by`, `causes`, `description` and `operations`.
+- **Events.** Each event has `actor`, `background`, `blocked_by`, `causes`, `description` (one sentence, at most 160 characters) and `operations`, plus optional `effects`.
   - The event ID is `t<TURN>-<slug of description>`, deduplicated.
   - Related actors, regions and entities are derived from its operations.
   - An event may have no operations: reforms, trade, research and negotiations are recorded as history.
   - At most three background events are kept.
 - **Operations.** Each is named by `action`: `build`, `transfer_territory`, `occupy`, `restore_control`, `move_entity`, `set_entity_status`, `create_actor`, `open_conflict` (with `kind`, `name` and starting `intensity`), `set_conflict_intensity` (parties only), `resolve_conflict`, `add_commitment` (with `kind` and `name`), `resolve_commitment`. Alliances and treaties are commitments; armies and fleets are entities.
-- **Effects.** Each event lists up to three `effects`: `{actor, economy, stability}`, each one of `severe_decline`, `decline`, `none`, `growth`, `strong_growth`. Invalid or unknown effects are dropped; blocked or rolled-back events have none. An event keeps its effects when only some of its operations were dropped.
+- **Effects.** An event may list up to three `effects`: `{actor, economy, stability}`, each one of `severe_decline`, `decline`, `none`, `growth`, `strong_growth`. Absent means none; a world event must list at least one. Invalid or unknown effects are dropped; blocked or rolled-back events have none. An event keeps its effects when only some of its operations were dropped.
 - **Schema constraints.**
   - Region, entity, event-actor, conflict, commitment and cause references are restricted to IDs present in the supplied facts.
   - `blocked_by` accepts only `none` or an open commitment the event's actor is party to, so a denial cannot cite an invented rule or someone else's treaty. C++ also ignores a commitment cited by a non-party, and records no breach when every operation of the event was dropped.
@@ -61,12 +61,12 @@ An operation that breaks a limit is dropped on its own. The rest of its event st
 
 Events also record the wars (`conflicts`) and treaties (`commitments`) their operations opened, escalated or ended.
 
-**Significance.** Each outcome and world event carries `significance`, `routine` or `major`, which the model decides last. Major means international headlines: a disaster, revolt, coup, election, turning point in a war, new state or treaty. C++ records `major` on the event:
+**Significance.** The model does not label significance; C++ derives `major` on the event from what it did (an earlier `significance` field cost tokens on every event and was mostly called `major`):
 - Events whose operations changed the map or a war are always major. That covers occupation, handover or restored control, wars opened, escalated or ended, new states, identity changes, treaties other than trade agreements and `other`, ended commitments, event sites, destroyed entities, and treaty breaches.
-- Model-declared major events are capped at three a month, keeping those with the strongest effects.
-- Routine world events are dropped, so background developments exist only for what historians would record.
+- An event with a `severe_decline` or `strong_growth` effect is a declared headline. Declared headlines are capped at three a month, keeping those with the weightiest effects.
+- World events without any effect are dropped, so background developments exist only for what changed something.
 - Blocked and rolled-back events are never major.
-- Events saved before significance existed count as major only for a breach, a new flag or a severe effect.
+- Events saved before `major` existed count as major only for a breach, a new flag or a severe effect.
 
 **Events on the map.** The map derives event markers from saved history without changing state. Only major events appear. A major event is on the map for three months after the latest of its own month and the month of the last feasible event citing it as a cause, and for as long as a war it shaped is open. War tolls are routine (fronts already show in the Wars & treaties map mode), and of construction only finished cities are major. Markers sit at the event's regions and entities, or at the acting nation's most populous region.
 
@@ -145,7 +145,7 @@ Limitations: conflicts have parties, not sides, so co-belligerents listed in one
 
 AI nation decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
 
-Every inference reads the context size from `/props` (at least 8,192 tokens), applies the server chat template, then calls its tokenizer. The request reserves 768 output tokens, or 2,048 plus a reasoning budget of 256 tokens per action plus 256 (512–2,048) for adjudication, and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
+Every inference reads the context size from `/props` (at least 8,192 tokens), applies the server chat template, then calls its tokenizer. The request reserves 768 output tokens, or for adjudication 768 plus 160 per outcome (bounded to 1,536–4,096) plus a reasoning budget of 256 plus 128 per consequential action (384–768, zero when no action is consequential), and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
 
 ## API additions
 
@@ -193,6 +193,8 @@ End-to-end campaign (disposable save, Portugal on real ADM1 regions; one AI nati
    - Free Lusitania was created and owns Guarda;
    - the expeditionary army completed on schedule;
    - Spain accepted a ceasefire, resolving the war.
+
+Turn output diet (measured 2026-09-18, `tools/living_world_probe.py --months 2`, Portugal with no player orders, so each month adjudicates four intentions: two independent national, one regional and one reactive neighbor). Before: 159 s and 212 s to commit, with adjudication generating about 2,650 tokens (950 reasoning) for a 13-intention month. After reactive nations dropped to one or two actions, `significance` left the schema, descriptions shrank to 160 characters and reasoning became conditional: 94.6 s and 87.5 s to commit; adjudication generated 1,218 and 1,294 tokens including reasoning (both months reasoned, since "trade accord" and "data sovereignty" match the consequential stems), prompts of 4,327 and 4,581 tokens, 37–40 s of generation; each decision generated 48–215 tokens. Both months replayed identically.
 
 Earlier runs showed the model's typical mistakes. It sometimes picks the wrong operation for an action (e.g. `build` in an enemy region for an invasion) or a mismatched reason. In those cases the game blocks the event, and the journal says why.
 

@@ -29,7 +29,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
     result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
    existing=result['events'];result['events']=[next((e for e in existing if e['actor']==i['actor'] and (e['description']==i['action'] or fixture)),{'actor':i['actor'],'blocked_by':'none','description':i['action'],'causes':[],'operations':[]}) for i in value['intentions']]
    for i,e in zip(value['intentions'],result['events']):
-    if 'railway' in i['action']:e['significance']='major'
+    if 'railway' in i['action']:e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
     if 'war-fixture' in i['action']:
@@ -141,7 +141,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
-   assert Mock.requests and all((b['max_tokens']==768 or 2048<=b['max_tokens']<=6144) and b['response_format']['type']=='json_schema' for b in Mock.requests)
+   assert Mock.requests and all((b['max_tokens']==768 or 1536<=b['max_tokens']<=4096+768) and b['response_format']['type']=='json_schema' for b in Mock.requests)
    print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, national status, named wars and war tolls, frozen references, restart and interrupted jobs',flush=True)
   finally:s.stop()
 

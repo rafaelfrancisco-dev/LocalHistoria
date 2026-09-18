@@ -1,5 +1,7 @@
 # 04 · Turn output diet: fewer AI actions, smaller outcomes, reasoning only when needed
 
+**Status: done (2026-09-18).** Probe with four intentions a month: 94.6 s / 87.5 s to commit (baseline 159 s / 212 s), adjudication generated 1,218 / 1,294 tokens including reasoning; numbers recorded in `docs/EVOLVING_WORLD.md`.
+
 ## Goal
 Cut the tokens the model must generate per month. Generation runs at ~31 tok/s and is ~60 % of adjudication
 time; month 2 generated ~2,650 tokens (950 reasoning + ~1,660 answer) for 13 outcomes.

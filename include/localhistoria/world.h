@@ -17,4 +17,9 @@ int constructionMonths(const std::string &kind);
 // Whether an actor can project force into a region this month (bordering controlled land, or a nearby army/fleet).
 bool reaches(const WorldState &, const Adjacency &, const std::string &actor, const std::string &region);
 bool containsPoint(const Json::Value &geometry, double longitude, double latitude);
+std::string lowercase(const std::string &);
+// Whole-word match on lowercased text.
+bool containsWord(const std::string &text, const std::string &word);
+// Wars, invasions, territory and treaties: an action whose outcome history can change, worth grounding and reasoning about.
+bool consequential(const std::string &text);
 }

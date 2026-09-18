@@ -82,37 +82,12 @@ static std::string campaignDate(int turn) {
 struct Mentions {
     std::set<std::string> actors, regions;
 };
-static std::string lower(const std::string &s) {
-    std::string o;
-    for (unsigned char c : s) o += char(std::tolower(c));
-    return o;
-}
-static bool containsWord(const std::string &text, const std::string &word) {
-    for (auto at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
-        auto boundary = [&](size_t i) { return i >= text.size() || !std::isalnum(static_cast<unsigned char>(text[i])); };
-        if ((at == 0 || boundary(at - 1)) && boundary(at + word.size())) return true;
-    }
-    return false;
-}
-// Wars, invasions, territory and treaties: actions whose outcome history can change.
-static bool consequential(const TurnOrders &orders) {
-    static const std::vector<std::string> stems{"invad", "invasion", "annex", "occup", "troop", "militar", "mobili", "armies", "fleet", "naval",
-        "border", "offensive", "attack", "bombard", "treaty", "treaties", "alliance", "allied", "accord", "agreement", "ceasefire", "cease-fire",
-        "peace", "armistice", "independen", "secession", "seced", "autonom", "sanction", "blockade", "embargo", "territor", "sovereign", "rebel", "insurg"};
-    static const std::vector<std::string> words{"war", "wars", "pact", "army", "navy", "coup", "cede", "union"};
-    for (auto &o : orders) {
-        auto text = lower(o.text);
-        for (auto &stem : stems) if (text.find(stem) != std::string::npos) return true;
-        for (auto &word : words) if (containsWord(text, word)) return true;
-    }
-    return false;
-}
 // Free text names nations and regions; resolve those names to IDs so the model sees the relevant map.
 static Mentions mentioned(const WorldState &w, const std::string &actor, const TurnOrders &orders) {
     Mentions m;
     std::string text;
     for (auto &o : orders) {
-        text += lower(o.text) + "\n";
+        text += lowercase(o.text) + "\n";
         for (auto &t : o.targets) {
             if (w.hasActor(t)) m.actors.insert(t);
             else if (w.territories.isMember(t)) m.regions.insert(t);
@@ -120,12 +95,12 @@ static Mentions mentioned(const WorldState &w, const std::string &actor, const T
         }
     }
     for (auto &id : w.actors.getMemberNames()) {
-        auto name = lower(w.actors[id]["name"].asString());
+        auto name = lowercase(w.actors[id]["name"].asString());
         if (name.size() >= 4 && containsWord(text, name)) m.actors.insert(id);
     }
     std::map<std::string, std::vector<std::string>> byName;
     for (auto &id : w.territories.getMemberNames()) {
-        auto name = lower(w.territories[id]["name"].asString());
+        auto name = lowercase(w.territories[id]["name"].asString());
         if (name.size() >= 4 && w.territories[id]["kind"] != "residual") byName[name].push_back(id);
     }
     for (auto &[name, ids] : byName) {
@@ -156,7 +131,8 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
         acting.insert(a);
         auto m = mentioned(w, a, o);
         // The acting nation and the nations it names get recent history when the action is about war, land or treaties.
-        if (consequential(o)) { grounded.insert(a); grounded.insert(m.actors.begin(), m.actors.end()); }
+        for (auto &action : o)
+            if (consequential(action.text)) { grounded.insert(a); grounded.insert(m.actors.begin(), m.actors.end()); break; }
         relevant.insert(m.regions.begin(), m.regions.end());
         // Nations an actor addresses without naming a region: the parts of them it borders, where an invasion or handover would begin.
         for (auto &target : m.actors)
@@ -457,7 +433,7 @@ int main(int argc, char **argv) {
             if(req->getParameter("campaign")!=w.campaignId||!w.hasActor(a))throw ValidationError("Unknown campaign flag");
             auto actor=w.actors[a];std::string svg;
             if(rev=="fallback")svg=makeFlag(Json::nullValue,w.campaignId+a,"legacy")["svg"].asString();
-            else {if(!std::regex_match(rev,std::regex("[0-9]{1,6}")))throw ValidationError("Invalid flag revision");auto n=std::stoul(rev);if(!actor["identity_revisions"].isArray()||n>=actor["identity_revisions"].size())throw ValidationError("Unknown flag revision");auto r=actor["identity_revisions"][Json::ArrayIndex(n)];svg=r["svg"].asString();if(svg.empty()){auto code=r["static_flag"].asString();if(!std::regex_match(code,std::regex("[A-Z]{2}")))throw ValidationError("No static flag");std::ifstream f("web/flags/"+lower(code)+".svg");svg=std::string(std::istreambuf_iterator<char>(f),{});}}
+            else {if(!std::regex_match(rev,std::regex("[0-9]{1,6}")))throw ValidationError("Invalid flag revision");auto n=std::stoul(rev);if(!actor["identity_revisions"].isArray()||n>=actor["identity_revisions"].size())throw ValidationError("Unknown flag revision");auto r=actor["identity_revisions"][Json::ArrayIndex(n)];svg=r["svg"].asString();if(svg.empty()){auto code=r["static_flag"].asString();if(!std::regex_match(code,std::regex("[A-Z]{2}")))throw ValidationError("No static flag");std::ifstream f("web/flags/"+lowercase(code)+".svg");svg=std::string(std::istreambuf_iterator<char>(f),{});}}
             auto response=HttpResponse::newHttpResponse();response->setBody(svg);response->addHeader("Content-Type","image/svg+xml");response->addHeader("Content-Security-Policy","default-src 'none'; sandbox");response->addHeader("X-Content-Type-Options","nosniff");response->addHeader("Cache-Control","private, max-age=31536000, immutable");cb(response);
         },{Get});
         route("/api/v1/model-config",
@@ -550,6 +526,9 @@ int main(int argc, char **argv) {
                   std::set<std::string> actors;
                   for(auto &a:candidates)if(a!=w.player&&w.hasActor(a)&&actors.size()<maxAiActors)actors.insert(a);
                   actors.erase(w.player);
+                  // One action each; two for nations the player named or is fighting, the only ones whose month usually matters.
+                  std::map<std::string,int> reactiveCounts;
+                  for(auto &a:actors){int count=1;if(mentions.actors.contains(a))count=2;for(auto &v:w.conflicts)if(engaged(v)&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(a))!=v["actors"].end())count=2;reactiveCounts[a]=count;}
                   auto allocations=scheduleInitiatives(w,actors);
                   auto prior=store.query("SELECT slots FROM monthly_allocations WHERE campaign=? AND month=?",{w.campaignId,std::to_string(w.turn+1)});
                   if(!prior.empty())allocations=parse(prior[0]["slots"].asString());
@@ -581,7 +560,7 @@ int main(int argc, char **argv) {
                   for(auto &k:refs.getMemberNames())if(refs[k].isObject())refs[k].removeMember("history_source");
                   prepareReferences(w);
                   try {
-                      worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts] {
+                      worker.add([&, w, orders, id, actors, refs, contexts, allocations, independentContexts, reactiveCounts] {
                           bool committed = false;
                           try {
                               auto turnContexts=contexts;auto turnIndependent=independentContexts;auto turnRefs=refs;
@@ -635,7 +614,7 @@ int main(int argc, char **argv) {
                               }
                               std::map<std::string, TurnOrders> intentions{{w.player, orders}};
                               for (auto &a : actors) {
-                                  auto c = turnContexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=3;c.facts["player_actions"]=encode(orders);
+                                  auto c = turnContexts.at(a);c.facts["initiative_type"]="reactive";c.facts["action_count"]=reactiveCounts.at(a);c.facts["player_actions"]=encode(orders);
                                   intentions[a] = provider.decide(w, c).orders;
                                   // Flushed as it lands so the client can show it before the month is adjudicated.
                                   {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}

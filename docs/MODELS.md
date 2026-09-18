@@ -76,7 +76,7 @@ Measured on the same first month of a Brazil campaign: about 250 s before these 
 
 The server enables thinking by default. The app sets `chat_template_kwargs.enable_thinking` per request:
 
-- **Adjudication** (deciding what happens) thinks, with a `thinking_budget_tokens` of 128 per action plus 256, bounded to 384–1,024. Unbounded, the 4B model spent over 4,000 tokens (2+ minutes) reasoning about a single construction order. If a reasoning run produces no valid answer, adjudication is retried once without thinking.
+- **Adjudication** (deciding what happens) thinks only when at least one action of the month is about war, military moves, borders, territory, independence, sanctions or treaties, with a `thinking_budget_tokens` of 128 per such action plus 256, bounded to 384–768. A month of reforms, talks and trade is answered without thinking. Unbounded, the 4B model spent over 4,000 tokens (2+ minutes) reasoning about a single construction order. If a reasoning run produces no valid answer, adjudication is retried once without thinking.
 - **AI nations' actions** and **narration** do not think, to keep a month's turn short.
 
 ## Requests
@@ -85,11 +85,11 @@ The adapter uses [`POST /v1/chat/completions`](https://github.com/ggml-org/llama
 
 - `response_format.type=json_schema`, temperature 0.6 for adjudication and 0.7 for AI actions and narration (at temperature 0 AI nations repeated the same actions every month);
 - 768 output tokens reserved for decisions and narration;
-- 2,048 answer tokens plus the reasoning budget reserved for adjudication.
+- 768 answer tokens plus 160 per adjudicated action (bounded to 1,536–4,096), plus the reasoning budget when thinking, reserved for adjudication. Each outcome's description is limited to 160 characters.
 
 The request accepts no tool calls or file access. The model alias is `local`. Reasoning text is kept in the inference audit (`GET /api/v1/inference?job=…`), never shown as game fact.
 
-An AI nation's decision has the form `{"actions":[{"text":"Open trade talks with Portugal"}]}`, with at most three actions. Adjudication returns events with compact map operations; C++ validates them, enforces realistic pacing and derives the exact world delta. See [Evolving world](EVOLVING_WORLD.md). Any unreachable, timed-out, malformed or oversized result fails the turn outright: no scripted fallback, no partial state change. Resubmit once the model is healthy. Narration is requested as `{"text":"..."}` after the state commit. It is always labelled as AI narration. If it fails, the committed factual event summary is kept.
+An AI nation's decision has the form `{"actions":[{"text":"Open trade talks with Portugal"}]}`, with one action, or two for a nation the player named or is fighting. Adjudication returns events with compact map operations; C++ validates them, enforces realistic pacing and derives the exact world delta. See [Evolving world](EVOLVING_WORLD.md). Any unreachable, timed-out, malformed or oversized result fails the turn outright: no scripted fallback, no partial state change. Resubmit once the model is healthy. Narration is requested as `{"text":"..."}` after the state commit. It is always labelled as AI narration. If it fails, the committed factual event summary is kept.
 
 The app permits `0 < timeout_seconds ≤ 600` per request (default 240), set in the JSON config file passed as the server's positional argument.
 

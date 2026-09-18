@@ -52,7 +52,7 @@ int main(){try{
  check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
  auto &developments=schema["properties"]["world_events"];
  check(developments["maxItems"].asInt()==2&&!developments["items"]["properties"].isMember("operations")&&developments["items"]["properties"]["actor"]["enum"]==parse(R"(["far","neighbor"])"),"World events are narrative and never the player's decisions");
- auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[],"significance":"major"},{"actor":"far","causes":[],"description":"Markets steady","significance":"routine"}]})"),{});
+ auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[],"effects":[{"actor":"neighbor","economy":"growth","stability":"none"}]},{"actor":"far","causes":[],"description":"Markets steady"}]})"),{});
  auto invented=compileOperations(opsBase.state,parse(R"({"events":[],"world_events":[{"actor":"old-state","causes":[],"description":"Old builds a fortress"},{"actor":"neighbor","causes":[],"description":"Neighbor takes West","operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})"),{});
  check(invented.events.empty()&&invented.changes.empty(),"Invented player decisions and map changes are dropped");
  check(split2.events.size()==2&&!split2.events[0]["background"].asBool()&&split2.events[1]["background"].asBool(),"Outcomes then world events");
@@ -60,7 +60,7 @@ int main(){try{
  auto ops=parse(R"({"events":[{"description":"West Secedes!","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[
   {"action":"create_actor","actor_id":"west-rep","name":"West Republic","color":"#00aa00"},{"action":"transfer_territory","region":"west","to":"west-rep"},
   {"action":"build","kind":"port","name":"Harbor","actor":"old-state","region":"east"},{"action":"build","kind":"port","name":"Harbor","actor":"old-state","region":"east"},
-  {"action":"open_conflict","actors":["old-state","west-rep"],"text":"Dispute"}]},{"description":"West secedes","actor":"neighbor","blocked_by":"none","background":true,"significance":"major","causes":[],"operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})");
+  {"action":"open_conflict","actors":["old-state","west-rep"],"text":"Dispute"}]},{"description":"West secedes","actor":"neighbor","blocked_by":"none","background":true,"effects":[{"actor":"neighbor","economy":"none","stability":"decline"}],"causes":[],"operations":[{"action":"occupy","region":"west","by":"neighbor"}]}]})");
  auto compiled=compileOperations(opsBase.state,ops,adjacency);check(compiled.events[0]["id"]=="t1-west-secedes"&&compiled.events[1]["id"]=="t1-west-secedes-2","Event IDs");
  auto seceded=applyDelta(opsBase,compiled,geo);
  check(seceded.state.territories["west"]["owner"]=="west-republic"&&seceded.state.territories["west"]["controller"]=="neighbor","Secession and bordering occupation");
@@ -117,10 +117,10 @@ int main(){try{
  auto binding=operationSchema(treaty.state,encode(treaty.state),{{"far","Wait"},{"neighbor","Wait"}})["properties"]["events"]["prefixItems"];
  check(binding[0]["properties"]["blocked_by"]["enum"].size()==1&&binding[1]["properties"]["blocked_by"]["enum"][1]=="treaty-9","Only an actor's own commitments can block it");
  rejects([&]{compile(R"({"events":[{"description":"Ghost","actor":"nobody","blocked_by":"none","background":false,"causes":[],"operations":[]}]})");});
- auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[],"significance":"major"})"));
+ auto noisy=parse(R"({"events":[]})");for(int n=0;n<5;++n)noisy["events"].append(parse(R"({"description":"Rumor","actor":"neighbor","blocked_by":"none","background":true,"causes":[],"operations":[],"effects":[{"actor":"neighbor","economy":"none","stability":"severe_decline"}]})"));
  check(compileOperations(opsBase.state,noisy,adjacency).events.size()==3,"Background events capped");
  // Wars and treaties get historians' names, kinds and intensity; effects are validated and recorded on events.
- check(outcomes["prefixItems"][0]["required"].size()==8&&outcomes["prefixItems"][0]["properties"]["effects"]["maxItems"]==3,"Events carry effects");
+ check(outcomes["prefixItems"][0]["required"].size()==6&&!outcomes["prefixItems"][0]["properties"].isMember("significance")&&developments["items"]["properties"]["effects"]["minItems"]==1&&outcomes["prefixItems"][0]["properties"]["effects"]["maxItems"]==3,"Events carry effects");
  auto named=compile(R"({"events":[{"description":"War is declared","actor":"old-state","blocked_by":"none","background":false,"causes":[],"effects":[{"actor":"old-state","economy":"decline","stability":"growth"},{"actor":"ghost","economy":"decline","stability":"decline"},{"actor":"neighbor","economy":"none","stability":"none"}],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"kind":"war","intensity":"high","name":"March War","text":"War over the March"},{"action":"add_commitment","actors":["neighbor","far"],"kind":"defence_pact","name":"Defence Pact","text":"Mutual defence"}]},
   {"description":"Another war","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"open_conflict","actors":["neighbor","old-state"],"kind":"skirmish","name":"March War","text":"Again"}]}]})");
  auto namedWorld=applyDelta(opsBase,named,geo);
@@ -148,20 +148,21 @@ int main(){try{
  check(cited.changes.size()==1&&cited.changes[0]["after"]["expires_turn"]==aged.turn+eventMapMonths&&cited.events[0]["entities"][0]==siteId,"Citing an incident renews its site");
  auto touched=compileOperations(aged,parse(std::string(R"({"events":[{"description":"Memorial closed","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"set_entity_status","entity":")")+siteId+R"(","status":"inactive"}]}]})"),adjacency);
  check(touched.changes.size()==1&&touched.changes[0]["after"]["status"]=="inactive"&&!touched.changes[0]["after"].isMember("expires_turn"),"An inactive site loses its expiry");
- // Significance: map and war changes are major whatever the model says; the model's own headlines are capped at three a month; routine world events are dropped.
- check(split2.events.size()==2,"Routine world developments are dropped");
+ // Significance: map and war changes are major whatever the model says; a severe or strong effect declares a headline, capped at three a month; world events without an effect are dropped.
+ check(split2.events.size()==2,"World developments without an effect are dropped");
  auto headlines=parse(R"({"events":[]})");
- for(auto text:{"Talks","Summit","Protest","Visit","Election"})headlines["events"].append(parse(std::string(R"({"description":")")+text+R"(","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[],"significance":"major"})"));
- headlines["events"][4]["effects"]=parse(R"([{"actor":"neighbor","economy":"none","stability":"severe_decline"}])");
+ for(auto text:{"Talks","Summit","Protest","Visit","Election"})headlines["events"].append(parse(std::string(R"({"description":")")+text+R"(","actor":"neighbor","blocked_by":"none","background":false,"causes":[],"operations":[],"effects":[{"actor":"neighbor","economy":"strong_growth","stability":"none"}]})"));
+ headlines["events"][3]["effects"]=parse(R"([{"actor":"neighbor","economy":"decline","stability":"none"}])");
+ headlines["events"][4]["effects"]=parse(R"([{"actor":"neighbor","economy":"severe_decline","stability":"severe_decline"}])");
  auto capped=compileOperations(opsBase.state,headlines,adjacency);int majors=0;for(auto &e:capped.events)majors+=e["major"].asBool();
- check(majors==3&&capped.events[4]["major"].asBool()&&!capped.events[3]["major"].asBool(),"Model-declared headlines are capped, weightiest first");
+ check(majors==3&&capped.events[4]["major"].asBool()&&capped.events[0]["major"].asBool()&&!capped.events[2]["major"].asBool()&&!capped.events[3]["major"].asBool(),"Strong effects declare headlines, capped weightiest first; mild ones stay routine");
  check(named.events[0]["major"].asBool()&&!reform.events[0]["major"].asBool()&&site.events[0]["major"].asBool()&&!orphan.events[0]["major"].asBool(),"Map and war changes are major");
  // Events link the wars and treaties they shape.
  check(named.events[0]["conflicts"]==parse(R"(["c1-1"])")&&named.events[0]["commitments"]==parse(R"(["k1-2"])")&&ended.events[0]["conflicts"]==parse(R"(["c1-1"])")&&reform.events[0]["conflicts"].empty(),"Events record their wars and treaties");
  {
   // The event log: categories, places, scope and what is still on the map.
   Store log(":memory:");auto start=opsBase.state;start.turn=0;log.create(start,false);
-  auto world=parse(R"({"events":[{"description":"Flood strikes West","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"build","kind":"event_site","name":"West flood","actor":"old-state","region":"west"}]},{"description":"Island reform","actor":"far","blocked_by":"none","background":false,"causes":[],"operations":[]},{"description":"Orphan","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"create_actor","actor_id":"z","name":"Zed","color":"#00aa00"}]}],"world_events":[{"actor":"neighbor","causes":[],"description":"Harvest festival","significance":"major"}]})");
+  auto world=parse(R"({"events":[{"description":"Flood strikes West","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"build","kind":"event_site","name":"West flood","actor":"old-state","region":"west"}]},{"description":"Island reform","actor":"far","blocked_by":"none","background":false,"causes":[],"operations":[]},{"description":"Orphan","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"create_actor","actor_id":"z","name":"Zed","color":"#00aa00"}]}],"world_events":[{"actor":"neighbor","causes":[],"description":"Harvest festival","effects":[{"actor":"neighbor","economy":"severe_decline","stability":"none"}]}]})");
   auto first=resolve(start);auto delta=compileOperations(first.state,world,adjacency);auto month=applyDelta(first,delta,geo);
   Json::Value r;r["delta"]=encode(delta);log.commit(log.submit(0,"log-1","{}")["id"].asString(),month,{},r);
   auto current=month.state;

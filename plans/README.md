@@ -15,28 +15,28 @@ implement it without reading the other plans. Conventions for every plan:
 
 Recommended order (dependencies in parentheses):
 
-| # | Plan | Area | Size |
-|---|---|---|---|
-| 01 | authority-checks | correctness | S |
-| 02 | war-toll-calibration | correctness | S |
-| 03 | partial-failed-events | correctness + UI | M |
-| 04 | turn-output-diet | performance | S |
-| 05 | adjudication-prompt-and-schema | performance | M |
-| 06 | chronicles | performance + correctness | S |
-| 07 | invasion-guidance-and-probe | model quality | S |
-| 08 | map-geometry | UI performance | M |
-| 09 | ui-cleanups | UI | M |
-| 10 | turn-cancel-and-deadline | UI + server | M |
-| 11 | clang-format | code | S (do alone, separate commit) |
-| 12 | split-main (after 11) | code | L |
-| 13 | operation-compiler (after 11, 01, 03) | code | L |
-| 14 | typed-keys-and-small-fixes (after 11) | code | M |
-| 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M |
-| 16 | windows-followups | portability | S |
-| 17 | independent-slot-relevance | simulation | S |
-| 18 | effect-overrides (after 04) | simulation | S |
-| 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L |
-| 20 | release-build-and-docs (last) | build + docs | S |
+| # | Plan | Area | Size | Status |
+|---|---|---|---|---|
+| 01 | authority-checks | correctness | S | |
+| 02 | war-toll-calibration | correctness | S | |
+| 03 | partial-failed-events | correctness + UI | M | |
+| 04 | turn-output-diet | performance | S | done 2026-09-18 |
+| 05 | adjudication-prompt-and-schema | performance | M | |
+| 06 | chronicles | performance + correctness | S | |
+| 07 | invasion-guidance-and-probe | model quality | S | |
+| 08 | map-geometry | UI performance | M | |
+| 09 | ui-cleanups | UI | M | |
+| 10 | turn-cancel-and-deadline | UI + server | M | |
+| 11 | clang-format | code | S (do alone, separate commit) | |
+| 12 | split-main (after 11) | code | L | |
+| 13 | operation-compiler (after 11, 01, 03) | code | L | |
+| 14 | typed-keys-and-small-fixes (after 11) | code | M | |
+| 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | |
+| 16 | windows-followups | portability | S | |
+| 17 | independent-slot-relevance | simulation | S | |
+| 18 | effect-overrides (after 04) | simulation | S | |
+| 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L | |
+| 20 | release-build-and-docs (last) | build + docs | S | |
 
 Baseline numbers to beat (real save, India, Qwen3.5-4B, M1 Pro): month 1 159 s, month 2 212 s;
 adjudication 100 s / 123 s with 6,047 / 12,420 prompt tokens and ~2,650 generated tokens; schema 99 / 194 KB.
