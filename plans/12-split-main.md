@@ -1,5 +1,7 @@
 # 12 · Split `main.cpp` into server, turn runner and reference preparer
 
+**Status: done (2026-09-18).** `main.cpp` 114 lines; `TurnRunner` (plan/run) in `turn.cpp`, `ReferencePreparer` (relevance, preparation, refresh/prepare jobs) in `references.cpp`, `newCampaign` and reference loading in `campaign_factory.cpp`, one named handler per route in `server.cpp`, `Worker` in `src/worker.h`. `relevance` is shared, so it lives on `ReferencePreparer` and `TurnDeps` also carries the reference store and preparer; request-specific refs stay in the `/turns` handler. `turn.cpp` moved to `historia_services`. New `turn_tests` runs a month through `TurnRunner` with a faked model.
+
 Do plan 11 first.
 
 ## Goal

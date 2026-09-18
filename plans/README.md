@@ -21,10 +21,10 @@ Recommended order (dependencies in parentheses):
 | 02 | war-toll-calibration | correctness | S | done 2026-09-18 |
 | 03 | partial-failed-events | correctness + UI | M | done 2026-09-18 |
 | 04 | turn-output-diet | performance | S | done 2026-09-18 |
-| 05 | adjudication-prompt-and-schema | performance | M | |
-| 06 | chronicles | performance + correctness | S | |
+| 05 | adjudication-prompt-and-schema | performance | M || done 2026-09-18 |
+| 06 | chronicles | performance + correctness | S || done 2026-09-18 |
 | 07 | invasion-guidance-and-probe | model quality | S | done 2026-09-18 |
-| 08 | map-geometry | UI performance | M | |
+| 08 | map-geometry | UI performance | M || done 2026-09-18 |
 | 09 | ui-cleanups | UI | M | |
 | 10 | turn-cancel-and-deadline | UI + server | M | |
 | 11 | clang-format | code | S (do alone, separate commit) | done 2026-09-18 |
@@ -33,7 +33,7 @@ Recommended order (dependencies in parentheses):
 | 14 | typed-keys-and-small-fixes (after 11) | code | M | |
 | 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | |
 | 16 | windows-followups | portability | S | |
-| 17 | independent-slot-relevance | simulation | S | |
+| 17 | independent-slot-relevance | simulation | S || done 2026-09-18 |
 | 18 | effect-overrides (after 04) | simulation | S | done 2026-09-18 |
 | 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L | done 2026-09-18 |
 | 20 | release-build-and-docs (last) | build + docs | S | |
