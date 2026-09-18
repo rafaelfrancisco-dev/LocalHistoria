@@ -8,7 +8,7 @@ All routes except the SVG flag endpoint use JSON at `http://127.0.0.1:8080/api/v
 | `/campaign` | POST | `{country:"PT",confirm_replace:false}`; confirmation required for existing campaign |
 | `/countries` | GET | Country codes and names; no cities or national populations |
 | `/country?code=PT` | GET | Metadata, top 15 city records, cached reference and, during a campaign, `status` |
-| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders}`, where `orders` is the month's free-text actions; returns persisted job ID, HTTP 202 |
+| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders,responses?}`, where `orders` is the month's free-text actions and optional `responses` (at most 8, `[{proposal,accept}]`) answers pending treaty proposals in `state.proposals`; unanswered proposals lapse. Returns persisted job ID, HTTP 202 |
 | `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; error message on failure; auxiliary jobs also contain results |
 | `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
 | `/history?code=PT` | GET | Cached reference only, no network |

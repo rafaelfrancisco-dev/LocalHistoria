@@ -24,7 +24,7 @@ There are no fixed action types or costs. National status (population, GDP, stab
 
 Actor IDs are independent of country codes. A landless actor keeps playing.
 
-`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, conflict, commitment and regional politics. Deltas are what is validated, saved and replayed.
+`WorldDelta` contains `changes` and structured `events`. Changes contain `kind`, `id`, exact `before`, full `after`, supporting `event`, and `rationale`. Supported collections are actor, territory, entity, conflict, commitment, regional politics and treaty proposals. Deltas are what is validated, saved and replayed.
 
 The model does not write deltas directly. Asking a 4B model for exact `before`/`after` objects produced invalid output in most scenarios. Instead it returns compact **operations nested in events**, and `compileOperations` in `src/world.cpp` derives the exact delta:
 
@@ -57,6 +57,19 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
 - **Event sites.** An `event_site` marks where a notable incident happened. It is active at once with `expires_turn` three months ahead (`eventMapMonths`), and `resolve` makes it `inactive` when that month arrives, without a journal line. A later feasible event renews it for another three months when it involves the site or cites the site's originating event as a cause. Only active event sites carry `expires_turn`; sites saved before expiry existed keep none until an event touches them, so replay is unchanged.
 - **New states.** At most one new state per month, and it must receive territory in the same event.
+
+**Authority.** An actor changes only what it has a say in:
+- Only a party can open, escalate, scale down or end a war, and only a party can sign or end a treaty.
+- A treaty needs consent from every other party: that party's own outcome this month (not a world event) must name the proposer as a whole word. A state created in the same event needs no consent. Wars need none.
+- A nation builds only for itself (or for a state it creates in that event); event sites follow the same rule.
+- Destroying another nation's entity needs an open war between the two, from before this month or declared earlier in the same month's outcomes, on top of reach.
+
+**Treaty proposals.** A treaty an AI nation signs with the player, when the player's own actions that month do not name that nation, becomes a proposal instead of being dropped. It is stored in `proposals` under the commitment ID it will take (`{from, actors, kind, name, text, status, proposed_turn, event}`), and the event text adds that it awaits the player's answer. The next month the player answers it in the side panel; `POST /turns` carries `responses`. As that month resolves, `settleProposals` adds to the delta:
+- accepted: the treaty under the reserved ID, and an event by the player citing the offer (a trade agreement or union lifts every party's economy, as when signed outright);
+- declined: an event by the player saying so;
+- unanswered: the proposal lapses with an event by the proposer.
+
+Proposals are answered once, only in a later month, and are part of the recorded delta, so replay needs no extra input. Pending proposals appear in each party's decision facts (`treaty_proposals`), and the proposer acts in the month the answer arrives.
 
 An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
 
@@ -174,7 +187,7 @@ Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1
 | overreach: "Conquer all of Spain this month." | Spain's interior untouched, nothing annexed | 3/3 |
 | capital: "Build a new city in North to serve as the future capital." | city under construction in North | 3/3 (2/3 on 2026-09-17, once narrated only) |
 | invasion: "Invade Spain." | East controlled by Portugal, still owned by Spain, one open war | 2/3 (once the model narrated the invasion as repelled and tried to build armies in East, which the game dropped) |
-| treaty_consent (Spain): "Sign a defence pact with Portugal." | pact created; Portugal's own actions do not mention Spain | 3/3 (expected until authority checks require the partner's consent, then the scenario expects no pact) |
+| treaty_consent (Spain): "Sign a defence pact with Portugal." | no pact; one proposal awaiting Portugal (the player), whose own actions do not mention Spain | not re-run since authority checks (earlier expectation, a pact, matched 3/3) |
 
 The first design iterations failed in informative ways:
 

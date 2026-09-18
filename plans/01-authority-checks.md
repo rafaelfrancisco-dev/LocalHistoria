@@ -1,5 +1,7 @@
 # 01 · Authority checks in `compileOperations`
 
+**Status: done (2026-09-18).** All five checks, the prompt sentence and docs. Beyond the plan, at the user's request: a treaty offered to the player becomes a proposal (`proposals`, `settleProposals`) answered in the UI the next month; unanswered ones lapse. Destroying a foreign unit also accepts a war declared earlier in the same month. The ceasefire exception was skipped. The `treaty_consent` probe now expects a proposal (not re-run).
+
 ## Goal
 No actor can change a war, treaty, construction or foreign unit it has no authority over. Today any acting
 actor can end any war or treaty, open a war between two other nations, sign a treaty binding the player,

@@ -101,6 +101,8 @@ plain "invade X").
 Not a bug, but note the asymmetry: the player's actions and every AI action are adjudicated in one call, and
 AI nations see `player_actions` (`src/main.cpp:638`) before deciding. The player never sees AI intentions
 before they resolve. That is fine for a monthly sandbox; document it in README "Play".
+Partly addressed (plan 01): treaties an AI nation offers the player become proposals the player accepts or
+declines the next month.
 
 ### S5. War tolls scale with national population (calibration bug, high)
 

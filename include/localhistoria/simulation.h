@@ -14,6 +14,8 @@ struct WorldState {
     std::string player, campaignId;
     Json::Value actors{Json::objectValue}, territories{Json::objectValue}, entities{Json::objectValue}, conflicts{Json::objectValue}, commitments{Json::objectValue};
     Json::Value regionalPolitics{Json::objectValue}, activity{Json::objectValue};
+    // Treaties an AI nation offered the player, keyed by the commitment ID reserved for them; answered the next month.
+    Json::Value proposals{Json::objectValue};
     bool hasActor(const std::string &id) const { return actors.isMember(id); }
 };
 // A free-text action written by a player or an AI nation, optionally pinned to map targets.

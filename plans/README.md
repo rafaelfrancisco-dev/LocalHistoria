@@ -17,7 +17,7 @@ Recommended order (dependencies in parentheses):
 
 | # | Plan | Area | Size | Status |
 |---|---|---|---|---|
-| 01 | authority-checks | correctness | S | |
+| 01 | authority-checks | correctness | S | done 2026-09-18 |
 | 02 | war-toll-calibration | correctness | S | |
 | 03 | partial-failed-events | correctness + UI | M | |
 | 04 | turn-output-diet | performance | S | done 2026-09-18 |

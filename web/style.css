@@ -538,6 +538,20 @@ footer {
 #add-action {
   width: 100%;
 }
+#proposals {
+  margin-bottom: 10px;
+}
+#proposals h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.proposal .chips {
+  margin: 6px 0;
+}
+.chip.chosen {
+  background: var(--accent);
+  color: #18252a;
+}
 .leaflet-control-attribution {
   font-size: 9px;
 }

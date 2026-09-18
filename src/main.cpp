@@ -356,7 +356,8 @@ int main(int argc, char **argv) {
                                 fields = {{"campaign_id", "string"},
                                           {"expected_turn", "int"},
                                           {"idempotency_key", "string"},
-                                          {"orders", "array"}};
+                                          {"orders", "array"},
+                                          {"responses", "array"}};
                             if (path == "/api/v1/model-config")
                                 fields = {{"llama_endpoint", "string"}};
                             if (path == "/api/v1/history")
@@ -508,15 +509,29 @@ int main(int argc, char **argv) {
                       return;
                   }
                   validate(w, w.player, orders);
+                  // Answers to treaties offered last month; each pending proposal to the player at most once.
+                  std::set<std::string> answered;
+                  if (b["responses"].size() > 8) throw ValidationError("Too many proposal responses");
+                  for (auto &r : b["responses"]) {
+                      if (!r.isObject() || r.getMemberNames() != std::vector<std::string>{"accept", "proposal"} ||
+                          !r["accept"].isBool() || !r["proposal"].isString())
+                          throw ValidationError("Invalid proposal response");
+                      auto pid = r["proposal"].asString();
+                      if (!w.proposals.isMember(pid) || w.proposals[pid]["status"] != "pending" || !answered.insert(pid).second)
+                          throw ValidationError("No pending proposal " + pid);
+                  }
                   auto job = store.submit(b["expected_turn"].asInt(),
                                           b["idempotency_key"].asString(), payload);
                   auto id = job["id"].asString();
                   Json::Value refs(Json::objectValue);
                   refs["status_version"] = statusVersion;
+                  if (b.isMember("responses")) refs["proposal_responses"] = b["responses"];
                   if (backfill) refs["status_seed"] = encode(statusSeed);
                   auto mentions=mentioned(w,w.player,orders);
                   // AI nations that act this month: those the player addresses first, then ongoing disputes and one rotating neighbor.
                   std::vector<std::string> candidates(mentions.actors.begin(),mentions.actors.end());
+                  // A nation whose treaty offer is answered this month reacts to the answer.
+                  for(auto &p:w.proposals)if(p["status"]=="pending")candidates.insert(candidates.begin(),p["from"].asString());
                   // Large blocs (NATO, the EU) would otherwise fill every month with the same alphabetical members.
                   auto engaged=[&](const Json::Value &v){return v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end();};
                   for(auto &v:w.conflicts)if(engaged(v))for(auto &a:v["actors"])candidates.push_back(a.asString());
@@ -634,6 +649,7 @@ int main(int argc, char **argv) {
                               adjudication["facts"]["regional_politics"]=Json::objectValue;
                               for(auto &slot:allocations)if(slot["region"]!=""){auto r=slot["region"].asString();adjudication["facts"]["regional_politics"][r]=regionalState(w,r);}
                               auto delta=provider.adjudicate(result.state,adjudication,adjacency);
+                              settleProposals(result.state,delta,turnRefs.get("proposal_responses",Json::arrayValue));
                               {std::lock_guard l(mutex);store.recordInference(id,provider.takeAudit());}
                               result=applyDelta(result,delta,geography);
                               result=applyMonthlyStatus(result,delta,adjacency);

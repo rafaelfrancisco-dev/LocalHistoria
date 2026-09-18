@@ -28,7 +28,10 @@ class Mock(http.server.BaseHTTPRequestHandler):
    elif intentions:
     result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
    existing=result['events'];result['events']=[next((e for e in existing if e['actor']==i['actor'] and (e['description']==i['action'] or fixture)),{'actor':i['actor'],'blocked_by':'none','description':i['action'],'causes':[],'operations':[]}) for i in value['intentions']]
+   proposing=any('proposal-fixture' in o for o in intentions)
    for i,e in zip(value['intentions'],result['events']):
+    if proposing and i['actor']!='PT' and not i.get('regional_actor'):
+     e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','name':'Fixture Accord','text':'Tariffs cut'}];proposing=False
     if 'railway' in i['action']:e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
@@ -119,7 +122,11 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    assert war['intensity']=='medium' and war['affected_regions'] and war['casualties']>0 and war['displaced']>0,war
    assert current['actors']['PT']['status']['stability']<w['actors']['PT']['status']['stability']
    with sqlite3.connect(s.save) as db:db.execute('INSERT OR REPLACE INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
-   j=s.get('turns',order(current,'third-turn',[]),202);assert s.poll(j['id'])['status']=='complete'
+   j=s.get('turns',order(current,'third-turn',[{'text':'proposal-fixture: hold talks'}]),202);assert s.poll(j['id'])['status']=='complete'
+   current=s.get('campaign')['state'];offers=[k for k,p in current['proposals'].items() if p['status']=='pending'];assert len(offers)==1 and offers[0] not in current['commitments'],current['proposals']
+   s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True}]),409)
+   j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);assert s.poll(j['id'])['status']=='complete'
+   current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord',current['commitments']
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
    replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)
@@ -142,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
    assert Mock.requests and all((b['max_tokens']==768 or 1536<=b['max_tokens']<=4096+768) and b['response_format']['type']=='json_schema' for b in Mock.requests)
-   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, national status, named wars and war tolls, frozen references, restart and interrupted jobs',flush=True)
+   print('HTTP integration passed: duplicates, overlap, stale requests, down/timeout/malformed model hard failures, free-text actions, treaty proposals, national status, named wars and war tolls, frozen references, restart and interrupted jobs',flush=True)
   finally:s.stop()
 
   # A save from before national status gains it on its next month and still replays exactly.

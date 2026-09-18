@@ -285,6 +285,7 @@ async function load() {
     $("player-label").textContent =
       "Playing as " + (countries.find((c) => c.code === state.player)?.name || state.player);
     renderActions();
+    renderProposals();
     const expanded = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details")?.open).map(e => e.dataset.turn));
     $("journal").replaceChildren();
     for (const entry of j.journal) {
@@ -492,6 +493,61 @@ function addTarget(id) {
   renderActions();
   return true;
 }
+// Treaties AI nations offered last month: the player accepts or declines, and the answer takes effect as this month ends.
+function readAnswers() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("proposalAnswers") || "null");
+    if (saved?.campaign_id === state?.campaign_id && saved.turn === state?.turn) return saved.answers || {};
+  } catch {}
+  return {};
+}
+function setAnswers(answers) {
+  try {
+    sessionStorage.setItem("proposalAnswers", JSON.stringify({ campaign_id: state?.campaign_id, turn: state?.turn, answers }));
+  } catch {}
+}
+function pendingProposals() {
+  return Object.entries(state?.proposals || {}).filter(([, p]) => p.status === "pending" && p.actors.includes(state.player));
+}
+function renderProposals() {
+  const box = $("proposals");
+  const offers = pendingProposals();
+  box.hidden = !offers.length;
+  box.replaceChildren();
+  if (!offers.length) return;
+  const h = document.createElement("h3");
+  h.textContent = offers.length === 1 ? "A treaty is offered" : `${offers.length} treaties are offered`;
+  box.append(h);
+  const answers = readAnswers();
+  for (const [id, p] of offers) {
+    const card = document.createElement("article");
+    card.className = "agreement proposal";
+    const others = p.actors.filter((a) => a !== state.player && a !== p.from).map(actorName);
+    const offered = document.createElement("p");
+    offered.className = "meta";
+    offered.textContent = `Offered by ${actorName(p.from)}` + (others.length ? `, with ${others.join(", ")}` : "");
+    const terms = document.createElement("p");
+    terms.textContent = p.text;
+    const choice = document.createElement("div");
+    choice.className = "chips";
+    const note = document.createElement("small");
+    const answer = (value) => () => {
+      const next = readAnswers();
+      if (next[id] === value) delete next[id];
+      else next[id] = value;
+      setAnswers(next);
+      renderProposals();
+    };
+    const accept = button("Accept", "chip" + (answers[id] === true ? " chosen" : ""), answer(true));
+    const decline = button("Decline", "chip" + (answers[id] === false ? " chosen" : ""), answer(false));
+    accept.setAttribute("aria-pressed", String(answers[id] === true));
+    decline.setAttribute("aria-pressed", String(answers[id] === false));
+    note.textContent = id in answers ? "Takes effect as the month ends" : "Lapses if unanswered this month";
+    choice.append(accept, decline, note);
+    card.append(cardHead(p.name, [[kindLabel(p.kind), ""]]), offered, terms, choice);
+    box.append(card);
+  }
+}
 $("add-action").onclick = () => {
   if (draft.length >= 8) return;
   draft.push({ text: "", targets: [] });
@@ -512,6 +568,9 @@ $("turn").onclick = protect(async () => {
         .filter((a) => a.text.trim())
         .map((a) => (a.targets.length ? { text: a.text.trim(), targets: a.targets } : { text: a.text.trim() })),
     };
+    const offered = new Set(pendingProposals().map(([id]) => id));
+    const responses = Object.entries(readAnswers()).filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept }));
+    if (responses.length) pending.responses = responses;
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));
     const job = await api("turns", pending);
     const result = await poll(job.id, true);

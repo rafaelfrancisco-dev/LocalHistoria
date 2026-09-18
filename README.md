@@ -69,6 +69,7 @@ A turn is one month, and the game keeps outcomes realistic:
 - Armies advance one region per month and fleets sail up to 1,500 km.
 - Construction takes months: armies 2, bases 3, fleets 4, ports 6, cities 24.
 - At most one new state can emerge per month, and it needs territory.
+- Nations act only within their authority: only parties start, end or sign, nations only build for themselves, and destroying another nation's units needs a war with it. A treaty needs every party's own action that month to name the partner. When an AI nation offers you one, it appears above your action cards. Accept or decline it before ending the next month, or it lapses.
 - An action beyond these limits still appears in the journal as a failed attempt, and the rest of the month proceeds.
 
 Actions without map effects (reforms, trade, research, diplomacy) are recorded as events and shape later adjudication through the campaign history.

@@ -53,7 +53,7 @@ Json::Value encode(const WorldState &w) {
     Json::Value j;
     j["campaign_id"] = w.campaignId;
     j["actors"] = w.actors; j["territories"] = w.territories; j["entities"] = w.entities; j["conflicts"] = w.conflicts; j["commitments"] = w.commitments;
-    j["regional_politics"] = w.regionalPolitics; j["activity"] = w.activity;
+    j["regional_politics"] = w.regionalPolitics; j["activity"] = w.activity; j["proposals"] = w.proposals;
     j["turn"] = w.turn;
     j["player"] = w.player;
     return j;
@@ -68,9 +68,10 @@ WorldState decode(const Json::Value &j) {
     if (j["entities"].isObject()) w.entities=j["entities"];
     if (j["conflicts"].isObject()) w.conflicts=j["conflicts"];
     if (j["commitments"].isObject()) w.commitments=j["commitments"];
-    for(auto key:{"regional_politics","activity"})if(!j[key].isNull()&&!j[key].isObject())throw ValidationError("Invalid political collection");
+    for(auto key:{"regional_politics","activity","proposals"})if(!j[key].isNull()&&!j[key].isObject())throw ValidationError("Invalid political collection");
     if(j["regional_politics"].isObject())w.regionalPolitics=j["regional_politics"];
     if(j["activity"].isObject())w.activity=j["activity"];
+    if(j["proposals"].isObject())w.proposals=j["proposals"];
     w.turn = j["turn"].asInt();
     w.player = j["player"].asString();
     return w;
@@ -196,6 +197,14 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         f[kind] = Json::objectValue;
         for (auto &id : collection.getMemberNames())
             if (collection[id]["status"] == "open" && involves(collection[id], a)) f[kind][id] = describeAgreement(w, conflict ? "conflict" : "commitment", id);
+    }
+    // Treaties offered to or by this nation that still await the player's answer.
+    for (auto &id : w.proposals.getMemberNames()) {
+        auto &p = w.proposals[id];
+        if (p["status"] != "pending" || !involves(p, a)) continue;
+        Json::Value o;
+        o["from"] = w.actors[p["from"].asString()]["name"]; o["name"] = p["name"]; o["kind"] = p["kind"]; o["text"] = p["text"];
+        f["treaty_proposals"][id] = o;
     }
     // Wars and treaties already appear in full above.
     f["status"].removeMember("wars");

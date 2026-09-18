@@ -42,8 +42,8 @@ int main(int argc,char **argv){if(argc!=2){std::cerr<<"Usage: world_probe output
    if(name=="overreach")expected=s.territories["region-interior"]["controller"]=="ES"&&s.territories["region-east"]["owner"]=="ES";
    if(name=="capital")expected=has("city","region-north","under_construction");
    if(name=="invasion"){int open=0;for(auto &id:s.conflicts.getMemberNames())open+=s.conflicts[id]["status"]=="open";expected=s.territories["region-east"]["controller"]=="PT"&&s.territories["region-east"]["owner"]=="ES"&&open==1;}
-   // Until authority checks (plan 01) require Portugal's own outcome to mention Spain, a one-sided pact is accepted.
-   if(name=="treaty_consent")expected=s.commitments.size()==1;
+   // Portugal (the player) never mentioned Spain, so Spain's pact is only offered: a proposal awaiting Portugal's answer, no treaty.
+   if(name=="treaty_consent")expected=s.commitments.empty()&&s.proposals.size()==1;
    row["expected_outcome"]=expected;
   }catch(const std::exception&e){row["valid"]=false;row["expected_outcome"]=false;row["error"]=e.what();}
   row["seconds"]=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
