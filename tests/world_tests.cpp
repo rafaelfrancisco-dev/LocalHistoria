@@ -50,6 +50,17 @@ int main(){try{
  auto &outcomes=schema["properties"]["events"];
  check(outcomes["minItems"].asInt()==2&&outcomes["maxItems"].asInt()==2&&!outcomes.isMember("items")&&outcomes["prefixItems"][0]["properties"]["action"]["const"]=="Build a port"&&actionOpening("Venezuela mobilizes the National Guard in Zulia and Lara")=="Venezuela mobilizes the National Guard in…"&&outcomes["prefixItems"][0]["properties"]["actor"]["const"]=="old-state"&&outcomes["prefixItems"][1]["properties"]["actor"]["const"]=="neighbor","One outcome per action");
  check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
+ // Only finished armies and fleets can be moved; every entity can change status.
+ auto garrisoned=opsBase.state;garrisoned.entities["army-1"]=parse(R"({"name":"First Army","kind":"army","actor":"old-state","region":"west","status":"active","origin_event":"initial","longitude":1,"latitude":1})");
+ garrisoned.entities["city-1"]=parse(R"({"name":"Old Town","kind":"city","actor":"old-state","region":"west","status":"active","origin_event":"initial","longitude":1,"latitude":1})");
+ auto operation=[](const Json::Value &schema,const char *name){for(auto &o:schema["properties"]["events"]["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"])if(o["properties"]["action"]["enum"][0]==name)return o;return Json::Value();};
+ auto garrisonSchema=operationSchema(garrisoned,encode(garrisoned),{{"old-state","March"}});
+ check(operation(garrisonSchema,"move_entity")["properties"]["entity"]["enum"]==parse(R"(["army-1"])")&&operation(garrisonSchema,"set_entity_status")["properties"]["entity"]["enum"].size()==2,"Only armies and fleets are movable");
+ garrisoned.entities["army-1"]["status"]="under_construction";garrisoned.entities["army-1"]["completes_turn"]=3;
+ check(operation(garrisonSchema,"move_entity").isObject()&&operation(operationSchema(garrisoned,encode(garrisoned),{{"old-state","March"}}),"move_entity").isNull(),"No move_entity without a finished unit");
+ auto reachFacts=parse(R"({"west":{"controller":"old-state","within_reach_of":["old-state"]},"march":{"controller":"neighbor","within_reach_of":["old-state"]}})");
+ check(attackGuidance("old-state","Invade Neighbor.",reachFacts).find("use occupy")!=std::string::npos&&attackGuidance("old-state","Build a port",reachFacts).empty(),"Attack orders get an occupy hint");
+ reachFacts["march"]["within_reach_of"]=Json::arrayValue;check(attackGuidance("old-state","Invade Neighbor.",reachFacts).find("no region within reach")!=std::string::npos,"No hint to occupy when nothing is reachable");
  auto &developments=schema["properties"]["world_events"];
  check(developments["maxItems"].asInt()==2&&!developments["items"]["properties"].isMember("operations")&&developments["items"]["properties"]["actor"]["enum"]==parse(R"(["far","neighbor"])"),"World events are narrative and never the player's decisions");
  auto split2=compileOperations(opsBase.state,parse(R"({"events":[{"action":"Build a port","actor":"old-state","blocked_by":"none","causes":[],"description":"Port begun","operations":[]}],"world_events":[{"actor":"neighbor","blocked_by":"none","causes":[],"description":"Harvest festival","operations":[],"effects":[{"actor":"neighbor","economy":"growth","stability":"none"}]},{"actor":"far","causes":[],"description":"Markets steady"}]})"),{});

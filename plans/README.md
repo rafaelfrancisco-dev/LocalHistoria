@@ -23,7 +23,7 @@ Recommended order (dependencies in parentheses):
 | 04 | turn-output-diet | performance | S | done 2026-09-18 |
 | 05 | adjudication-prompt-and-schema | performance | M | |
 | 06 | chronicles | performance + correctness | S | |
-| 07 | invasion-guidance-and-probe | model quality | S | |
+| 07 | invasion-guidance-and-probe | model quality | S | done 2026-09-18 |
 | 08 | map-geometry | UI performance | M | |
 | 09 | ui-cleanups | UI | M | |
 | 10 | turn-cancel-and-deadline | UI + server | M | |

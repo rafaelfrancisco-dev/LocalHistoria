@@ -22,4 +22,7 @@ std::string lowercase(const std::string &);
 bool containsWord(const std::string &text, const std::string &word);
 // Wars, invasions, territory and treaties: an action whose outcome history can change, worth grounding and reasoning about.
 bool consequential(const std::string &text);
+// For an attack order, a short hint appended to the intention so the model reaches for occupy rather than moving a city.
+// territories: the adjudication facts with each region's within_reach_of list.
+std::string attackGuidance(const std::string &actor, const std::string &text, const Json::Value &territories);
 }

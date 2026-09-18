@@ -80,6 +80,8 @@ Adjacency is the `region_neighbors` table (`tools/region_neighbors.py`): regions
 
 Each region comes with `within_reach_of`, listing the acting nations that can project force there.
 
+An action that reads as an attack (invade, occupy, attack, offensive, conquer, seize, annex, bombard) gets a short hint appended to its text: use `occupy` on one or two regions whose `within_reach_of` lists the actor, plus `open_conflict` unless already at war, and never `move_entity` on cities. When no listed foreign region is within reach, the hint says to describe preparations instead. The general example sits far from the action in a long prompt; the hint puts it next to the action the model is adjudicating. For a short order such as "Invade Spain." the six-word outcome opener includes the start of the hint, so the model restates it before answering. `move_entity` only offers the active armies and fleets among the listed entities, and is absent from the schema when there are none.
+
 Validation checks collection/ID references, preconditions, duplicate writes, locations (including polygon holes), construction schedules, fixed geography, new actor land allocation and event associations. Destruction is represented by status, not deletion. Conflicts and commitments use actor IDs, text, and open/resolved status.
 
 Validation runs on a copy. The complete state, accepted delta, indexed event relationships and turn records commit in one SQLite transaction. The following fail without advancing the month:
@@ -160,7 +162,7 @@ Every inference reads the context size from `/props` (at least 8,192 tokens), ap
 
 Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1024 --ctx-checkpoints 8`) on a 16 GB Apple silicon MacBook Pro. Adjudication used thinking with a bounded budget; AI actions and narration did not. Measured 2026-09-17.
 
-`build/world_probe out.json` runs seven isolated free-text scenarios on a four-region map. Each checks the outcome, not just validity. Prompts are about 740–820 tokens and each adjudication takes 20–32 s. Sampling (temperature 0.6) makes results vary between runs. Over the final three runs:
+`build/world_probe out.json` runs nine isolated free-text scenarios on a four-region map. Each checks the outcome, not just validity. Prompts are about 1,460–1,590 tokens and each adjudication takes 3–26 s (measured 2026-09-18). Sampling (temperature 0.6) makes results vary between runs. Over the final three runs:
 
 | Scenario (action) | Intended outcome | Runs matching |
 | --- | --- | --- |
@@ -170,7 +172,9 @@ Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1
 | long_history: "Construct a military base in West." under a treaty forbidding it | no base | 3/3 |
 | reform: "Launch a national education reform." | recorded event, no map change | 3/3 |
 | overreach: "Conquer all of Spain this month." | Spain's interior untouched, nothing annexed | 3/3 |
-| capital: "Build a new city in North to serve as the future capital." | city under construction in North | 2/3 (once narrated only) |
+| capital: "Build a new city in North to serve as the future capital." | city under construction in North | 3/3 (2/3 on 2026-09-17, once narrated only) |
+| invasion: "Invade Spain." | East controlled by Portugal, still owned by Spain, one open war | 2/3 (once the model narrated the invasion as repelled and tried to build armies in East, which the game dropped) |
+| treaty_consent (Spain): "Sign a defence pact with Portugal." | pact created; Portugal's own actions do not mention Spain | 3/3 (expected until authority checks require the partner's consent, then the scenario expects no pact) |
 
 The first design iterations failed in informative ways:
 

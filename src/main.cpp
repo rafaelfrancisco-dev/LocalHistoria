@@ -206,7 +206,8 @@ static Json::Value adjudicationInput(const WorldState &w, const std::map<std::st
             }
             Json::Value item;
             item["actor"] = a;
-            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")");
+            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")") +
+                             attackGuidance(a, action.text, input["facts"]["territories"]);
             input["intentions"].append(item);
         }
     }

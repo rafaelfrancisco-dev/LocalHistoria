@@ -13,7 +13,9 @@ int main(int argc,char **argv){if(argc!=2){std::cerr<<"Usage: world_probe output
   {"long_history",{"PT","Construct a military base in West."}},
   {"reform",{"PT","Launch a national education reform."}},
   {"overreach",{"PT","Conquer all of Spain this month."}},
-  {"capital",{"PT","Build a new city in North to serve as the future capital."}}};
+  {"capital",{"PT","Build a new city in North to serve as the future capital."}},
+  {"invasion",{"PT","Invade Spain."}},
+  {"treaty_consent",{"ES","Sign a defence pact with Portugal."}}};
  for(auto &[name,intention]:scenarios){
   WorldState w;w.turn=80;w.player="PT";w.actors=parse(R"({"PT":{"name":"Portugal","color":"#338855"},"ES":{"name":"Spain","color":"#ddcc44"}})");
   w.territories=parse(R"({"region-west":{"name":"West","owner":"PT","controller":"PT","initial_affiliation":"PT","longitude":1,"latitude":1},"region-north":{"name":"North","owner":"PT","controller":"PT","initial_affiliation":"PT","longitude":1,"latitude":11},"region-east":{"name":"East","owner":"ES","controller":"ES","initial_affiliation":"ES","longitude":11,"latitude":1},"region-interior":{"name":"Interior","owner":"ES","controller":"ES","initial_affiliation":"ES","longitude":21,"latitude":1}})");
@@ -25,7 +27,7 @@ int main(int argc,char **argv){if(argc!=2){std::cerr<<"Usage: world_probe output
   for(auto a:{"PT","ES"}){auto facts=context(base.state,a,{},{}).facts;facts.removeMember("territories");input["facts"]["actors"][a]=facts;}
   for(auto &id:base.state.territories.getMemberNames()){auto t=base.state.territories[id];for(auto k:{"longitude","latitude","initial_affiliation"})t.removeMember(k);t["within_reach_of"]=Json::arrayValue;for(auto a:{"PT","ES"})if(reaches(base.state,adjacency,a,id))t["within_reach_of"].append(a);input["facts"]["territories"][id]=t;}
   input["facts"]["entities"]=Json::objectValue;input["reference_only"]["available"]=false;
-  Json::Value item;item["actor"]=intention.first;item["action"]=intention.second;input["intentions"].append(item);
+  Json::Value item;item["actor"]=intention.first;item["action"]=intention.second+attackGuidance(intention.first,intention.second,input["facts"]["territories"]);input["intentions"].append(item);
   Json::Value row;row["scenario"]=name;auto started=std::chrono::steady_clock::now();
   try{
    auto delta=provider.adjudicate(base.state,input,adjacency);auto result=applyDelta(base,delta,geo);auto &s=result.state;row["valid"]=true;row["delta"]=encode(delta);row["state"]=encode(s);
@@ -39,6 +41,9 @@ int main(int argc,char **argv){if(argc!=2){std::cerr<<"Usage: world_probe output
    if(name=="reform")expected=delta.changes.empty()&&!delta.events.empty();
    if(name=="overreach")expected=s.territories["region-interior"]["controller"]=="ES"&&s.territories["region-east"]["owner"]=="ES";
    if(name=="capital")expected=has("city","region-north","under_construction");
+   if(name=="invasion"){int open=0;for(auto &id:s.conflicts.getMemberNames())open+=s.conflicts[id]["status"]=="open";expected=s.territories["region-east"]["controller"]=="PT"&&s.territories["region-east"]["owner"]=="ES"&&open==1;}
+   // Until authority checks (plan 01) require Portugal's own outcome to mention Spain, a one-sided pact is accepted.
+   if(name=="treaty_consent")expected=s.commitments.size()==1;
    row["expected_outcome"]=expected;
   }catch(const std::exception&e){row["valid"]=false;row["expected_outcome"]=false;row["error"]=e.what();}
   row["seconds"]=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();

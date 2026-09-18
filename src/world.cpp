@@ -48,6 +48,17 @@ bool consequential(const std::string &raw) {
     for (auto &word : words) if (containsWord(text, word)) return true;
     return false;
 }
+std::string attackGuidance(const std::string &actor,const std::string &text,const Json::Value &territories) {
+    static const std::vector<std::string> stems{"invad","occup","attack","offensive","conquer","seize","annex","bombard"};
+    auto lowered=lowercase(text);bool attack=false;
+    for(auto &stem:stems)attack=attack||lowered.find(stem)!=std::string::npos;
+    if(!attack)return "";
+    if(territories.isObject())for(auto &id:territories.getMemberNames()) {
+        auto &t=territories[id];if(t["controller"]==actor)continue;
+        for(auto &a:t["within_reach_of"])if(a==actor)return " [attack: use occupy on one or two regions whose within_reach_of lists "+actor+", plus open_conflict unless already at war; never move_entity on cities]";
+    }
+    return " [no region within reach: describe preparations, no occupy]";
+}
 WorldDelta parseDelta(const Json::Value &j) {
     require(j.isObject() && j.getMemberNames()==std::vector<std::string>({"changes","events"}),"Invalid delta shape");
     require(j["changes"].isArray()&&j["changes"].size()<=120&&j["events"].isArray()&&j["events"].size()<=40,"Delta exceeds bounds");
@@ -197,7 +208,7 @@ static Json::Value enumeration(const std::set<std::string> &values) {
     return j;
 }
 Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const std::vector<std::pair<std::string,std::string>> &actions) {
-    std::set<std::string> actors,regions,entities,conflicts,commitments,causes;
+    std::set<std::string> actors,regions,entities,movable,conflicts,commitments,causes;
     if(facts["actors"].isObject())for(auto &a:facts["actors"].getMemberNames())if(w.hasActor(a))actors.insert(a);
     if(facts["territories"].isObject())for(auto &id:facts["territories"].getMemberNames())if(w.territories.isMember(id)) {
         regions.insert(id);
@@ -205,6 +216,8 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     }
     if(facts["entities"].isObject())for(auto &id:facts["entities"].getMemberNames())if(w.entities.isMember(id)) {
         entities.insert(id);auto a=w.entities[id]["actor"].asString();if(w.hasActor(a))actors.insert(a);
+        // Only finished armies and fleets move; cities and ports offered as move targets drew a small model away from occupy.
+        auto &e=w.entities[id];if((e["kind"]=="army"||e["kind"]=="fleet")&&e["status"]=="active")movable.insert(id);
     }
     if(w.hasActor(w.player))actors.insert(w.player);
     for(auto &id:w.conflicts.getMemberNames())if(w.conflicts[id]["status"]=="open")conflicts.insert(id);
@@ -238,7 +251,7 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
         p=Json::objectValue;p["region"]=region;op("restore_control",p);
     }
     if(!entities.empty()) {
-        if(!regions.empty()){p=Json::objectValue;p["entity"]=entity;p["region"]=region;op("move_entity",p);}
+        if(!regions.empty()&&!movable.empty()){p=Json::objectValue;p["entity"]=enumeration(movable);p["region"]=region;op("move_entity",p);}
         p=Json::objectValue;p["entity"]=entity;p["status"]=parse(R"({"type":"string","enum":["active","inactive","destroyed"]})");op("set_entity_status",p);
     }
     if(!conflicts.empty()){p=Json::objectValue;p["conflict"]=enumeration(conflicts);op("resolve_conflict",p);}
