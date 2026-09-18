@@ -1,5 +1,6 @@
 #pragma once
 #include "world.h"
+#include <chrono>
 #include <functional>
 #include <mutex>
 namespace lh {
@@ -27,12 +28,18 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Transport transport;
     mutable std::mutex inference, settings;
     Json::Value audit{Json::arrayValue};
+    // Share of the context below which a byte estimate replaces exact tokenization; 0 always tokenizes.
+    double estimateShare;
+    // /props, reused for a minute per endpoint.
+    Json::Value cachedProps;
+    std::string propsEndpoint;
+    std::chrono::steady_clock::time_point propsAt;
     Json::Value completion(const Json::Value &, const Json::Value &, const std::string &, unsigned reasoningBudget,
                           double temperature, const std::string &kind = "", const std::string &actor = "");
 
   public:
     explicit LocalProvider(std::string endpoint, double timeout = 20,
-                           Transport transport = httpJson);
+                           Transport transport = httpJson, double estimateShare = 0.8);
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);

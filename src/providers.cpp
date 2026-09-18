@@ -34,8 +34,8 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
         throw std::runtime_error("Response exceeds bound");
     return parse(std::string(response->body()));
 }
-LocalProvider::LocalProvider(std::string e, double t, Transport tr)
-    : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)) {}
+LocalProvider::LocalProvider(std::string e, double t, Transport tr, double share)
+    : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)), estimateShare(share) {}
 Json::Value LocalProvider::completion(const Json::Value &input, const Json::Value &schema,
                                       const std::string &instruction, unsigned reasoningBudget, double temperature,
                                       const std::string &kind, const std::string &actor) {
@@ -59,9 +59,14 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     m["role"] = "user";
     m["content"] = dump(selected);
     b["messages"].append(m);
-    auto props=transport(endpoint,"/props",Json::nullValue,timeout);
-    if(!props["default_generation_settings"]["n_ctx"].isInt() || props["default_generation_settings"]["n_ctx"].asInt()<8192)
-        throw ValidationError("Model must expose a verified context of at least 8192 tokens");
+    // The server's context and model rarely change; a minute-old answer saves a round trip per request.
+    auto props=cachedProps;
+    if(props.isNull()||propsEndpoint!=endpoint||std::chrono::steady_clock::now()-propsAt>std::chrono::seconds(60)) {
+        props=transport(endpoint,"/props",Json::nullValue,timeout);
+        if(!props["default_generation_settings"]["n_ctx"].isInt() || props["default_generation_settings"]["n_ctx"].asInt()<8192)
+            throw ValidationError("Model must expose a verified context of at least 8192 tokens");
+        cachedProps=props;propsEndpoint=endpoint;propsAt=std::chrono::steady_clock::now();
+    }
     const unsigned contextLimit=props["default_generation_settings"]["n_ctx"].asUInt();
     // Reasoning shares the output budget, so thinking needs a context large enough to hold it.
     bool thinking=reasoningBudget>0&&contextLimit>=16384;
@@ -73,7 +78,12 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     b["chat_template_kwargs"]["enable_thinking"]=thinking;
     if(thinking)b["thinking_budget_tokens"]=reasoningBudget;
     unsigned tokens=0;
-    for (;;) {
+    // Well inside the context, a byte estimate (about 3.2 bytes per token for JSON) saves two round trips; near the
+    // limit the exact template and tokenizer decide what to trim.
+    auto estimate=unsigned((b["messages"][0]["content"].asString().size()+b["messages"][1]["content"].asString().size())/3.2+64);
+    bool estimated=estimateShare>0&&estimate+b["max_tokens"].asUInt()+256<=estimateShare*contextLimit;
+    if(estimated)tokens=estimate;
+    else for (;;) {
         b["messages"][1]["content"]=dump(selected);
         auto templated=transport(endpoint,"/apply-template",b,timeout);
         if(!templated["prompt"].isString())throw ValidationError("Chat template unavailable");
@@ -100,7 +110,9 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     }
     auto response = transport(endpoint, "/v1/chat/completions", b, timeout);
     Json::Value record;record["input"]=selected;record["messages"]=b["messages"];record["schema"]=schema;
-    record["prompt_tokens"]=tokens;record["output_reserve"]=b["max_tokens"];record["context_limit"]=contextLimit;record["thinking"]=thinking;
+    // The server's own count, when it reports one, is exact even for an estimated request.
+    auto counted=response.get("usage",Json::Value()).get("prompt_tokens",Json::Value());
+    record["prompt_tokens"]=counted.isIntegral()?counted.asUInt():tokens;record["prompt_tokens_estimated"]=estimated;record["output_reserve"]=b["max_tokens"];record["context_limit"]=contextLimit;record["thinking"]=thinking;
     record["model"]=props["model_alias"];record["build"]=props["build_info"];record["chat_template"]=props["chat_template"];
     record["latency_ms"]=Json::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count());
     record["kind"]=kind;record["actor"]=actor;
@@ -170,8 +182,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     auto schema=operationSchema(w,input["facts"],actions);
     for(Json::ArrayIndex n=0;n<input["intentions"].size();++n)if(input["intentions"][n]["regional_actor"].isString()) {
         auto &item=schema["properties"]["events"]["prefixItems"][n];
-        Json::Value regionalOp;
-        for(const auto &op:item["properties"]["operations"]["items"]["anyOf"])if(op["properties"]["action"]["enum"][0]=="regional_initiative")regionalOp=op;
+        auto regionalOp=schema["$defs"].get("op_regional_initiative",Json::nullValue);
         if(regionalOp.isNull())throw ValidationError("Regional context lacks its territory");
         regionalOp["properties"]["region"]=Json::objectValue;regionalOp["properties"]["region"]["const"]=input["intentions"][n]["regional_actor"];
         item["properties"]["operations"]["items"]=regionalOp;
