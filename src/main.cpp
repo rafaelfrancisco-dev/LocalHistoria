@@ -155,10 +155,33 @@ int main(int argc, char **argv) {
         std::map<std::string,std::time_t> retryAfter;
         Worker referenceWorker(false);
         Worker worker;
+        // Called under mutex. Relevance tiers for independent slots: great powers 1, the player's war and small-pact
+        // partners 2, neighbours and the player itself (for regional slots) 3.
+        std::string greatPowersCampaign;std::set<std::string> greatPowers;
+        auto relevance = [&](const WorldState &w) {
+            if(greatPowersCampaign!=w.campaignId) {
+                std::vector<std::pair<double,std::string>> gdp;
+                auto status=allNationalStatus(w);
+                for(auto &a:status.getMemberNames())gdp.emplace_back(-status[a]["gdp_usd"].asDouble(),a);
+                std::sort(gdp.begin(),gdp.end());
+                greatPowers.clear();
+                for(size_t i=0;i<std::min<size_t>(12,gdp.size());++i)greatPowers.insert(gdp[i].second);
+                greatPowersCampaign=w.campaignId;
+            }
+            std::map<std::string,int> weight;
+            auto raise=[&](const std::string &a,int tier){if(w.hasActor(a))weight[a]=std::max(weight[a],tier);};
+            for(auto &a:greatPowers)raise(a,1);
+            auto party=[&](const Json::Value &v){return v["status"]=="open"&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(w.player))!=v["actors"].end();};
+            for(auto &v:w.conflicts)if(party(v))for(auto &a:v["actors"])raise(a.asString(),2);
+            for(auto &v:w.commitments)if(party(v)&&v["actors"].size()<=6)for(auto &a:v["actors"])raise(a.asString(),2);
+            for(auto &n:reference.query("SELECT b FROM neighbors WHERE a=?",{w.player}))raise(n["b"].asString(),3);
+            raise(w.player,3);
+            return weight;
+        };
         // Called under mutex. One bounded queue, deduplicated, with failures backed off.
         auto prepareReferences = [&](const WorldState &w) {
             std::vector<std::string> wanted;
-            for(auto &slot:scheduleInitiatives(w)){wanted.push_back(slot["actor"].asString());if(slot["region"]!="")wanted.push_back(slot["region"].asString());}
+            for(auto &slot:scheduleInitiatives(w,{},relevance(w))){wanted.push_back(slot["actor"].asString());if(slot["region"]!="")wanted.push_back(slot["region"].asString());}
             wanted.push_back(w.player);
             for(auto &n:reference.query("SELECT b FROM neighbors WHERE a=? ORDER BY b",{w.player}))wanted.push_back(n["b"].asString());
             for(auto &key:wanted) {
@@ -441,7 +464,7 @@ int main(int argc, char **argv) {
                           if(engaged(v)&&(collection==&w.conflicts||v["actors"].size()<=3)&&std::find(v["actors"].begin(),v["actors"].end(),Json::Value(a))!=v["actors"].end())bound=true;
                       if(bound)chronicleNations.push_back(a);
                   }
-                  auto allocations=scheduleInitiatives(w,actors);
+                  auto allocations=scheduleInitiatives(w,actors,relevance(w));
                   auto prior=store.query("SELECT slots FROM monthly_allocations WHERE campaign=? AND month=?",{w.campaignId,std::to_string(w.turn+1)});
                   if(!prior.empty())allocations=parse(prior[0]["slots"].asString());
                   else store.execute("INSERT INTO monthly_allocations VALUES(?,?,?)",{w.campaignId,std::to_string(w.turn+1),dump(allocations)});

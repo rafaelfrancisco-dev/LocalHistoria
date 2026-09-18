@@ -117,7 +117,7 @@ Single-user, loopback-only scaffold. Fine-tuning, bundled models, multiplayer an
 
 ## A living political world
 
-Each month reserves three independent actions alongside reactions to your orders: two different non-player nations and one region (including regions of your own country). Country-balanced regional selection and two-month cooldown preferences reduce repetition. Empty orders still produce independent activity. Scarce candidate pools redistribute available slots, never exceeding three.
+Each month reserves three independent actions alongside reactions to your orders: two different non-player nations and one region (including regions of your own country). Slots favour the nations you can see: neighbours first, then partners in your wars and small pacts, then the twelve largest economies; every third month the second national slot goes to a distant nation instead. The regional slot favours your own regions and those of neighbours and partners. Country-balanced regional selection and two-month cooldown preferences reduce repetition. Empty orders still produce independent activity. Scarce candidate pools redistribute available slots, never exceeding three.
 
 Regions retain agendas, relations and pending demands across control changes. See them in the governing country's inspector. Only an explicit national response can accept or reject a demand; a region cannot command national armies, sign treaties or rename its country. Independence requires national agreement or an established relevant conflict and validated land allocation. Autonomous armed rebellion is excluded.
 

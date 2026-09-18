@@ -45,6 +45,28 @@ int main() {
         }
         w.territories = parse(
             R"({"r":{"name":"Local Region","kind":"adm1","owner":"PT","controller":"PT","initial_affiliation":"PT"},"s":{"name":"Elsewhere","kind":"adm1","owner":"ES","controller":"ES"},"bad":{"kind":"residual","controller":"FR"},"unknown":{"controller":"missing"}})");
+        {
+            auto v = w;
+            std::map<std::string, int> near{{"ES", 3}};
+            auto weighted = scheduleInitiatives(v, {}, near);
+            check(weighted[0]["actor"] == "ES" && weighted == scheduleInitiatives(v, {}, near),
+                  "Neighbour takes the first national slot, deterministically");
+            v.activity["ES"] = 0;
+            check(scheduleInitiatives(v, {}, near)[0]["actor"] != "ES", "Recent neighbour rests");
+            v.activity = Json::objectValue;
+            v.turn = 2;
+            std::map<std::string, int> known{{"ES", 3}, {"FR", 2}, {"IT", 1}, {"DE", 1}};
+            auto third = scheduleInitiatives(v, {}, known);
+            check(third[0]["actor"] == "ES" && third[1]["actor"] == "NO",
+                  "Every third month a distant nation takes the second slot");
+            v.turn = 0;
+            std::map<std::string, int> home{{"PT", 3}};
+            for (int n = 0; n < 50; ++n) {
+                v.campaignId = std::to_string(n);
+                check(scheduleInitiatives(v, {}, home)[2]["actor"] == "PT",
+                      "Regional slot prefers the player's regions");
+            }
+        }
         auto slots = scheduleInitiatives(w, {"ES"});
         check(slots == scheduleInitiatives(w, {"ES"}) && slots.size() == 3,
               "Deterministic three slots");

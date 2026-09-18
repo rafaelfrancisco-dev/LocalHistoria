@@ -39,15 +39,21 @@ uint64_t stableHash(const std::string &s) {
     h *= 0x94d049bb133111ebULL;
     return h ^ (h >> 31);
 }
-Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string> &reactive) {
+Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string> &reactive,
+                                const std::map<std::string, int> &weight) {
     auto seed = w.campaignId + ":" + std::to_string(w.turn + 1);
     auto recent = [&](const std::string &key) {
         return w.activity[key].isInt() && w.turn + 1 - w.activity[key].asInt() <= 2;
     };
-    auto rank = [&](std::vector<std::string> &v, const std::string &scope) {
+    auto tier = [&](const std::string &id) {
+        auto it = weight.find(id);
+        return it == weight.end() ? 0 : it->second;
+    };
+    // Higher `priority` ranks first, after cooldown and reactive preferences.
+    auto rank = [&](std::vector<std::string> &v, const std::string &scope, auto priority) {
         std::sort(v.begin(), v.end(), [&](auto &a, auto &b) {
             auto score = [&](auto &id) {
-                return std::make_tuple(recent(id), reactive.contains(id),
+                return std::make_tuple(recent(id), reactive.contains(id), -priority(id),
                                        stableHash(seed + scope + id), id);
             };
             return score(a) < score(b);
@@ -64,7 +70,13 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
         if (t["kind"] != "residual" && w.hasActor(a))
             regions[a].push_back(r);
     }
-    rank(nations, "national");
+    rank(nations, "national", tier);
+    // Every third month the second slot goes to a distant nation, keeping the wider world alive.
+    if (!weight.empty() && (w.turn + 1) % 3 == 0 && nations.size() > 2) {
+        std::vector<std::string> rest(nations.begin() + 1, nations.end());
+        rank(rest, "distant", [&](auto &id) { return tier(id) > 0 ? -1 : 0; });
+        std::copy(rest.begin(), rest.end(), nations.begin() + 1);
+    }
     Json::Value slots(Json::arrayValue);
     std::set<std::string> selectedRegions;
     auto add = [&](const std::string &a, const std::string &r) {
@@ -77,16 +89,18 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
     };
     for (size_t i = 0; i < std::min<size_t>(2, nations.size()); ++i)
         add(nations[i], "");
-    // Choose authority before region: large countries receive no extra tickets.
+    // Choose authority before region: large countries receive no extra tickets. Only the player and close
+    // partners are preferred; great powers get no regional advantage.
     std::vector<std::string> governors;
     for (auto &[a, rs] : regions)
         governors.push_back(a);
-    rank(governors, "governor");
+    rank(governors, "governor", [&](auto &id) { return tier(id) >= 2 ? tier(id) : 0; });
+    auto none = [](auto &) { return 0; };
     for (size_t round = 0; slots.size() < 3 && !governors.empty(); ++round) {
         bool found = false;
         for (auto &a : governors) {
             auto rs = regions[a];
-            rank(rs, "region" + std::to_string(round));
+            rank(rs, "region" + std::to_string(round), none);
             for (auto &r : rs)
                 if (selectedRegions.insert(r).second) {
                     add(a, r);

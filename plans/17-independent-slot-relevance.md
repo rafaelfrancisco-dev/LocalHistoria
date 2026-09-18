@@ -1,5 +1,7 @@
 # 17 · Relevance-weighted independent slots
 
+**Status: done (2026-09-18).** `scheduleInitiatives` takes a `weight` tier map and ranks `(recent, reactive, -tier, hash, id)`; `main.cpp` `relevance()` builds it from `neighbors` (3, plus the player for regional slots), open conflicts and ≤6-party commitments with the player (2) and the top-12 `gdp_usd` actors cached per campaign (1). Governors use only tiers ≥ 2. The third-month rule *prefers* tier 0 for the second slot (rather than ignoring weight) so it is deterministic and testable. Offline 6-month schedule check with the real seed (scratch program over `scheduleInitiatives`, activity stamped per slot): India 10/12 national actors neighbours or partners; Portugal 3/12 — its only land neighbour is Spain (capped at every other month by the cooldown) and its only pacts are NATO and the EU (> 6 parties), so the ≥ 4 target is unreachable for Portugal under these tiers; the other nine were six great powers and three distant nations. Live `living_world_probe` not run (no model server).
+
 ## Goal
 The two independent national slots and one regional slot per month should mostly involve nations the player
 can see and care about, not a uniform sample of 241 actors.
