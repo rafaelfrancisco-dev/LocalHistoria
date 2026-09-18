@@ -44,7 +44,10 @@ int main() {
             w.actors[a]["static_flag"] = a;
         }
         w.territories = parse(
-            R"({"r":{"name":"Local Region","kind":"adm1","owner":"PT","controller":"PT","initial_affiliation":"PT"},"s":{"name":"Elsewhere","kind":"adm1","owner":"ES","controller":"ES"},"bad":{"kind":"residual","controller":"FR"},"unknown":{"controller":"missing"}})");
+            R"({"r":{"name":"Local Region","kind":"adm1","owner":"PT","controller":"PT",)"
+            R"("initial_affiliation":"PT"},"s":{"name":"Elsewhere","kind":"adm1","owner":"ES",)"
+            R"("controller":"ES"},"bad":{"kind":"residual","controller":"FR"},)"
+            R"("unknown":{"controller":"missing"}})");
         {
             auto v = w;
             std::map<std::string, int> near{{"ES", 3}};
@@ -64,14 +67,16 @@ int main() {
             check(world[0]["actor"] == "ES" && world[1]["actor"] == "DE",
                   "The second slot goes to a great power");
             v.turn = 2;
-            check(scheduleInitiatives(v, {}, {{"ES", 3}, {"FR", 2}, {"IT", 1}}, {"DE"})[1]["actor"] == "NO",
+            check(scheduleInitiatives(v, {}, {{"ES", 3}, {"FR", 2}, {"IT", 1}},
+                                      {"DE"})[1]["actor"] == "NO",
                   "A distant nation is neither close nor a great power");
             v.turn = 0;
             auto island = v;
             island.territories["r"]["kind"] = "single";
             for (int n = 0; n < 20; ++n) {
                 island.campaignId = std::to_string(n);
-                check(scheduleInitiatives(island)[2]["region"] == "s", "Single-territory countries have no regional slot");
+                check(scheduleInitiatives(island)[2]["region"] == "s",
+                      "Single-territory countries have no regional slot");
             }
             std::map<std::string, int> home{{"PT", 3}};
             for (int n = 0; n < 50; ++n) {
@@ -119,11 +124,12 @@ int main() {
         check(domestic == domesticLarge, "Region count cannot bias authority selection");
         w.territories.removeMember("unknown");
         w.territories["bad"]["owner"] = "FR";
-        auto regional = event(
-            "PT",
-            parse(
-                R"([{"action":"regional_initiative","region":"r","agenda":"Improve civic representation","relations":"strained","demand":"Negotiate autonomy"}])"),
-            "r");
+        auto regional =
+            event("PT",
+                  parse(R"([{"action":"regional_initiative","region":"r",)"
+                        R"("agenda":"Improve civic representation","relations":"strained",)"
+                        R"("demand":"Negotiate autonomy"}])"),
+                  "r");
         Resolution base{w, {}};
         auto delta = compileOperations(w, regional, {});
         auto r = applyDelta(base, delta, {});
@@ -133,25 +139,31 @@ int main() {
         check(!r.state.actors.isMember("r"), "Regions are not sovereign actors");
         auto illegal = event(
             "PT",
-            parse(
-                R"([{"action":"create_actor","actor_id":"free","name":"Free","color":"#123456"},{"action":"transfer_territory","region":"r","to":"free"}])"),
+            parse(R"([{"action":"create_actor","actor_id":"free","name":"Free","color":"#123456"},)"
+                  R"({"action":"transfer_territory","region":"r","to":"free"}])"),
             "r");
         auto blocked = compileOperations(w, illegal, {});
-        check(blocked.events[0]["dropped_operations"].size() == 2 && blocked.changes.size() == 1, "Region cannot secede by decree");
-        for (
-            auto op :
-            {R"([{"action":"build","kind":"army","actor":"PT","name":"Army","region":"r"}])",
-             R"([{"action":"add_commitment","actors":["PT","ES"],"text":"Treaty"}])",
-             R"([{"action":"change_identity","actor":"PT","name":"New Republic","change_type":"rename","reason":"Demand"}])"})
-            check(compileOperations(w, event("PT", parse(op), "r"), {}).events[0]["dropped_operations"].size() == 1,
+        check(blocked.events[0]["dropped_operations"].size() == 2 && blocked.changes.size() == 1,
+              "Region cannot secede by decree");
+        for (auto op :
+             {R"([{"action":"build","kind":"army","actor":"PT","name":"Army","region":"r"}])",
+              R"([{"action":"add_commitment","actors":["PT","ES"],"text":"Treaty"}])",
+              R"([{"action":"change_identity","actor":"PT","name":"New Republic",)"
+              R"("change_type":"rename","reason":"Demand"}])"})
+            check(compileOperations(w, event("PT", parse(op), "r"), {})
+                          .events[0]["dropped_operations"]
+                          .size() == 1,
                   "Unauthorized regional national operation");
         auto changed = r.state;
         changed.territories["r"]["controller"] = "ES";
         changed.turn++;
-        auto response = parse(
-            R"([{"action":"respond_regional","region":"r","demand_id":"placeholder","response":"accepted"}])");
+        auto response =
+            parse(R"([{"action":"respond_regional","region":"r","demand_id":"placeholder",)"
+                  R"("response":"accepted"}])");
         response[0]["demand_id"] = r.state.regionalPolitics["r"]["demands"][0]["id"];
-        check(compileOperations(changed, event("PT", response), {}).events[0]["dropped_operations"].size() == 1,
+        check(compileOperations(changed, event("PT", response), {})
+                      .events[0]["dropped_operations"]
+                      .size() == 1,
               "Former authority cannot respond");
         auto accepted =
             applyDelta({changed, {}}, compileOperations(changed, event("ES", response), {}), {});
@@ -160,7 +172,8 @@ int main() {
                       r.state.regionalPolitics["r"]["agenda"],
               "Control change preserves agenda and current authority responds");
         auto design = parse(
-            R"({"layout":"horizontal","palette":["#112233","#445566","#778899"],"emblem":"circle","explanation":"Civic unity"})");
+            R"({"layout":"horizontal","palette":["#112233","#445566","#778899"],"emblem":"circle",)"
+            R"("explanation":"Civic unity"})");
         auto f = makeFlag(design, "seed", "event");
         check(f["svg"] == renderFlag(design) && f == makeFlag(design, "seed", "event"),
               "Deterministic renderer");
@@ -182,8 +195,9 @@ int main() {
         rejects([&] { renderFlag(bad); });
         w.commitments["treaty"] =
             parse(R"({"actors":["PT","ES"],"status":"open","text":"Cooperation"})");
-        auto rename = parse(
-            R"([{"action":"change_identity","actor":"PT","name":"Atlantic Republic","change_type":"rename","reason":"Adjudicated constitutional settlement"}])");
+        auto rename =
+            parse(R"([{"action":"change_identity","actor":"PT","name":"Atlantic Republic",)"
+                  R"("change_type":"rename","reason":"Adjudicated constitutional settlement"}])");
         rename[0]["flag_design"] = design;
         auto identityDelta = compileOperations(w, event("PT", rename), {});
         auto renamed = applyDelta({w, {}}, identityDelta, {});
@@ -215,10 +229,10 @@ int main() {
                                     compileOperations(refounded, event("PT", correction), {}), {});
         check(corrected.state.actors["PT"]["flag_revision"].asUInt() == 1,
               "Spelling correction retains flag");
-        auto creation = event(
-            "PT",
-            parse(
-                R"([{"action":"create_actor","actor_id":"new","name":"New State","color":"#123456"},{"action":"transfer_territory","region":"r","to":"new"}])"));
+        auto creation =
+            event("PT", parse(R"([{"action":"create_actor","actor_id":"new","name":"New State",)"
+                              R"("color":"#123456"},{"action":"transfer_territory","region":"r",)"
+                              R"("to":"new"}])"));
         auto created = applyDelta({w, {}}, compileOperations(w, creation, {}), {});
         check(created.state.actors["new-state"]["flag_revision"].asUInt() == 0 &&
                   created.state.territories["r"]["owner"] == "new-state",
@@ -260,10 +274,11 @@ int main() {
             fetchRegionalHistory("Local Region", "PT", [](auto host, auto path, auto, double) {
                 if (host == "https://query.wikidata.org")
                     return parse(
-                        R"({"results":{"bindings":[{"item":{"value":"http://www.wikidata.org/entity/Q123"}}]}})");
+                        R"({"results":{"bindings":[{"item":{"value":"http://www.wikidata.org/)"
+                        R"(entity/Q123"}}]}})");
                 if (host == "https://www.wikidata.org")
-                    return parse(
-                        R"({"entities":{"Q123":{"sitelinks":{"enwiki":{"title":"Local Region"}}}}})");
+                    return parse(R"({"entities":{"Q123":{"sitelinks":{"enwiki":{"title":"Local )"
+                                 R"(Region"}}}}})");
                 return parse(
                     R"({"latest":{"id":42},"html":"<p>A verified regional reference.</p>"})");
             });

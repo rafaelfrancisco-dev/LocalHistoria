@@ -15,10 +15,16 @@ Store::Store(const std::string &p, bool readOnly) {
     if (readOnly)
         return;
     sqlite3_busy_timeout(db, 3000);
-    // Model-written national histories, rewritten at most yearly; a cache outside turn transactions.
+    // Model-written national histories, rewritten at most yearly; a cache outside turn
+    // transactions.
     sql("CREATE TABLE IF NOT EXISTS chronicles(actor TEXT PRIMARY KEY,document TEXT);");
-    sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots TEXT,PRIMARY KEY(campaign,month));");
-    sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn INTEGER,document TEXT); CREATE INDEX IF NOT EXISTS event_turn ON events(turn); CREATE TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
+    sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots "
+        "TEXT,PRIMARY KEY(campaign,month));");
+    sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY "
+        "KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON "
+        "event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn "
+        "INTEGER,document TEXT); CREATE INDEX IF NOT EXISTS event_turn ON events(turn); CREATE "
+        "TABLE IF NOT EXISTS inference(id INTEGER PRIMARY KEY,job TEXT,record TEXT);");
     sql("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS campaign(id "
         "INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs(id "
         "INTEGER PRIMARY KEY AUTOINCREMENT,key TEXT UNIQUE,payload TEXT,status TEXT NOT NULL,error "
@@ -84,7 +90,8 @@ void Store::create(const WorldState &w, bool replace) {
     sql("BEGIN IMMEDIATE");
     try {
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
-            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
+            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; "
+            "DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
         execute("INSERT INTO campaign VALUES(1,?)", {dump(encode(w))});
         execute("INSERT INTO initial_world VALUES(1,?)", {dump(encode(w))});
         sql("COMMIT");
@@ -126,16 +133,21 @@ void Store::commit(const std::string &id, const Resolution &r, const Json::Value
         execute("INSERT INTO turns VALUES(?,?,?,?,?,?)",
                 {std::to_string(r.state.turn), id, dump(encode(r.state)), dump(i),
                  dump(encode(r.events)), dump(refs)});
-        for(auto &event:refs["delta"]["events"]) {
-            auto eid=event["id"].asString();
-            for(auto &cause:event["causes"]) {
-                if(!cause.isString() || query("SELECT id FROM events WHERE id=?",{cause.asString()}).empty())
+        for (auto &event : refs["delta"]["events"]) {
+            auto eid = event["id"].asString();
+            for (auto &cause : event["causes"]) {
+                if (!cause.isString() ||
+                    query("SELECT id FROM events WHERE id=?", {cause.asString()}).empty())
                     throw ValidationError("Unknown or forward event cause");
             }
-            execute("INSERT INTO events VALUES(?,?,?)",{eid,std::to_string(r.state.turn),dump(event)});
-            execute("INSERT OR IGNORE INTO event_links VALUES(?,'actors',?)",{eid,event["actor"].asString()});
-            for(auto kind:{"actors","regions","entities","causes"})for(auto &target:event[kind])
-                execute("INSERT OR IGNORE INTO event_links VALUES(?,?,?)",{eid,kind,target.asString()});
+            execute("INSERT INTO events VALUES(?,?,?)",
+                    {eid, std::to_string(r.state.turn), dump(event)});
+            execute("INSERT OR IGNORE INTO event_links VALUES(?,'actors',?)",
+                    {eid, event["actor"].asString()});
+            for (auto kind : {"actors", "regions", "entities", "causes"})
+                for (auto &target : event[kind])
+                    execute("INSERT OR IGNORE INTO event_links VALUES(?,?,?)",
+                            {eid, kind, target.asString()});
         }
         std::string summary;
         for (auto &e : r.events)
@@ -163,24 +175,54 @@ Json::Value Store::journal() {
               "turns t LEFT JOIN narration n ON t.job=n.job ORDER BY t.turn DESC LIMIT 24");
     for (auto &x : j)
         x["events"] = parse(x["events"].asString());
-    for(auto &month:j){month["structured_events"]=Json::arrayValue;for(auto &row:query("SELECT document FROM events WHERE turn=? ORDER BY rowid",{month["turn"].asString()}))month["structured_events"].append(parse(row["document"].asString()));}
+    for (auto &month : j) {
+        month["structured_events"] = Json::arrayValue;
+        for (auto &row : query("SELECT document FROM events WHERE turn=? ORDER BY rowid",
+                               {month["turn"].asString()}))
+            month["structured_events"].append(parse(row["document"].asString()));
+    }
     // Prompts read what actually happened; the journal shows the model's text with a badge.
-    for(auto &month:j)for(auto &event:month["events"])for(auto &d:month["structured_events"])if(d["id"]==event["target"]){auto clause=droppedClause(d);if(!clause.empty())event["prompt_text"]=event["text"].asString()+clause;break;}
+    for (auto &month : j)
+        for (auto &event : month["events"])
+            for (auto &d : month["structured_events"])
+                if (d["id"] == event["target"]) {
+                    auto clause = droppedClause(d);
+                    if (!clause.empty())
+                        event["prompt_text"] = event["text"].asString() + clause;
+                    break;
+                }
     return j;
 }
-CountryContext Store::campaignContext(const WorldState &w,const std::string &actor) {
-    auto c=context(w,actor,journal(),background(actor));
-    c.facts["regional_politics"]=Json::objectValue;for(auto &r:w.regionalPolitics.getMemberNames())if(w.territories[r]["controller"]==actor)c.facts["regional_politics"][r]=w.regionalPolitics[r];
-    Json::Value regions(Json::arrayValue),entities(Json::arrayValue);
-    for(auto &id:c.facts["territories"].getMemberNames())regions.append(id);
-    for(auto &id:c.facts["entities"].getMemberNames())entities.append(id);
-    auto older=query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR (kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE "+happened+" ORDER BY e.turn DESC LIMIT 20",{actor,dump(regions),dump(entities)});
-    c.facts["related_history"]=Json::arrayValue;
-    for(auto &row:older){auto d=parse(row["document"].asString());d["text"]=d["text"].asString()+droppedClause(d);c.facts["related_history"].append(d);}
+CountryContext Store::campaignContext(const WorldState &w, const std::string &actor) {
+    auto c = context(w, actor, journal(), background(actor));
+    c.facts["regional_politics"] = Json::objectValue;
+    for (auto &r : w.regionalPolitics.getMemberNames())
+        if (w.territories[r]["controller"] == actor)
+            c.facts["regional_politics"][r] = w.regionalPolitics[r];
+    Json::Value regions(Json::arrayValue), entities(Json::arrayValue);
+    for (auto &id : c.facts["territories"].getMemberNames())
+        regions.append(id);
+    for (auto &id : c.facts["entities"].getMemberNames())
+        entities.append(id);
+    auto older =
+        query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' "
+              "AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR "
+              "(kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT "
+              "l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') "
+              "SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE " +
+                  happened + " ORDER BY e.turn DESC LIMIT 20",
+              {actor, dump(regions), dump(entities)});
+    c.facts["related_history"] = Json::arrayValue;
+    for (auto &row : older) {
+        auto d = parse(row["document"].asString());
+        d["text"] = d["text"].asString() + droppedClause(d);
+        c.facts["related_history"].append(d);
+    }
     return c;
 }
-void Store::recordInference(const std::string &job,const Json::Value &records) {
-    for(auto &r:records)execute("INSERT INTO inference(job,record) VALUES(?,?)",{job,dump(r)});
+void Store::recordInference(const std::string &job, const Json::Value &records) {
+    for (auto &r : records)
+        execute("INSERT INTO inference(job,record) VALUES(?,?)", {job, dump(r)});
 }
 Json::Value Store::background(const std::string &c) {
     auto j = query("SELECT document FROM background WHERE code=?", {c});
@@ -196,16 +238,22 @@ void Store::saveChronicle(const std::string &actor, const Json::Value &document)
 Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
     Json::Value out(Json::arrayValue);
     // The latest 40, returned oldest first.
-    for (auto &row : query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e JOIN event_links l ON l.event=e.id "
-                           "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND "+happened+" ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
-                           {actor, std::to_string(afterTurn)})) {
+    for (auto &row :
+         query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e "
+               "JOIN event_links l ON l.event=e.id "
+               "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND " +
+                   happened + " ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
+               {actor, std::to_string(afterTurn)})) {
         auto document = parse(row["document"].asString());
         Json::Value event;
         event["turn"] = row["turn"];
         event["actor"] = document["actor"];
         // Saved events hold their outcome as text; the chronicle prompt calls it a description.
-        event["description"] = (document.isMember("text") ? document["text"] : document["description"]).asString() + droppedClause(document);
-        if (document.isMember("effects")) event["effects"] = document["effects"];
+        event["description"] =
+            (document.isMember("text") ? document["text"] : document["description"]).asString() +
+            droppedClause(document);
+        if (document.isMember("effects"))
+            event["effects"] = document["effects"];
         out.append(event);
     }
     return out;
@@ -213,26 +261,34 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
 Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
     // A later event citing one as its cause renews its time on the map.
     std::map<std::string, int> cited;
-    for (auto &row : query("SELECT l.target,MAX(e.turn) AS turn FROM event_links l JOIN events e ON e.id=l.event WHERE l.kind='causes' AND " +
+    for (auto &row : query("SELECT l.target,MAX(e.turn) AS turn FROM event_links l JOIN events e "
+                           "ON e.id=l.event WHERE l.kind='causes' AND " +
                            happened + " GROUP BY l.target"))
         cited[row["target"].asString()] = row["turn"].asInt();
     auto lowered = [](std::string v) {
-        for (auto &ch : v) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        for (auto &ch : v)
+            ch = char(std::tolower(static_cast<unsigned char>(ch)));
         return v;
     };
     std::set<std::string> categories;
-    for (auto &c : filter["categories"]) categories.insert(c.asString());
+    for (auto &c : filter["categories"])
+        categories.insert(c.asString());
     auto who = filter["scope"] == "actor" ? filter["actor"].asString() : std::string();
     auto needle = lowered(filter.get("q", "").asString());
-    bool onMapOnly = filter.get("on_map", false).asBool(), majorOnly = filter.get("major", false).asBool();
+    bool onMapOnly = filter.get("on_map", false).asBool(),
+         majorOnly = filter.get("major", false).asBool();
     unsigned limit = std::clamp(filter.get("limit", 50).asUInt(), 1u, 500u);
     // Where an event without places happened: the acting nation's most populous region.
     std::map<std::string, std::string> heartland;
     for (auto &id : w.territories.getMemberNames()) {
         auto &t = w.territories[id];
         auto owner = t["owner"].asString();
-        if (t["kind"] == "residual" || owner != t["controller"].asString() || !t["latitude"].isNumeric()) continue;
-        if (!heartland.contains(owner) || t["population"].asInt64() > w.territories[heartland[owner]]["population"].asInt64()) heartland[owner] = id;
+        if (t["kind"] == "residual" || owner != t["controller"].asString() ||
+            !t["latitude"].isNumeric())
+            continue;
+        if (!heartland.contains(owner) ||
+            t["population"].asInt64() > w.territories[heartland[owner]]["population"].asInt64())
+            heartland[owner] = id;
     }
     Json::Value out;
     out["events"] = Json::arrayValue;
@@ -246,7 +302,8 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             break;
         }
         int turn = row["turn"].asInt();
-        // Only feasible events reach a month's events, and structured documents add their places and links.
+        // Only feasible events reach a month's events, and structured documents add their places
+        // and links.
         std::map<std::string, Json::Value> documents;
         for (auto &d : query("SELECT id,document FROM events WHERE turn=?", {std::to_string(turn)}))
             documents[d["id"].asString()] = parse(d["document"].asString());
@@ -256,26 +313,34 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
             item["turn"] = turn;
             item["text"] = x["text"];
             item["actor"] = x["actor"];
-            item["id"] = documents.contains(target) ? target : "t" + std::to_string(turn) + "-" + action + "-" + target;
-            for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes"}) item[k] = Json::arrayValue;
+            item["id"] = documents.contains(target)
+                             ? target
+                             : "t" + std::to_string(turn) + "-" + action + "-" + target;
+            for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes"})
+                item[k] = Json::arrayValue;
             item["actors"].append(x["actor"]);
             if (documents.contains(target)) {
                 auto &d = documents[target];
-                for (auto k : {"actors", "regions", "entities", "conflicts", "commitments", "causes", "effects", "breaches", "blocked_by", "partial", "failed",
+                for (auto k : {"actors", "regions", "entities", "conflicts", "commitments",
+                               "causes", "effects", "breaches", "blocked_by", "partial", "failed",
                                "regional_actor", "initiative_type", "identity_changes"})
-                    if (d.isMember(k)) item[k] = d[k];
-                // Events saved before significance existed count as major only for a breach, a new flag or a severe effect.
+                    if (d.isMember(k))
+                        item[k] = d[k];
+                // Events saved before significance existed count as major only for a breach, a new
+                // flag or a severe effect.
                 bool major = d.get("major", false).asBool();
                 if (!d.isMember("major")) {
-                    major = d.isMember("breaches") || (d["identity_changes"].isArray() && !d["identity_changes"].empty());
+                    major = d.isMember("breaches") ||
+                            (d["identity_changes"].isArray() && !d["identity_changes"].empty());
                     for (auto &e : d["effects"])
-                        for (auto k : {"economy", "stability"}) major = major || e[k] == "severe_decline" || e[k] == "strong_growth";
+                        for (auto k : {"economy", "stability"})
+                            major = major || e[k] == "severe_decline" || e[k] == "strong_growth";
                 }
                 item["major"] = major;
                 item["category"] = d["regional_actor"].isString() ? "regional"
-                                   : d["background"].asBool()   ? "world"
-                                   : x["actor"] == w.player     ? "player"
-                                                                : "nation";
+                                   : d["background"].asBool()     ? "world"
+                                   : x["actor"] == w.player       ? "player"
+                                                                  : "nation";
             } else if (action == "war_toll") {
                 // Fronts already show on the Wars & treaties map; the monthly toll is routine.
                 item["major"] = false;
@@ -283,48 +348,67 @@ Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {
                 item["conflicts"].append(target);
                 if (w.conflicts.isMember(target)) {
                     item["actors"] = w.conflicts[target]["actors"];
-                    if (w.conflicts[target]["affected_regions"].isArray()) item["regions"] = w.conflicts[target]["affected_regions"];
+                    if (w.conflicts[target]["affected_regions"].isArray())
+                        item["regions"] = w.conflicts[target]["affected_regions"];
                 }
             } else if (action == "completion") {
                 item["category"] = "construction";
                 // A finished city is years of work; units, bases and ports are routine.
                 item["major"] = w.entities[target]["kind"] == "city";
                 item["entities"].append(target);
-                if (w.entities.isMember(target)) item["regions"].append(w.entities[target]["region"]);
+                if (w.entities.isMember(target))
+                    item["regions"].append(w.entities[target]["region"]);
             } else {
                 item["major"] = false;
                 item["category"] = x["actor"] == w.player ? "player" : "nation";
             }
-            int active = std::max(turn, cited.contains(item["id"].asString()) ? cited[item["id"].asString()] : turn);
-            // Only major events reach the map: for a few months, and while a war they shaped is open.
+            int active = std::max(
+                turn, cited.contains(item["id"].asString()) ? cited[item["id"].asString()] : turn);
+            // Only major events reach the map: for a few months, and while a war they shaped is
+            // open.
             bool onMap = w.turn - active < eventMapMonths;
-            for (auto &c : item["conflicts"]) onMap = onMap || w.conflicts[c.asString()]["status"] == "open";
+            for (auto &c : item["conflicts"])
+                onMap = onMap || w.conflicts[c.asString()]["status"] == "open";
             onMap = onMap && item["major"].asBool();
             item["on_map"] = onMap;
-            if (majorOnly && !item["major"].asBool()) continue;
-            if (onMapOnly && !onMap) continue;
-            if (!categories.empty() && !categories.contains(item["category"].asString())) continue;
-            if (!needle.empty() && lowered(item["text"].asString()).find(needle) == std::string::npos) continue;
+            if (majorOnly && !item["major"].asBool())
+                continue;
+            if (onMapOnly && !onMap)
+                continue;
+            if (!categories.empty() && !categories.contains(item["category"].asString()))
+                continue;
+            if (!needle.empty() &&
+                lowered(item["text"].asString()).find(needle) == std::string::npos)
+                continue;
             if (!who.empty()) {
                 bool related = false;
-                for (auto &a : item["actors"]) related = related || a == who;
+                for (auto &a : item["actors"])
+                    related = related || a == who;
                 for (auto &r : item["regions"])
-                    related = related || w.territories[r.asString()]["owner"] == who || w.territories[r.asString()]["controller"] == who;
-                if (!related) continue;
+                    related = related || w.territories[r.asString()]["owner"] == who ||
+                              w.territories[r.asString()]["controller"] == who;
+                if (!related)
+                    continue;
             }
             item["location"] = Json::arrayValue;
             std::set<std::pair<double, double>> seen;
             auto place = [&](const Json::Value &v) {
-                if (!v["latitude"].isNumeric() || !v["longitude"].isNumeric() || item["location"].size() >= 4) return;
-                if (!seen.insert({v["latitude"].asDouble(), v["longitude"].asDouble()}).second) return;
+                if (!v["latitude"].isNumeric() || !v["longitude"].isNumeric() ||
+                    item["location"].size() >= 4)
+                    return;
+                if (!seen.insert({v["latitude"].asDouble(), v["longitude"].asDouble()}).second)
+                    return;
                 Json::Value p;
                 p["lat"] = v["latitude"];
                 p["lon"] = v["longitude"];
                 item["location"].append(p);
             };
-            for (auto &r : item["regions"]) place(w.territories[r.asString()]);
-            for (auto &e : item["entities"]) place(w.entities[e.asString()]);
-            if (item["location"].empty() && heartland.contains(x["actor"].asString())) place(w.territories[heartland[x["actor"].asString()]]);
+            for (auto &r : item["regions"])
+                place(w.territories[r.asString()]);
+            for (auto &e : item["entities"])
+                place(w.entities[e.asString()]);
+            if (item["location"].empty() && heartland.contains(x["actor"].asString()))
+                place(w.territories[heartland[x["actor"].asString()]]);
             out["events"].append(item);
         }
         out["next_before_turn"] = turn;

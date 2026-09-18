@@ -69,7 +69,8 @@ std::string introduction(const std::string &html) {
     }
     return "No substantial introduction available.";
 }
-// The closing part of the History section: recent history grounds present-day decisions better than origins.
+// The closing part of the History section: recent history grounds present-day decisions better than
+// origins.
 std::string recentHistory(const std::string &html, size_t limit) {
     auto heading = html.find("id=\"History\"");
     if (heading == std::string::npos || html.find('>', heading) == std::string::npos)
@@ -81,29 +82,59 @@ std::string recentHistory(const std::string &html, size_t limit) {
     auto from = end - start > 600000 ? end - 600000 : start;
     auto text = std::regex_replace(plainText(html.substr(from, end - from), 400000),
                                    std::regex(R"( ?\[ ?[0-9a-z]{1,4} ?\])"), "");
-    while (!text.empty() && text.back() == ' ') text.pop_back();
-    if (text.size() <= limit) return text;
+    while (!text.empty() && text.back() == ' ')
+        text.pop_back();
+    if (text.size() <= limit)
+        return text;
     auto cut = text.find(' ', text.size() - limit);
-    if (cut == std::string::npos) return text.substr(text.size() - limit);
+    if (cut == std::string::npos)
+        return text.substr(text.size() - limit);
     return "…" + text.substr(cut + 1);
 }
 } // namespace
-Json::Value fetchRegionalHistory(const std::string &name,const std::string &country,Transport get) {
-    Json::Value unavailable;unavailable["available"]=false;
+Json::Value fetchRegionalHistory(const std::string &name, const std::string &country,
+                                 Transport get) {
+    Json::Value unavailable;
+    unavailable["available"] = false;
     try {
-        if(name.empty()||name.size()>200||!std::regex_match(country,std::regex("[A-Z]{2}")))throw ValidationError("Regional identity unavailable");
-        // Exact English label, current country and direct national administrative parent: no fuzzy name guesses.
-        auto query="SELECT DISTINCT ?item WHERE { ?country wdt:P297 "+dump(country)+" . ?item rdfs:label "+dump(name)+"@en; wdt:P17 ?country; wdt:P131 ?country . FILTER NOT EXISTS { ?item wdt:P576 ?date } } LIMIT 2";
-        auto result=get("https://query.wikidata.org","/sparql?format=json&query="+drogon::utils::urlEncode(query),{},12);
-        auto rows=result["results"]["bindings"];if(!rows.isArray()||rows.size()!=1)throw ValidationError("Regional mapping missing or ambiguous");
-        auto uri=rows[0]["item"]["value"].asString();auto qid=uri.substr(uri.find_last_of('/')+1);
-        if(!std::regex_match(qid,std::regex("Q[0-9]+")))throw ValidationError("Invalid regional entity");
+        if (name.empty() || name.size() > 200 || !std::regex_match(country, std::regex("[A-Z]{2}")))
+            throw ValidationError("Regional identity unavailable");
+        // Exact English label, current country and direct national administrative parent: no fuzzy
+        // name guesses.
+        auto query = "SELECT DISTINCT ?item WHERE { ?country wdt:P297 " + dump(country) +
+                     " . ?item rdfs:label " + dump(name) +
+                     "@en; wdt:P17 ?country; wdt:P131 ?country . FILTER NOT EXISTS { ?item "
+                     "wdt:P576 ?date } } LIMIT 2";
+        auto result = get("https://query.wikidata.org",
+                          "/sparql?format=json&query=" + drogon::utils::urlEncode(query), {}, 12);
+        auto rows = result["results"]["bindings"];
+        if (!rows.isArray() || rows.size() != 1)
+            throw ValidationError("Regional mapping missing or ambiguous");
+        auto uri = rows[0]["item"]["value"].asString();
+        auto qid = uri.substr(uri.find_last_of('/') + 1);
+        if (!std::regex_match(qid, std::regex("Q[0-9]+")))
+            throw ValidationError("Invalid regional entity");
         // Reuse bounded article extraction after a verified regional mapping.
-        Transport mapped=[&](const std::string &host,const std::string &path,const Json::Value &body,double timeout){
-            if(host=="https://query.wikidata.org"){Json::Value j;j["results"]["bindings"]=rows;return j;}return get(host,path,body,timeout);
+        Transport mapped = [&](const std::string &host, const std::string &path,
+                               const Json::Value &body, double timeout) {
+            if (host == "https://query.wikidata.org") {
+                Json::Value j;
+                j["results"]["bindings"] = rows;
+                return j;
+            }
+            return get(host, path, body, timeout);
         };
-        auto out=fetchHistory("ZZ",mapped);out.removeMember("code");out["regional_wikidata"]=qid;out.removeMember("country_wikidata");out["region_name"]=name;out["initial_country"]=country;return out;
-    } catch(const std::exception &e){unavailable["reason"]=e.what();return unavailable;}
+        auto out = fetchHistory("ZZ", mapped);
+        out.removeMember("code");
+        out["regional_wikidata"] = qid;
+        out.removeMember("country_wikidata");
+        out["region_name"] = name;
+        out["initial_country"] = country;
+        return out;
+    } catch (const std::exception &e) {
+        unavailable["reason"] = e.what();
+        return unavailable;
+    }
 }
 Json::Value fetchHistory(const std::string &code, Transport get) {
     if (!std::regex_match(code, std::regex("[A-Z]{2}")))
@@ -154,11 +185,13 @@ Json::Value fetchHistory(const std::string &code, Transport get) {
         out["revision"] = article["latest"]["id"];
         out["excerpt"] = introduction(html);
         out["history_excerpt"] = recentHistory(html, 3000);
-        // A longer tail that the model condenses into a nation's chronicle; never sent to prompts directly.
+        // A longer tail that the model condenses into a nation's chronicle; never sent to prompts
+        // directly.
         out["history_source"] = recentHistory(html, 12000);
         // Marks caches that hold the end of the history section and the longer chronicle source.
         out["history_scope"] = "recent_source";
-        out["kind"] = "Bounded article introduction and the most recent part of its history section; formatting removed";
+        out["kind"] = "Bounded article introduction and the most recent part of its history "
+                      "section; formatting removed";
     } catch (const std::exception &e) {
         out["available"] = false;
         out["reason"] = e.what();

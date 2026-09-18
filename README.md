@@ -100,6 +100,7 @@ make test                       # C++ rule/provider/store tests + data integrity
 npm ci                          # browser tooling only; not a game runtime dependency
 npx playwright install chromium # one-time test browser installation
 python3 tests/integration.py     # real loopback HTTP, SQLite, mock model, browser
+make format-check               # C++ style check (make format applies it)
 ```
 
 Integration tests create disposable temporary saves and never replace your active campaign. They exercise hard failure on a down/slow/malformed model through a real HTTP client (no state change, clear error), duplicate/overlapping requests, restart and interrupted-job recovery, the CLI flag and web-UI endpoint setting persisting across restarts, free-text action cards with map targets, journal display and browser reload. The browser blocks all external requests. Test screenshots go to ignored `tests/artifacts/`. These mocks do not establish actual model quality or throughput. See [verification evidence](docs/VERIFICATION.md).

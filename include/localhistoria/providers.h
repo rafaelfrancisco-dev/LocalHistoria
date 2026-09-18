@@ -28,14 +28,16 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Transport transport;
     mutable std::mutex inference, settings;
     Json::Value audit{Json::arrayValue};
-    // Share of the context below which a byte estimate replaces exact tokenization; 0 always tokenizes.
+    // Share of the context below which a byte estimate replaces exact tokenization; 0 always
+    // tokenizes.
     double estimateShare;
     // /props, reused for a minute per endpoint.
     Json::Value cachedProps;
     std::string propsEndpoint;
     std::chrono::steady_clock::time_point propsAt;
-    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &, unsigned reasoningBudget,
-                          double temperature, const std::string &kind = "", const std::string &actor = "");
+    Json::Value completion(const Json::Value &, const Json::Value &, const std::string &,
+                           unsigned reasoningBudget, double temperature,
+                           const std::string &kind = "", const std::string &actor = "");
 
   public:
     explicit LocalProvider(std::string endpoint, double timeout = 20,
@@ -43,10 +45,12 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Decision decide(const WorldState &, const CountryContext &) override;
     std::string narrate(const std::vector<ResolvedEvent> &) override;
     std::string narrate(const std::vector<ResolvedEvent> &, const CountryContext &);
-    // Condenses a nation's real and campaign history into a short chronicle; input holds facts, previous_chronicle, campaign_events and reference_only.
+    // Condenses a nation's real and campaign history into a short chronicle; input holds facts,
+    // previous_chronicle, campaign_events and reference_only.
     std::string chronicle(const Json::Value &input, const std::string &actor);
     // responses: the player's answers to last month's treaty offers (see compileOperations).
-    WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &, const Json::Value &responses = Json::Value(Json::arrayValue));
+    WorldDelta adjudicate(const WorldState &, const Json::Value &, const Adjacency &,
+                          const Json::Value &responses = Json::Value(Json::arrayValue));
     Json::Value takeAudit();
     void setEndpoint(const std::string &);
     std::string endpointValue() const;

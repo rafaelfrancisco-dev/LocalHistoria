@@ -1,35 +1,41 @@
 #pragma once
 #include "world.h"
 namespace lh {
-// Reference inputs frozen into a campaign: national statistics keyed by actor code, regional population/GDP
-// shares keyed by territory ID, and the January 2026 wars and treaties.
+// Reference inputs frozen into a campaign: national statistics keyed by actor code, regional
+// population/GDP shares keyed by territory ID, and the January 2026 wars and treaties.
 struct StatusSeed {
-    Json::Value countries{Json::objectValue}, regions{Json::objectValue}, world, military{Json::objectValue};
+    Json::Value countries{Json::objectValue}, regions{Json::objectValue}, world,
+        military{Json::objectValue};
 };
 Json::Value encode(const StatusSeed &);
 StatusSeed decodeSeed(const Json::Value &);
-// Adds national status and regional population/GDP; with worldEvents, also the seeded wars, treaties,
-// occupations and non-state actors. Only for new campaigns or saves that predate national status.
+// Adds national status and regional population/GDP; with worldEvents, also the seeded wars,
+// treaties, occupations and non-state actors. Only for new campaigns or saves that predate national
+// status.
 void seedStatus(WorldState &, const StatusSeed &, bool worldEvents);
 bool hasMilitary(const WorldState &);
 void seedMilitary(WorldState &, const StatusSeed &);
 namespace force {
 double quality(const WorldState &, const std::string &);
-Json::Value committedForce(const WorldState &, const Adjacency &, const std::string &, const std::string &, bool);
-int assaultCapacity(const WorldState &, const Adjacency &, const std::string &, const std::string &, const std::string &);
+Json::Value committedForce(const WorldState &, const Adjacency &, const std::string &,
+                           const std::string &, bool);
+int assaultCapacity(const WorldState &, const Adjacency &, const std::string &, const std::string &,
+                    const std::string &);
 int constructionCapacity(const WorldState &, const std::string &);
 int uncommittedPersonnel(const WorldState &, const std::string &);
 int uncommittedShips(const WorldState &, const std::string &);
 std::string militaryLabel(const WorldState &, const std::string &);
 std::string militarySummary(const WorldState &, const std::string &);
-std::string reachDescription(const WorldState &, const Adjacency &, const std::string &, const std::string &);
-}
+std::string reachDescription(const WorldState &, const Adjacency &, const std::string &,
+                             const std::string &);
+} // namespace force
 bool hasStatus(const WorldState &);
 // Compact, model-ready and UI-ready national situation derived from the regions an actor owns.
 Json::Value nationalStatus(const WorldState &, const std::string &actor);
 Json::Value allNationalStatus(const WorldState &);
 std::string formatMoney(double usd, const Json::Value &status);
-// A conflict or commitment as the model and UI should see it: name, kind, parties, intensity and totals.
+// A conflict or commitment as the model and UI should see it: name, kind, parties, intensity and
+// totals.
 Json::Value describeAgreement(const WorldState &, const std::string &kind, const std::string &id);
 std::string displayName(const WorldState &, const std::string &kind, const std::string &id);
 // "January 2026" for turn 0; negative turns are months before the campaign.

@@ -73,12 +73,13 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
             regions[a].push_back(r);
     }
     rank(nations, "national", tier);
-    // The first slot is the player's neighbourhood; the second the world stage, a great power, except every
-    // third month when a distant nation keeps the wider world alive.
+    // The first slot is the player's neighbourhood; the second the world stage, a great power,
+    // except every third month when a distant nation keeps the wider world alive.
     if ((!closeness.empty() || !powers.empty()) && nations.size() > 2) {
         std::vector<std::string> rest(nations.begin() + 1, nations.end());
         if ((w.turn + 1) % 3 == 0)
-            rank(rest, "distant", [&](auto &id) { return tier(id) > 0 || powers.contains(id) ? -1 : 0; });
+            rank(rest, "distant",
+                 [&](auto &id) { return tier(id) > 0 || powers.contains(id) ? -1 : 0; });
         else
             rank(rest, "power", [&](auto &id) { return powers.contains(id) ? 1 : 0; });
         std::copy(rest.begin(), rest.end(), nations.begin() + 1);
@@ -95,8 +96,8 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
     };
     for (size_t i = 0; i < std::min<size_t>(2, nations.size()); ++i)
         add(nations[i], "");
-    // Choose authority before region: large countries receive no extra tickets. Only the player and close
-    // partners are preferred; great powers get no regional advantage.
+    // Choose authority before region: large countries receive no extra tickets. Only the player and
+    // close partners are preferred; great powers get no regional advantage.
     std::vector<std::string> governors;
     for (auto &[a, rs] : regions)
         governors.push_back(a);
@@ -125,7 +126,12 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
 }
 Json::Value flagDesignSchema() {
     return parse(
-        R"({"type":"object","additionalProperties":false,"required":["layout","palette","emblem","explanation"],"properties":{"layout":{"type":"string","enum":["horizontal","vertical","cross","diagonal"]},"palette":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"}},"emblem":{"type":"string","enum":["none","circle","diamond"]},"explanation":{"type":"string","minLength":1,"maxLength":300}}})");
+        R"({"type":"object","additionalProperties":false,"required":["layout","palette","emblem",)"
+        R"("explanation"],"properties":{"layout":{"type":"string","enum":["horizontal",)"
+        R"("vertical","cross","diagonal"]},"palette":{"type":"array","minItems":3,)"
+        R"("maxItems":3,"items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"}},)"
+        R"("emblem":{"type":"string","enum":["none","circle","diamond"]},)"
+        R"("explanation":{"type":"string","minLength":1,"maxLength":300}}})");
 }
 std::string renderFlag(const Json::Value &d) {
     if (!d.isObject() || !d["layout"].isString() || !d["emblem"].isString() ||

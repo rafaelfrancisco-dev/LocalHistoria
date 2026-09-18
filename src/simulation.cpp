@@ -20,14 +20,20 @@ Json::Value parse(const std::string &s) {
 }
 Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t history) {
     auto brief = reference;
-    if (!brief.isObject()) return brief;
+    if (!brief.isObject())
+        return brief;
     auto cut = [&](const char *key, size_t limit) {
-        if (!brief[key].isString()) return;
+        if (!brief[key].isString())
+            return;
         auto text = brief[key].asString();
-        if (text.size() <= limit) return;
+        if (text.size() <= limit)
+            return;
         auto end = text.rfind(' ', limit);
         // Without a space, step back to a UTF-8 lead byte so no character is split.
-        if (end == std::string::npos || end == 0) for (end = limit; end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80; --end) {}
+        if (end == std::string::npos || end == 0)
+            for (end = limit; end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80;
+                 --end) {
+            }
         brief[key] = text.substr(0, end) + "…";
     };
     cut("excerpt", excerpt);
@@ -36,24 +42,36 @@ Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t 
     // A chronicle already covers the history and the campaign so far, oldest first.
     if (brief["chronicle"].isString()) {
         brief.removeMember("history_excerpt");
-        if (history == 0) brief.removeMember("chronicle");
-        else cut("chronicle", history);
+        if (history == 0)
+            brief.removeMember("chronicle");
+        else
+            cut("chronicle", history);
         return brief;
     }
     // The history excerpt ends with the most recent period, so keep its end.
-    if (history == 0) brief.removeMember("history_excerpt");
-    else if (brief["history_excerpt"].isString() && brief["history_excerpt"].asString().size() > history) {
+    if (history == 0)
+        brief.removeMember("history_excerpt");
+    else if (brief["history_excerpt"].isString() &&
+             brief["history_excerpt"].asString().size() > history) {
         auto text = brief["history_excerpt"].asString();
         auto start = text.find(' ', text.size() - history);
-        brief["history_excerpt"] = "…" + (start == std::string::npos ? text.substr(text.size() - history) : text.substr(start + 1));
+        brief["history_excerpt"] =
+            "…" + (start == std::string::npos ? text.substr(text.size() - history)
+                                              : text.substr(start + 1));
     }
     return brief;
 }
 Json::Value encode(const WorldState &w) {
     Json::Value j;
     j["campaign_id"] = w.campaignId;
-    j["actors"] = w.actors; j["territories"] = w.territories; j["entities"] = w.entities; j["conflicts"] = w.conflicts; j["commitments"] = w.commitments;
-    j["regional_politics"] = w.regionalPolitics; j["activity"] = w.activity; j["proposals"] = w.proposals;
+    j["actors"] = w.actors;
+    j["territories"] = w.territories;
+    j["entities"] = w.entities;
+    j["conflicts"] = w.conflicts;
+    j["commitments"] = w.commitments;
+    j["regional_politics"] = w.regionalPolitics;
+    j["activity"] = w.activity;
+    j["proposals"] = w.proposals;
     j["turn"] = w.turn;
     j["player"] = w.player;
     return j;
@@ -62,16 +80,27 @@ WorldState decode(const Json::Value &j) {
     WorldState w;
     w.campaignId = j["campaign_id"].asString();
     for (auto key : {"actors", "territories", "entities", "conflicts", "commitments"})
-        if (!j[key].isNull() && !j[key].isObject()) throw ValidationError("Invalid world collection");
-    if (j["actors"].isObject()) w.actors=j["actors"];
-    if (j["territories"].isObject()) w.territories=j["territories"];
-    if (j["entities"].isObject()) w.entities=j["entities"];
-    if (j["conflicts"].isObject()) w.conflicts=j["conflicts"];
-    if (j["commitments"].isObject()) w.commitments=j["commitments"];
-    for(auto key:{"regional_politics","activity","proposals"})if(!j[key].isNull()&&!j[key].isObject())throw ValidationError("Invalid political collection");
-    if(j["regional_politics"].isObject())w.regionalPolitics=j["regional_politics"];
-    if(j["activity"].isObject())w.activity=j["activity"];
-    if(j["proposals"].isObject())w.proposals=j["proposals"];
+        if (!j[key].isNull() && !j[key].isObject())
+            throw ValidationError("Invalid world collection");
+    if (j["actors"].isObject())
+        w.actors = j["actors"];
+    if (j["territories"].isObject())
+        w.territories = j["territories"];
+    if (j["entities"].isObject())
+        w.entities = j["entities"];
+    if (j["conflicts"].isObject())
+        w.conflicts = j["conflicts"];
+    if (j["commitments"].isObject())
+        w.commitments = j["commitments"];
+    for (auto key : {"regional_politics", "activity", "proposals"})
+        if (!j[key].isNull() && !j[key].isObject())
+            throw ValidationError("Invalid political collection");
+    if (j["regional_politics"].isObject())
+        w.regionalPolitics = j["regional_politics"];
+    if (j["activity"].isObject())
+        w.activity = j["activity"];
+    if (j["proposals"].isObject())
+        w.proposals = j["proposals"];
     w.turn = j["turn"].asInt();
     w.player = j["player"].asString();
     return w;
@@ -82,7 +111,8 @@ Json::Value encode(const TurnOrders &o) {
         Json::Value x;
         x["text"] = v.text;
         if (!v.targets.empty())
-            for (auto &t : v.targets) x["targets"].append(t);
+            for (auto &t : v.targets)
+                x["targets"].append(t);
         j.append(x);
     }
     return j;
@@ -114,7 +144,8 @@ TurnOrders parseOrders(const Json::Value &j) {
             if (!x["targets"].isArray() || x["targets"].size() > maxTargets)
                 throw ValidationError("targets must be an array of at most 4 IDs");
             for (auto &t : x["targets"]) {
-                if (!t.isString()) throw ValidationError("Target IDs must be strings");
+                if (!t.isString())
+                    throw ValidationError("Target IDs must be strings");
                 order.targets.push_back(t.asString());
             }
         }
@@ -146,30 +177,38 @@ Resolution resolve(const WorldState &w) {
     for (auto &id : r.state.commitments.getMemberNames()) {
         auto &k = r.state.commitments[id];
         auto expires = k.get("expires_turn", Json::nullValue);
-        if (k["status"] != "open" || !expires.isInt() || expires.asInt() > r.state.turn) continue;
+        if (k["status"] != "open" || !expires.isInt() || expires.asInt() > r.state.turn)
+            continue;
         k["status"] = "resolved";
         k["ended_turn"] = r.state.turn;
         auto text = displayName(r.state, "commitment", id) + " expired.";
         for (auto &t : k["terms"]) {
             auto region = t["region"].asString();
-            if (t["action"] != "occupy" || !r.state.territories.isMember(region)) continue;
+            if (t["action"] != "occupy" || !r.state.territories.isMember(region))
+                continue;
             auto &territory = r.state.territories[region];
-            if (territory["controller"] != t["by"] || territory["owner"] == t["by"]) continue;
+            if (territory["controller"] != t["by"] || territory["owner"] == t["by"])
+                continue;
             territory["controller"] = territory["owner"];
             auto by = t["by"].asString();
-            text += " " + (r.state.hasActor(by) ? std::as_const(r.state.actors)[by]["name"].asString() : by) + " handed " + territory["name"].asString() + " back.";
+            text +=
+                " " +
+                (r.state.hasActor(by) ? std::as_const(r.state.actors)[by]["name"].asString() : by) +
+                " handed " + territory["name"].asString() + " back.";
         }
         r.events.push_back({k["actors"][0].asString(), "expiry", id, text});
     }
     for (auto &id : r.state.entities.getMemberNames()) {
         auto &e = r.state.entities[id];
         // An event site no later event renewed leaves the map without a journal line.
-        if (e["status"] == "active" && e.isMember("expires_turn") && e["expires_turn"].isInt() && e["expires_turn"].asInt() <= r.state.turn) {
+        if (e["status"] == "active" && e.isMember("expires_turn") && e["expires_turn"].isInt() &&
+            e["expires_turn"].asInt() <= r.state.turn) {
             e["status"] = "inactive";
             e.removeMember("expires_turn");
             continue;
         }
-        if (e["status"] != "under_construction" || !e["completes_turn"].isInt() || e["completes_turn"].asInt() > r.state.turn)
+        if (e["status"] != "under_construction" || !e["completes_turn"].isInt() ||
+            e["completes_turn"].asInt() > r.state.turn)
             continue;
         e["status"] = "active";
         e.removeMember("completes_turn");
@@ -182,7 +221,8 @@ Resolution resolve(const WorldState &w) {
 }
 static bool involves(const Json::Value &v, const std::string &a) {
     for (auto &x : v["actors"])
-        if (x == a) return true;
+        if (x == a)
+            return true;
     return false;
 }
 CountryContext context(const WorldState &w, const std::string &a, const Json::Value &recent,
@@ -197,18 +237,26 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     f["occupying"] = Json::objectValue;
     for (auto &id : w.territories.getMemberNames()) {
         auto &t = w.territories[id];
-        if (t["owner"] == a && t["controller"] == a) f["territories"][id] = t["name"];
-        else if (t["owner"] == a) { f["occupied_by_others"][id]["name"] = t["name"]; f["occupied_by_others"][id]["controller"] = t["controller"]; }
-        else if (t["controller"] == a) { f["occupying"][id]["name"] = t["name"]; f["occupying"][id]["owner"] = t["owner"]; }
+        if (t["owner"] == a && t["controller"] == a)
+            f["territories"][id] = t["name"];
+        else if (t["owner"] == a) {
+            f["occupied_by_others"][id]["name"] = t["name"];
+            f["occupied_by_others"][id]["controller"] = t["controller"];
+        } else if (t["controller"] == a) {
+            f["occupying"][id]["name"] = t["name"];
+            f["occupying"][id]["owner"] = t["owner"];
+        }
     }
     f["entities"] = Json::objectValue;
     for (auto &id : w.entities.getMemberNames())
         if (w.entities[id]["actor"] == a && w.entities[id]["status"] != "destroyed") {
             auto e = w.entities[id];
-            for (auto k : {"longitude", "latitude", "actor", "origin_event"}) e.removeMember(k);
+            for (auto k : {"longitude", "latitude", "actor", "origin_event"})
+                e.removeMember(k);
             f["entities"][id] = e;
         }
-    // The nation's size, wealth, stability and wars ground every decision, adjudication and narration.
+    // The nation's size, wealth, stability and wars ground every decision, adjudication and
+    // narration.
     f["status"] = nationalStatus(w, a);
     if (f["status"].isMember("military_text")) {
         f["status"]["military"] = f["status"]["military_text"];
@@ -219,24 +267,34 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         auto &collection = conflict ? w.conflicts : w.commitments;
         f[kind] = Json::objectValue;
         for (auto &id : collection.getMemberNames())
-            if (collection[id]["status"] == "open" && involves(collection[id], a)) f[kind][id] = describeAgreement(w, conflict ? "conflict" : "commitment", id);
+            if (collection[id]["status"] == "open" && involves(collection[id], a))
+                f[kind][id] = describeAgreement(w, conflict ? "conflict" : "commitment", id);
     }
     // Treaties offered to or by this nation that still await the player's answer.
     for (auto &id : w.proposals.getMemberNames()) {
         auto &p = w.proposals[id];
-        if (p["status"] != "pending" || !involves(p, a)) continue;
+        if (p["status"] != "pending" || !involves(p, a))
+            continue;
         Json::Value o;
-        o["from"] = w.actors[p["from"].asString()]["name"]; o["name"] = p["name"]; o["kind"] = p["kind"]; o["text"] = p["text"];
+        o["from"] = w.actors[p["from"].asString()]["name"];
+        o["name"] = p["name"];
+        o["kind"] = p["kind"];
+        o["text"] = p["text"];
         f["treaty_proposals"][id] = o;
     }
-    // Wars an ally or defence partner is fighting without this nation: what its commitments may call on it to weigh.
+    // Wars an ally or defence partner is fighting without this nation: what its commitments may
+    // call on it to weigh.
     for (auto &kid : w.commitments.getMemberNames()) {
         auto &k = w.commitments[kid];
         auto kind = k["kind"].asString();
-        if (k["status"] != "open" || (kind != "alliance" && kind != "defence_pact") || !involves(k, a)) continue;
+        if (k["status"] != "open" || (kind != "alliance" && kind != "defence_pact") ||
+            !involves(k, a))
+            continue;
         for (auto &cid : w.conflicts.getMemberNames()) {
             auto &c = w.conflicts[cid];
-            if (c["status"] != "open" || involves(c, a) || f["allied_wars"].size() >= 4 || f["allied_wars"].isMember(cid)) continue;
+            if (c["status"] != "open" || involves(c, a) || f["allied_wars"].size() >= 4 ||
+                f["allied_wars"].isMember(cid))
+                continue;
             for (auto &ally : c["actors"])
                 if (involves(k, ally.asString())) {
                     Json::Value war;
@@ -257,7 +315,10 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
             if ((event["actor"] == a || event["target"] == a) && f["recent_events"].size() < 6)
                 f["recent_events"].append(event.get("prompt_text", event["text"]));
     Json::Value ref = reference;
-    if (ref.isNull()) { ref["available"]=false; ref["reason"]="Not prepared"; }
+    if (ref.isNull()) {
+        ref["available"] = false;
+        ref["reason"] = "Not prepared";
+    }
     return {a, f, ref};
 }
 } // namespace lh

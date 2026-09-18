@@ -1,8 +1,9 @@
 CMAKE_PREFIX_PATH ?= $(shell brew --prefix 2>/dev/null)
 JOBS ?= 4
 GEO_PYTHON ?= .venv-geography/bin/python
+CXX_SOURCES := $(wildcard src/*.cpp include/localhistoria/*.h tests/*.cpp tools/*.cpp)
 
-.PHONY: all test integration run start data display clean
+.PHONY: all test integration run start data display clean format format-check
 all: data
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
 	cmake --build build -j $(JOBS)
@@ -27,6 +28,10 @@ start:
 	./start.sh
 clean:
 	rm -rf build
+format:
+	clang-format -i $(CXX_SOURCES)
+format-check:
+	clang-format --dry-run --Werror $(CXX_SOURCES)
 
 geography-env:
 	python3 -m venv .venv-geography
