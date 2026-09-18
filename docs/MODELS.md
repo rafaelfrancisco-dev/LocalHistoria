@@ -42,7 +42,7 @@ To run the pieces separately instead:
 
 Building the C++ server itself needs Visual Studio (Desktop C++ workload) and vcpkg for Drogon/JsonCpp/SQLite3; see the Windows section of the README. Build **Release**, not Debug: MSVC's Debug STL adds checked-iterator overhead to every container operation, which turns the startup load of region/geometry data from data/world.sqlite into a multi-minute stall instead of a few seconds — it looks like a hang, but it is not one.
 
-The `--llama-endpoint=` flag sets the model endpoint for this launch and saves it in the campaign save, so later launches need no flag. You can also change the endpoint any time from the **Model endpoint** field in the web UI (`POST /api/v1/model-config`), which is also kept across restarts. Either way, only a loopback endpoint of the form `http://127.0.0.1:<port>` is accepted.
+The `--llama-endpoint=` flag sets the model endpoint for this launch and saves it in the campaign save, so later launches need no flag. You can also change the endpoint any time from the **Model endpoint** field under **Settings** in the web UI (`POST /api/v1/model-config`), which is also kept across restarts. Either way, only a loopback endpoint of the form `http://127.0.0.1:<port>` is accepted.
 
 ## Context size and memory
 

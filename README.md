@@ -51,7 +51,7 @@ Or, as on macOS/Linux, start the model and the game together with one command (b
 
 See [model setup](docs/MODELS.md#windows) for pointing it at a llama.cpp build and enabling CUDA offload (`-dev CUDA0`). `vcpkg.json` pins the third-party dependency versions; `CMakePresets.json`'s `windows` preset wires up the vcpkg toolchain.
 
-The `--llama-endpoint=` flag is optional; it defaults to `http://127.0.0.1:8081`. You only need to give it once: the server saves the active endpoint (from the flag or the web UI's **Model endpoint** field) in the campaign save and reuses it on the next launch.
+The `--llama-endpoint=` flag is optional; it defaults to `http://127.0.0.1:8081`. You only need to give it once: the server saves the active endpoint (from the flag or the **Model endpoint** field under **Settings** in the web UI) in the campaign save and reuses it on the next launch.
 
 The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are project-owned assets. The build imports the data on demand. It never reads Downloads or downloads models. Rebuild reference data explicitly (see [Evolving world](docs/EVOLVING_WORLD.md)) while the server is stopped.
 
@@ -60,7 +60,10 @@ The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are projec
 1. Select a country using the map or searchable list, then choose **Play as this country**.
 2. Write up to eight actions for the month, e.g. *"Build a naval base in Faro"*, *"Propose a defensive alliance to Spain"* or *"Launch a national education reform"*. While an action is selected, click map regions to pin them as targets. This is optional, since regions and nations named in the text are recognized too.
 3. Click **End month**. The model writes the actions of the nations you addressed, your ongoing rivals and a neighbor: one action each, two for those you named or are at war with. It then adjudicates everything together (reasoning only when some action concerns war, land or treaties) and narrates the month. Drafts survive a page reload.
-4. The game autosaves each completed turn. Reload or restart to resume. A new campaign requires confirmation before replacing the active campaign and journal.
+4. Each journal month opens with **What changed**: regions that changed hands, units started, finished, moved or destroyed, and wars and treaties opened or ended. The narration follows. Below it, the authoritative events list your nation's outcomes first, then other nations, with war tolls folded away. The newest month also keeps the live log as **How the month was decided**.
+5. **Settings** in the header holds the model endpoint, a **Skip AI narration** switch for faster months, a link to the last month's model calls and the campaign export.
+6. The country list starts with you, then your neighbors, then nations at war or in treaty with you, then everyone else. Landless actors without a flag appear only when searched for. On a phone the list is a search dropdown, and the month's actions come before the journal.
+7. The game autosaves each completed turn. Reload or restart to resume. A new campaign requires confirmation before replacing the active campaign and journal.
 
 A turn is one month, and the game keeps outcomes realistic:
 

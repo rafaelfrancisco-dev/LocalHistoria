@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <drogon/drogon.h>
+#include <filesystem>
 #include <fstream>
 #include <regex>
 namespace lh {
@@ -41,11 +42,9 @@ void validateBody(const std::string &path, const Json::Value &body) {
     if (path == "/api/v1/campaign")
         fields = {{"country", "string"}, {"confirm_replace", "bool"}};
     if (path == "/api/v1/turns")
-        fields = {{"campaign_id", "string"},
-                  {"expected_turn", "int"},
-                  {"idempotency_key", "string"},
-                  {"orders", "array"},
-                  {"responses", "array"}};
+        fields = {{"campaign_id", "string"},     {"expected_turn", "int"},
+                  {"idempotency_key", "string"}, {"narration", "bool"},
+                  {"orders", "array"},           {"responses", "array"}};
     if (path == "/api/v1/model-config")
         fields = {{"llama_endpoint", "string"}};
     if (path == "/api/v1/history")
@@ -98,6 +97,84 @@ void route(Server &s, const std::string &path, Handler handler, std::vector<Http
         };
     app().registerHandler(path, std::move(endpoint), constraints);
 }
+// A month's recorded changes in words, for the journal's "What changed"; names are current ones.
+Json::Value changeSummaries(const Json::Value &changes, const WorldState &w) {
+    Json::Value out(Json::arrayValue);
+    auto actor = [&](const Json::Value &code) {
+        auto name = w.actors[code.asString()]["name"];
+        return name.isString() ? name.asString() : code.asString();
+    };
+    auto region = [&](const Json::Value &id) {
+        auto name = w.territories[id.asString()]["name"];
+        return name.isString() ? name.asString() : id.asString();
+    };
+    for (auto &c : changes) {
+        auto kind = c["kind"].asString();
+        auto &before = c["before"];
+        auto &after = c["after"];
+        auto name = after.get("name", c["id"]).asString();
+        std::vector<std::string> parts;
+        if (kind == "territory") {
+            // A transfer moves ownership and control together: one arrow.
+            bool transfer = before["owner"] != after["owner"] &&
+                            before["owner"] == before["controller"] &&
+                            after["owner"] == after["controller"];
+            if (transfer)
+                parts.push_back(actor(before["owner"]) + " → " + actor(after["owner"]));
+            else if (before["owner"] != after["owner"])
+                parts.push_back("owner " + actor(before["owner"]) + " → " + actor(after["owner"]));
+            if (!transfer && before["controller"] != after["controller"])
+                parts.push_back("control " + actor(before["controller"]) + " → " +
+                                actor(after["controller"]));
+            if (!parts.empty())
+                parts.front() = region(c["id"]) + ": " + parts.front();
+        } else if (kind == "entity") {
+            auto label = name + " (" + after["kind"].asString() + ")";
+            if (before.isNull())
+                parts.push_back(label + (after["status"] == "under_construction"
+                                             ? " construction started"
+                                             : " formed"));
+            else if (before["status"] != after["status"] && after["status"] == "destroyed")
+                parts.push_back(label + " destroyed");
+            else if (before["status"] == "under_construction" && after["status"] == "active")
+                parts.push_back(label + " completed");
+            else if (before["region"] != after["region"])
+                parts.push_back(label + " moved to " + region(after["region"]));
+        } else if (kind == "conflict") {
+            if (before.isNull())
+                parts.push_back(name + " opened");
+            else if (before["status"] != after["status"] && after["status"] != "open")
+                parts.push_back(name + " ended");
+            else if (before["intensity"] != after["intensity"]) {
+                static const std::map<std::string, int> level{
+                    {"none", 0}, {"low", 1}, {"medium", 2}, {"high", 3}};
+                auto from = before["intensity"].asString(), to = after["intensity"].asString();
+                bool up =
+                    level.contains(from) && level.contains(to) && level.at(to) > level.at(from);
+                parts.push_back(name + (up ? " escalated to " : " de-escalated to ") + to);
+            }
+        } else if (kind == "commitment") {
+            if (before.isNull())
+                parts.push_back(name + " signed");
+            else if (before["status"] != after["status"] && after["status"] != "open")
+                parts.push_back(name + " ended");
+        } else if (kind == "actor") {
+            if (!before.isNull() && before["name"] != after["name"])
+                parts.push_back(before["name"].asString() + " renamed " + after["name"].asString());
+        }
+        if (parts.empty())
+            continue;
+        std::string summary;
+        for (auto &p : parts)
+            summary += (summary.empty() ? "" : ", ") + p;
+        Json::Value item;
+        item["kind"] = kind;
+        item["id"] = c["id"];
+        item["summary"] = summary;
+        out.append(item);
+    }
+    return out;
+}
 void campaign(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     std::lock_guard l(s.mutex);
     Json::Value j;
@@ -113,6 +190,11 @@ void campaign(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb)
     if (!j["state"].isNull())
         j["national_status"] = allNationalStatus(decode(j["state"]));
     j["journal"] = s.store.journal();
+    if (!j["state"].isNull()) {
+        auto w = decode(j["state"]);
+        for (auto &month : j["journal"])
+            month["changes"] = changeSummaries(s.store.monthChanges(month["turn"].asInt()), w);
+    }
     j["active_jobs"] = s.store.query("SELECT id,status FROM jobs WHERE status='running'");
     j["llama_endpoint"] = s.provider.endpointValue();
     if (b.isNull())
@@ -173,10 +255,19 @@ void countries(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb
     auto rows = s.reference.query("SELECT code,name FROM countries ORDER BY name");
     if (!w.campaignId.empty()) {
         rows = Json::arrayValue;
+        std::set<std::string> neighbors;
+        for (auto &n : s.reference.query("SELECT b FROM neighbors WHERE a=?", {w.player}))
+            neighbors.insert(n["b"].asString());
+        static const std::regex iso("[A-Z]{2}");
         for (auto &a : w.actors.getMemberNames()) {
             Json::Value c;
             c["code"] = a;
             c["name"] = w.actors[a]["name"];
+            // Landless actors without a flag of their own are listed only when searched for.
+            c["has_flag"] = std::regex_match(a, iso) &&
+                            std::filesystem::exists("web/flags/" + lowercase(a) + ".svg");
+            if (neighbors.contains(a))
+                c["neighbor"] = true;
             rows.append(c);
         }
     }
@@ -259,6 +350,7 @@ void turns(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     auto job = s.store.submit(b["expected_turn"].asInt(), b["idempotency_key"].asString(), payload);
     auto id = job["id"].asString();
     auto plan = s.turns.plan(w, orders);
+    plan.narrate = b.get("narration", true).asBool();
     auto &refs = plan.refs;
     refs["status_version"] = statusVersion;
     if (b.isMember("responses"))

@@ -356,7 +356,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
 }
 void TurnRunner::run(const TurnPlan &p, const std::string &id) {
     auto &[w, orders, actors, reactiveCounts, chronicleNations, allocations, refs, contexts,
-           independentContexts] = p;
+           independentContexts, narrate] = p;
     auto &store = d.store;
     auto &provider = d.provider;
     auto &references = d.references;
@@ -507,20 +507,21 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             committed = true;
             references.prepare(result.state);
         }
-        try {
-            CountryContext narrationContext;
-            {
+        if (narrate)
+            try {
+                CountryContext narrationContext;
+                {
+                    std::lock_guard l(mutex);
+                    narrationContext = store.campaignContext(result.state, result.state.player);
+                }
+                auto text = provider.narrate(result.events, narrationContext);
                 std::lock_guard l(mutex);
-                narrationContext = store.campaignContext(result.state, result.state.player);
+                store.narrate(id, text, false);
+                store.recordInference(id, provider.takeAudit());
+            } catch (...) {
+                std::lock_guard l(mutex);
+                store.recordInference(id, provider.takeAudit());
             }
-            auto text = provider.narrate(result.events, narrationContext);
-            std::lock_guard l(mutex);
-            store.narrate(id, text, false);
-            store.recordInference(id, provider.takeAudit());
-        } catch (...) {
-            std::lock_guard l(mutex);
-            store.recordInference(id, provider.takeAudit());
-        }
     } catch (const std::exception &e) {
         if (!committed) {
             std::lock_guard l(mutex);

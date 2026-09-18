@@ -25,6 +25,8 @@ class Store {
     void narrate(const std::string &job, const std::string &text, bool fallback);
     Json::Value job(const std::string &);
     Json::Value journal();
+    // The recorded delta changes of one month, without parsing the whole reference.
+    Json::Value monthChanges(int turn);
     CountryContext campaignContext(const WorldState &, const std::string &);
     void recordInference(const std::string &, const Json::Value &);
     Json::Value background(const std::string &);

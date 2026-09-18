@@ -8,7 +8,9 @@ let countries = [],
   selected = null,
   layers,
   selectedLayer = null,
-  busy = false;
+  busy = false,
+  owners = new Set(),
+  lastTurnLog = null;
 const map = L.map("map", { worldCopyJump: false, minZoom: 1, preferCanvas: true }).setView(
   [22, 8],
   2,
@@ -62,29 +64,62 @@ function flag(img, code, revision = state?.actors?.[code]?.flag_revision) {
     img.hidden = true;
   };
 }
+const phone = matchMedia("(max-width: 600px)");
+// With a campaign the list is grouped around the player; a search lists every match, and on a phone the list is a
+// dropdown of the first eight.
+function countryGroups(q) {
+  const matches = countries.filter((c) => (c.name + " " + c.code).toLowerCase().includes(q));
+  if (phone.matches) return [[null, document.activeElement === $("search") || q ? matches.slice(0, 8) : []]];
+  if (!state || q) return [[null, matches]];
+  const player = state.player;
+  const engaged = new Set();
+  for (const v of [...Object.values(state.conflicts || {}), ...Object.values(state.commitments || {})])
+    if (v.status === "open" && v.actors.includes(player)) v.actors.forEach((a) => engaged.add(a));
+  return [
+    ["You", matches.filter((c) => c.code === player)],
+    ["Neighbors", matches.filter((c) => c.neighbor && c.code !== player)],
+    ["At war or in treaty with you", matches.filter((c) => engaged.has(c.code) && !c.neighbor && c.code !== player)],
+    ["Everyone", matches.filter((c) => c.code !== player && (c.has_flag || owners.has(c.code)))],
+  ];
+}
 function list() {
   const q = $("search").value.toLowerCase();
   $("countries").replaceChildren();
-  for (const c of countries.filter((c) =>
-    (c.name + " " + c.code).toLowerCase().includes(q),
-  )) {
-    const b = document.createElement("button");
-    b.className = "country" + (selected === c.code ? " selected" : "");
-    b.setAttribute("aria-pressed", selected === c.code);
-    b.setAttribute("aria-label", c.name);
-    const img = document.createElement("img");
-    img.alt = "";
-    flag(img, c.code);
-    b.append(img, document.createTextNode(c.name));
-    if (state?.player === c.code) {
-      const you = document.createElement("small");
-      you.className = "you";
-      you.textContent = "YOU";
-      b.append(you);
+  for (const [title, entries] of countryGroups(q)) {
+    if (!entries.length) continue;
+    if (title) {
+      const h = document.createElement("h3");
+      h.className = "country-group";
+      h.textContent = title;
+      $("countries").append(h);
     }
-    b.onclick = protect(() => select(c.code, true));
-    $("countries").append(b);
+    for (const c of entries) countryButton(c);
   }
+}
+function countryButton(c) {
+  const b = document.createElement("button");
+  b.className = "country" + (selected === c.code ? " selected" : "");
+  b.setAttribute("aria-pressed", selected === c.code);
+  b.setAttribute("aria-label", c.name);
+  const img = document.createElement("img");
+  img.alt = "";
+  flag(img, c.code);
+  b.append(img, document.createTextNode(c.name));
+  if (state?.player === c.code) {
+    const you = document.createElement("small");
+    you.className = "you";
+    you.textContent = "YOU";
+    b.append(you);
+  }
+  b.onclick = protect(async () => {
+    if (phone.matches) {
+      $("search").value = "";
+      $("search").blur();
+      list();
+    }
+    await select(c.code, true);
+  });
+  $("countries").append(b);
 }
 // Wars & treaties map mode: relations of the selected country, war fronts and occupations.
 const INTENSITY = { low: 1, medium: 2, high: 3 };
@@ -179,12 +214,16 @@ function renderStats() {
   const building = entities.filter((e) => e.status === "under_construction").length;
   const national = nationalStatus[selected];
   const military = national?.military;
+  const last = state.actors[selected].status || {};
+  const signed = (n, text) => (n > 0 ? "+" : n < 0 ? "−" : "±") + text;
+  const lastPopulation = typeof last.last_population_change === "number" ? `${signed(last.last_population_change, Math.abs(last.last_population_change).toLocaleString())} last month` : "";
+  const lastGdp = typeof last.last_gdp_change === "number" ? `${signed(last.last_gdp_change, Math.abs(last.last_gdp_change).toFixed(2))}% last month` : "";
   if (national?.gdp) {
     const [local, dollars] = national.gdp.split(" (");
     const wars = national.wars.map((w) => `${w.name} (${w.intensity})`).join(" · ");
     for (const [label, value, detail, wide] of [
-      ["GDP" + (national.estimated ? " · estimate" : ""), local, dollars ? dollars.slice(0, -1) : "", true],
-      ["population", national.population_text, national.displaced ? `${national.displaced.toLocaleString()} displaced` : ""],
+      ["GDP" + (national.estimated ? " · estimate" : ""), local, [dollars ? dollars.slice(0, -1) : "", lastGdp].filter(Boolean).join(" · "), true],
+      ["population", national.population_text, [lastPopulation, national.displaced ? `${national.displaced.toLocaleString()} displaced` : ""].filter(Boolean).join(" · ")],
       ["GDP per capita", national.gdp_per_capita, ""],
       ["stability", national.stability.replace(/ \(.*/, ""), national.stability.match(/\((.*)\)/)?.[1] || ""],
       ["economy", national.economic_trend.replace(/ \(.*/, ""), national.economic_trend.match(/\((.*)\)/)?.[1] || ""],
@@ -211,7 +250,8 @@ function renderStats() {
     ["occupied by others", territories.filter((t) => t.owner === selected && t.controller !== selected).length],
     ["occupying", territories.filter((t) => t.controller === selected && t.owner !== selected).length],
     ["under construction", building],
-    ["conflicts · treaties", Object.values(state.conflicts).filter(involved).length + " · " + Object.values(state.commitments).filter(involved).length],
+    ["conflicts", Object.values(state.conflicts).filter(involved).length],
+    ["treaties", Object.values(state.commitments).filter(involved).length],
   ]) {
     const cell = document.createElement("div");
     cell.className = "stat";
@@ -224,11 +264,15 @@ function renderStats() {
   }
   $("country-description").textContent =
     selected === state.player ? "Your nation" : "Another nation of this world";
+  // Folded on a phone so the month's actions stay near the top.
   let politics = $("regional-politics");
-  if (!politics) { politics = document.createElement("section"); politics.id = "regional-politics"; $("stats").after(politics); }
-  politics.replaceChildren();
-  for (const [id, p] of Object.entries(state.regional_politics || {})) {
-    if (state.territories[id]?.controller !== selected) continue;
+  if (!politics) { politics = document.createElement("details"); politics.id = "regional-politics"; politics.open = !phone.matches; $("stats").after(politics); }
+  const regions = Object.entries(state.regional_politics || {}).filter(([id]) => state.territories[id]?.controller === selected);
+  politics.hidden = !regions.length;
+  const heading = document.createElement("summary");
+  heading.textContent = `Regional politics (${regions.length})`;
+  politics.replaceChildren(heading);
+  for (const [id, p] of regions) {
     const h = document.createElement("h3"); h.textContent = state.territories[id].name;
     const agenda = document.createElement("p"); agenda.textContent = `${p.agenda} · Relations: ${p.relations}`;
     politics.append(h, agenda);
@@ -284,7 +328,8 @@ async function load() {
   state = j.state;
   nationalStatus = j.national_status || {};
   if (state) {
-    countries = Object.entries(state.actors || {}).map(([code, actor]) => ({code, name:actor.name})).sort((a,b) => a.name.localeCompare(b.name));
+    countries = (await api("countries")).sort((a, b) => a.name.localeCompare(b.name));
+    owners = new Set(Object.values(state.territories).map((t) => t.owner));
   }
   $("llama-endpoint").value = j.llama_endpoint;
   $("date").textContent = month(state?.turn || 0);
@@ -292,6 +337,7 @@ async function load() {
   $("playing-as").hidden = !state;
   $("diplomacy-open").hidden = !state;
   $("events-open").hidden = !state;
+  $("prepare").hidden = !state;
   if (state) {
     flag($("playing-as-flag"), state.player);
     $("playing-as-name").textContent =
@@ -300,36 +346,75 @@ async function load() {
       "Playing as " + (countries.find((c) => c.code === state.player)?.name || state.player);
     renderActions();
     renderProposals();
-    const expanded = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details")?.open).map(e => e.dataset.turn));
+    const expanded = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details.events")?.open).map(e => e.dataset.turn));
     $("journal").replaceChildren();
-    for (const entry of j.journal) {
+    for (const [index, entry] of j.journal.entries()) {
       const box = document.createElement("article");
       box.className = "entry";
       box.dataset.turn = String(entry.turn);
+      // The month that was played, then the month it led to.
       const h = document.createElement("h3");
       h.textContent = month(entry.turn - 1);
+      const played = document.createElement("small");
+      played.className = "played";
+      played.textContent = `played · led to ${month(entry.turn)}`;
+      h.append(" ", played);
+      box.append(h);
+      if (entry.changes?.length) {
+        const changes = document.createElement("ul");
+        changes.className = "changes";
+        changes.setAttribute("aria-label", "What changed this month");
+        for (const c of entry.changes) {
+          const item = document.createElement("li");
+          item.textContent = c.summary;
+          changes.append(item);
+        }
+        box.append(changes);
+      }
       const p = document.createElement("p");
       p.textContent = entry.narration;
       const label = document.createElement("small");
       label.textContent = entry.narration_fallback
         ? "Factual event summary"
         : "AI narration · authoritative events below";
-      box.append(h, label, p);
+      box.append(label, p);
       const details = document.createElement("details");
+      details.className = "events";
       details.open = expanded.has(String(entry.turn));
       const summary = document.createElement("summary");
       summary.textContent = "Authoritative events";
       details.append(summary);
-      for (const event of entry.events) {
+      // The player's outcomes first, then other nations; war tolls are folded away.
+      const tolls = entry.events.filter((e) => e.action === "war_toll");
+      const others = entry.events.filter((e) => e.action !== "war_toll");
+      const ordered = [...others.filter((e) => e.actor === state.player), ...others.filter((e) => e.actor !== state.player)];
+      let tollBox = null;
+      if (tolls.length) {
+        tollBox = document.createElement("details");
+        tollBox.className = "tolls";
+        const s = document.createElement("summary");
+        s.textContent = `War tolls (${tolls.length})`;
+        tollBox.append(s);
+      }
+      for (const event of [...ordered, ...tolls]) {
         const line = document.createElement("p");
         line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.failed || structured?.partial) line.prepend(structured.failed ? "Failed · " : "Partial · ");
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
         flagThumbs(structured?.identity_changes, line);
-        details.append(line);
+        (event.action === "war_toll" ? tollBox : details).append(line);
       }
+      if (tollBox) details.append(tollBox);
       box.append(details);
+      if (index === 0 && lastTurnLog?.turn === entry.turn) {
+        const decided = document.createElement("details");
+        decided.className = "decided";
+        const s = document.createElement("summary");
+        s.textContent = "How the month was decided";
+        decided.append(s, ...lastTurnLog.lines.map((text) => { const line = document.createElement("p"); line.textContent = text; return line; }));
+        box.append(decided);
+      }
       $("journal").append(box);
     }
     if (!j.journal.length)
@@ -368,6 +453,8 @@ function logText(r) {
   if (r.kind === "narrate") return "Journal written.";
   return "Model responded.";
 }
+const PHASES = { decide: "Nations are deciding", adjudicate: "Adjudicating the month", narrate: "Writing the journal" };
+let lastPhase = null;
 function logLine(text) {
   const log = $("turn-log");
   const p = document.createElement("p");
@@ -382,18 +469,27 @@ async function poll(id, withLog) {
     for (const r of await api("inference?job=" + encodeURIComponent(id) + "&since=" + since)) {
       since = r.id;
       logLine(logText(r));
+      // Screen readers hear one line per phase, not every model call.
+      if (PHASES[r.kind] && r.kind !== lastPhase) $("turn-phase").textContent = PHASES[r.kind];
+      lastPhase = r.kind;
     }
   };
   if (withLog) {
     $("turn-log").hidden = false;
     $("turn-log").replaceChildren();
+    lastPhase = null;
+    lastTurnLog = null;
   }
   for (let i = 0; i < 1200; i++) {
     await pull();
     const j = await api("jobs?id=" + encodeURIComponent(id));
     if (j.status === "complete") {
       await pull();
-      if (withLog) $("turn-log").hidden = true;
+      if (withLog) {
+        // Kept in the newest journal entry once the month is loaded.
+        lastTurnLog = { turn: (state?.turn ?? 0) + 1, lines: [...$("turn-log").children].map((p) => p.textContent) };
+        $("turn-log").hidden = true;
+      }
       return j;
     }
     if (j.status !== "running") {
@@ -406,10 +502,28 @@ async function poll(id, withLog) {
   throw Error("Job still running. Reload to resume monitoring.");
 }
 $("search").oninput = list;
+$("search").onfocus = () => { if (phone.matches) list(); };
+$("search").onblur = () => { if (phone.matches) setTimeout(list, 200); };
+phone.addEventListener("change", list);
 $("save-endpoint").onclick = protect(async () => {
   await api("model-config", { llama_endpoint: $("llama-endpoint").value });
   status("Model endpoint updated.");
 });
+function readSkipNarration() {
+  try { return localStorage.getItem("skipNarration") === "1"; } catch { return false; }
+}
+function renderSettings() {
+  $("skip-narration").checked = readSkipNarration();
+  let job = null;
+  try { job = localStorage.getItem("lastJob"); } catch {}
+  $("last-inference").hidden = !job;
+  if (job) $("last-inference").href = "/api/v1/inference?job=" + encodeURIComponent(job);
+}
+$("settings-open").onclick = () => { renderSettings(); $("settings").showModal(); };
+wireDialog("settings");
+$("skip-narration").onchange = () => {
+  try { localStorage.setItem("skipNarration", $("skip-narration").checked ? "1" : "0"); } catch {}
+};
 $("new-game").onclick = protect(async () => {
   if (state && !confirm("Replace the active campaign and its saved journal?"))
     return;
@@ -588,8 +702,10 @@ $("turn").onclick = protect(async () => {
     const offered = new Set(pendingProposals().map(([id]) => id));
     const responses = Object.entries(readAnswers()).filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept }));
     if (responses.length) pending.responses = responses;
+    if (readSkipNarration()) pending.narration = false;
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));
     const job = await api("turns", pending);
+    try { localStorage.setItem("lastJob", job.id); } catch {}
     const result = await poll(job.id, true);
     sessionStorage.removeItem("pendingTurn");
     setDraft([]);
@@ -615,7 +731,6 @@ $("refresh").onclick = protect(async () => {
   }
 });
 const entityLayers = L.layerGroup().addTo(map);
-const mapControls = L.control.layers({}, {Entities:entityLayers}).addTo(map);
 let entityRequest = 0;
 async function refreshEntities() {
   if (!state) return;
@@ -669,9 +784,8 @@ async function refreshCampaignMap() {
     }});
   } else for (const [id,l] of regionById) l.feature.properties={...snapshot.territories[id],id};
   if (layers!==regionLayer) {
-    if (layers) {mapControls.removeLayer(layers);map.removeLayer(layers);}
+    if (layers) map.removeLayer(layers);
     layers=regionLayer.addTo(map);
-    mapControls.addOverlay(layers,"Territories and occupation");
   }
   restyleMap();
   await Promise.all([refreshEntities(), refreshEventMarkers()]);
@@ -707,7 +821,7 @@ function setMapMode(mode) {
   mapMode = MAP_MODES.includes(mode) ? mode : "political";
   try { localStorage.setItem("mapMode", mapMode); } catch {}
   if (mapMode !== "diplomacy") highlight = null;
-  for (const b of modeControl.getContainer()?.querySelectorAll("button") || []) b.setAttribute("aria-pressed", b.dataset.mode === mapMode);
+  for (const b of modeControl.getContainer()?.querySelectorAll("button[data-mode]") || []) b.setAttribute("aria-pressed", b.dataset.mode === mapMode);
   restyleMap();
 }
 const modeControl = L.control({ position: "topleft" });
@@ -721,10 +835,25 @@ modeControl.onAdd = () => {
     b.setAttribute("aria-pressed", mode === mapMode);
     L.DomEvent.on(b, "click", (e) => { L.DomEvent.stop(e); setMapMode(mode); });
   }
+  // Overlay toggles: unit and construction markers, and event markers.
+  for (const [name, text] of [["entities", "Entities"], ["events", "Events"]]) {
+    const b = L.DomUtil.create("button", "layer-toggle", box);
+    b.type = "button";
+    b.dataset.layer = name;
+    b.textContent = text;
+    b.setAttribute("aria-pressed", "true");
+    L.DomEvent.on(b, "click", (e) => { L.DomEvent.stop(e); const layer = overlay(name); setLayerVisible(layer, !map.hasLayer(layer)); });
+  }
   L.DomEvent.disableClickPropagation(box);
   return box;
 };
 modeControl.addTo(map);
+const overlay = (name) => (name === "entities" ? entityLayers : eventLayers);
+function setLayerVisible(layer, on) {
+  if (on) map.addLayer(layer); else map.removeLayer(layer);
+  const name = layer === entityLayers ? "entities" : "events";
+  modeControl.getContainer().querySelector(`[data-layer=${name}]`).setAttribute("aria-pressed", String(on));
+}
 const legend = L.control({ position: "bottomleft" });
 legend.onAdd = () => L.DomUtil.create("div", "map-legend");
 legend.addTo(map);
@@ -914,7 +1043,6 @@ for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.onclic
 // Events: markers for what is still on the map, and a menu of every event.
 const EVENT_CATEGORIES = { player: "Your actions", nation: "Other nations", regional: "Regional", world: "World developments", war: "War tolls", construction: "Construction" };
 const eventLayers = L.layerGroup().addTo(map);
-mapControls.addOverlay(eventLayers, "Events");
 let eventMarkers = new Map(), eventMarkerRequest = 0;
 const locationKey = (p) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
 function eventPopup(events) {
@@ -1039,7 +1167,7 @@ function eventCard(ev) {
 }
 function showEventOnMap(ev) {
   $("events").close();
-  if (!map.hasLayer(eventLayers)) map.addLayer(eventLayers);
+  setLayerVisible(eventLayers, true);
   const points = ev.location.map((p) => [p.lat, p.lon]);
   if (points.length > 1) map.fitBounds(points, { maxZoom: 6, padding: [30, 30] });
   else map.setView(points[0], Math.max(map.getZoom(), 5));
@@ -1084,8 +1212,7 @@ let eventsSearchTimer;
 $("events-search").oninput = () => { clearTimeout(eventsSearchTimer); eventsSearchTimer = setTimeout(protect(() => fetchEvents(false)), 250); };
 $("events-more").onclick = protect(() => fetchEvents(true));
 for (const tab of document.querySelectorAll("#events [role=tab]")) tab.onclick = protect(async () => { eventsTab = tab.dataset.tab; await fetchEvents(false); });
-const prepare=document.createElement("button");prepare.id="prepare";prepare.textContent="Prepare campaign references";
-$("controls").prepend(prepare);
+const prepare=$("prepare");
 prepare.onclick=protect(async()=>{
   prepare.disabled=true;
   try { const job=await api("prepare",{});const result=await poll(job.id);

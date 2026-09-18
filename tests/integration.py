@@ -104,6 +104,8 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    assert s.get('country?code=PT')['status']['population']==pt['population']
    s.get('turns',order(w,'illegal-target',[{'text':'Invade','targets':['ZZ']}]),409)
    s.get('turns',order(w,'typed-action',[{'action':'economy'}]),409)
+   s.get('turns',dict(order(w,'bad-narration',[]),narration='no'),409)
+   rows=s.get('countries');assert any(r['code']=='ES' and r.get('neighbor') for r in rows) and not any(r['code']=='FR' and r.get('neighbor') for r in rows) and next(r for r in rows if r['code']=='PT')['has_flag'],rows[:3]
    assert s.get('campaign')['state']==w
    Mock.mode='slow';payload=order(w,'first-turn',[{'text':'Propose an alliance to Spain','targets':['ES']},{'text':'Invest in the national railway network'}])
    with concurrent.futures.ThreadPoolExecutor() as pool:results=list(pool.map(lambda _:s.get('turns',payload,202),range(4)))
@@ -126,8 +128,10 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    war=next(c for c in current['conflicts'].values() if c['actors']==['PT','ES']);assert war['name']=='Portugal–Spain War' and war['kind']=='war' and war['started_turn']==2,war
    assert war['intensity']=='medium' and war['affected_regions'] and war['casualties']>0 and war['displaced']>0,war
    assert current['actors']['PT']['status']['stability']<w['actors']['PT']['status']['stability']
+   changes=[c['summary'] for c in s.get('campaign')['journal'][0]['changes']];assert 'Portugal–Spain War opened' in changes,changes
    with sqlite3.connect(s.save) as db:db.execute('INSERT OR REPLACE INTO background VALUES(?,?)',('PT',json.dumps({'available':True,'revision':77,'excerpt':'fixture'})))
-   j=s.get('turns',order(current,'third-turn',[{'text':'proposal-fixture: hold talks'}]),202);assert s.poll(j['id'])['status']=='complete'
+   j=s.get('turns',dict(order(current,'third-turn',[{'text':'proposal-fixture: hold talks'}]),narration=False),202);assert s.poll(j['id'])['status']=='complete'
+   month=s.get('campaign')['journal'][0];assert month['narration_fallback'] in (1,'1',True) and 'fictional administration' not in month['narration'],month['narration']
    current=s.get('campaign')['state'];offers=[k for k,p in current['proposals'].items() if p['status']=='pending'];assert len(offers)==1 and offers[0] not in current['commitments'],current['proposals']
    s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True}]),409)
    j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);assert s.poll(j['id'])['status']=='complete'

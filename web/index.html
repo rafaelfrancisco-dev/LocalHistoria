@@ -23,13 +23,9 @@
             <img id="playing-as-flag" alt="" />Playing as
             <span id="playing-as-name"></span>
           </p>
-          <button id="diplomacy-open" type="button" hidden>Wars &amp; treaties</button>
-          <button id="events-open" type="button" hidden>Events</button>
-        </div>
-        <div id="model-settings">
-          <label for="llama-endpoint">Model endpoint</label>
-          <input id="llama-endpoint" type="text" placeholder="http://127.0.0.1:8081" />
-          <button id="save-endpoint" type="button">Save</button>
+          <button id="diplomacy-open" class="head-button" type="button" aria-label="Wars &amp; treaties" hidden><span aria-hidden="true">⚔</span><span class="label">Wars &amp; treaties</span></button>
+          <button id="events-open" class="head-button" type="button" aria-label="Events" hidden><span aria-hidden="true">☰</span><span class="label">Events</span></button>
+          <button id="settings-open" class="head-button" type="button" aria-label="Settings"><span aria-hidden="true">⚙</span><span class="label">Settings</span></button>
         </div>
       </div>
     </header>
@@ -48,7 +44,8 @@
         <div id="status" role="status" aria-live="polite">
           Choose a country to begin.
         </div>
-        <div id="turn-log" role="log" aria-live="polite" hidden></div>
+        <div id="turn-log" role="log" aria-live="off" hidden></div>
+        <div id="turn-phase" class="visually-hidden" aria-live="polite"></div>
         <section class="journal">
           <h2>Monthly journal</h2>
           <div id="journal"><p>Your story starts in January 2026.</p></div>
@@ -72,6 +69,7 @@
             the campaign. City populations are reference records.
           </p>
           <div id="cities"></div>
+          <button id="prepare" type="button" hidden>Prepare campaign references</button>
           <button id="refresh" hidden>
             Download / refresh Wikipedia reference
           </button>
@@ -91,7 +89,6 @@
           <div id="actions"></div>
           <button id="add-action" type="button">+ Add action</button>
           <button class="primary" id="turn">End month</button>
-          <a href="/api/v1/replay" target="_blank">Export campaign &amp; replay</a>
         </section>
       </section>
     </main>
@@ -131,6 +128,22 @@
       <div id="events-categories" class="chips" aria-label="Event categories"></div>
       <div id="events-list" role="tabpanel"></div>
       <button id="events-more" type="button" hidden>Load older events</button>
+    </dialog>
+    <dialog id="settings" aria-labelledby="settings-title">
+      <div class="dialog-head">
+        <h2 id="settings-title">Settings</h2>
+        <button id="settings-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="model-settings">
+        <label for="llama-endpoint">Model endpoint</label>
+        <input id="llama-endpoint" type="text" placeholder="http://127.0.0.1:8081" />
+        <button id="save-endpoint" type="button">Save</button>
+      </div>
+      <label class="filter"><input id="skip-narration" type="checkbox" /> Skip AI narration (the journal keeps a factual summary; months finish sooner)</label>
+      <p class="settings-links">
+        <a id="last-inference" target="_blank" hidden>Model calls of the last month</a>
+        <a href="/api/v1/replay" target="_blank">Export campaign &amp; replay</a>
+      </p>
     </dialog>
     <footer>
       Local play · January 2026 onward · Fictional outcomes adjudicated by a local model ·

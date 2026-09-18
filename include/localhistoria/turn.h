@@ -28,6 +28,8 @@ struct TurnPlan {
     Json::Value allocations, refs;
     std::map<std::string, CountryContext> contexts;
     std::vector<CountryContext> independentContexts;
+    // The player can skip the optional model narration; the factual summary stays.
+    bool narrate = true;
 };
 struct TurnDeps {
     Store &store;

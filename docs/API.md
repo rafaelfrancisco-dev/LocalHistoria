@@ -4,11 +4,11 @@ All routes except the SVG flag endpoint use JSON at `http://127.0.0.1:8080/api/v
 
 | Route | Method | Behavior |
 |---|---|---|
-| `/campaign` | GET | State or null, `national_status` for every actor, latest 24 journal entries, running jobs, current model endpoint |
+| `/campaign` | GET | State or null, `national_status` for every actor, latest 24 journal entries (each with `changes`, `[{kind,id,summary}]` for the month's territory, unit, war, treaty and name changes in words, named as they are now), running jobs, current model endpoint |
 | `/campaign` | POST | `{country:"PT",confirm_replace:false}`; confirmation required for existing campaign |
-| `/countries` | GET | Country codes and names; no cities or national populations |
+| `/countries` | GET | Country codes and names; no cities or national populations. During a campaign each row also has `has_flag` (a bundled static flag exists) and `neighbor: true` for the player's land neighbors |
 | `/country?code=PT` | GET | Metadata, top 15 city records, cached reference and, during a campaign, `status` |
-| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders,responses?}`, where `orders` is the month's free-text actions and optional `responses` (at most 8, `[{proposal,accept}]`) answers pending treaty proposals in `state.proposals`; unanswered proposals lapse. Returns persisted job ID, HTTP 202 |
+| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders,responses?,narration?}`, where `narration: false` skips the optional model narration (the journal keeps the factual summary), and `orders` is the month's free-text actions and optional `responses` (at most 8, `[{proposal,accept}]`) answers pending treaty proposals in `state.proposals`; unanswered proposals lapse. Returns persisted job ID, HTTP 202 |
 | `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; error message on failure; auxiliary jobs also contain results |
 | `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
 | `/history?code=PT` | GET | Cached reference only, no network |

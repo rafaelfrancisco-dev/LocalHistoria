@@ -25,7 +25,7 @@ Recommended order (dependencies in parentheses):
 | 06 | chronicles | performance + correctness | S || done 2026-09-18 |
 | 07 | invasion-guidance-and-probe | model quality | S | done 2026-09-18 |
 | 08 | map-geometry | UI performance | M || done 2026-09-18 |
-| 09 | ui-cleanups | UI | M | |
+| 09 | ui-cleanups | UI | M | done 2026-09-18 |
 | 10 | turn-cancel-and-deadline | UI + server | M | |
 | 11 | clang-format | code | S (do alone, separate commit) | done 2026-09-18 |
 | 12 | split-main (after 11) | code | L | done 2026-09-18 |

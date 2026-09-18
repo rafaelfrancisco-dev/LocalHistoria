@@ -193,6 +193,14 @@ Json::Value Store::journal() {
                 }
     return j;
 }
+Json::Value Store::monthChanges(int turn) {
+    auto rows =
+        query("SELECT json_extract(reference,'$.delta.changes') AS c FROM turns WHERE turn=?",
+              {std::to_string(turn)});
+    if (rows.empty() || !rows[0]["c"].isString())
+        return Json::arrayValue;
+    return parse(rows[0]["c"].asString());
+}
 CountryContext Store::campaignContext(const WorldState &w, const std::string &actor) {
     auto c = context(w, actor, journal(), background(actor));
     c.facts["regional_politics"] = Json::objectValue;

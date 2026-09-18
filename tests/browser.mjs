@@ -97,6 +97,21 @@ try {
   }), { mode: "countries", seams: 0, portugal: "#c5a96e", shown: true, lines: true });
   await page.getByRole("button", { name: "Political" }).click();
   assert.equal(await page.evaluate(() => map.hasLayer(countryBorders)), false);
+  // Overlay toggles in the map-mode bar replace Leaflet's layer chooser.
+  assert.equal(await page.locator(".leaflet-control-layers").count(), 0);
+  await page.locator(".map-modes [data-layer=entities]").click();
+  assert.deepEqual(await page.evaluate(() => [map.hasLayer(entityLayers), document.querySelector(".map-modes [data-layer=entities]").getAttribute("aria-pressed")]), [false, "false"]);
+  await page.locator(".map-modes [data-layer=entities]").click();
+  assert.equal(await page.evaluate(() => map.hasLayer(entityLayers)), true);
+  // Settings: the model endpoint lives in a dialog; re-saving keeps the mock endpoint for later months.
+  await page.locator("#settings-open").click();
+  await page.locator("#settings").waitFor({ state: "visible" });
+  const endpoint = await page.locator("#llama-endpoint").inputValue();
+  await page.locator("#llama-endpoint").fill(endpoint);
+  await page.locator("#save-endpoint").click();
+  await page.waitForFunction(() => document.querySelector("#status").textContent === "Model endpoint updated.");
+  assert.equal((await (await fetch(base + "/api/v1/campaign")).json()).llama_endpoint, endpoint);
+  await page.locator("#settings-close").click();
   await page.locator("#action-0").fill("Invest in the national railway network");
   await page.locator("#add-action").click();
   await page.locator("#action-1").fill("Open trade talks with Spain");
@@ -114,9 +129,11 @@ try {
   // A new month updates the existing region layer in place instead of rebuilding it.
   assert.equal(await page.evaluate(() => layers === window.firstRegionLayer), true);
   await page
-    .locator("#journal details")
+    .locator("#journal details.events")
     .first()
     .evaluate((d) => (d.open = true));
+  assert.equal(await page.locator("#journal article").first().locator("details.decided summary").innerText(), "How the month was decided");
+  assert.match(await page.locator("#journal h3").first().innerText(), /^January 2026 played · led to February 2026$/);
   assert.match(
     await page.locator("#journal").innerText(),
     /Invest in the national railway network/,
@@ -213,6 +230,9 @@ try {
   await page.locator("#turn").click();
   await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026" && !busy);
   await page.waitForFunction(id=>state.territories[id].owner==="ES",rid);
+  const changed = await page.locator("#journal .changes").first().innerText();
+  assert.match(changed, /Fixture port \(port\) construction started/);
+  assert.match(changed, /: Portugal → Spain/);
   assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"ES");
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
@@ -265,11 +285,24 @@ try {
   await page.locator("#events-search").fill("Strike deep");
   await page.waitForFunction(() => [...document.querySelectorAll("#events-list .event-card")].some(c => c.textContent.includes("Strike deep") && c.textContent.includes("did not happen")));
 
+  await page.locator("#events-close").click();
   fs.mkdirSync("tests/artifacts", { recursive: true });
   await page.screenshot({
     path: "tests/artifacts/browser.png",
     fullPage: true,
   });
+  // Phone width: one header row, and the month's actions come before the journal.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await page.waitForFunction(() => state && !busy && document.querySelector("#controls:not([hidden])"));
+  await page.screenshot({ path: "tests/artifacts/phone.png", fullPage: true });
+  assert.ok((await page.locator("header").boundingBox()).height < 70);
+  const turnTop = await page.evaluate(() => document.querySelector("#turn").getBoundingClientRect().top + scrollY);
+  const journalTop = await page.evaluate(() => document.querySelector(".journal").getBoundingClientRect().top + scrollY);
+  assert.ok(turnTop < 2000 && turnTop < journalTop, `End month at ${turnTop}px, journal at ${journalTop}px`);
+  await page.locator("#search").fill("a");
+  assert.equal(await page.locator("#countries .country").count(), 8);
+  await page.locator("#search").fill("");
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   console.log(
