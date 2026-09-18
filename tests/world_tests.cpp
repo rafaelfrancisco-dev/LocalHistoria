@@ -50,10 +50,15 @@ int main(){try{
  auto &outcomes=schema["properties"]["events"];
  check(outcomes["minItems"].asInt()==2&&outcomes["maxItems"].asInt()==2&&!outcomes.isMember("items")&&outcomes["prefixItems"][0]["properties"]["action"]["const"]=="Build a port"&&actionOpening("Venezuela mobilizes the National Guard in Zulia and Lara")=="Venezuela mobilizes the National Guard in…"&&outcomes["prefixItems"][0]["properties"]["actor"]["const"]=="old-state"&&outcomes["prefixItems"][1]["properties"]["actor"]["const"]=="neighbor","One outcome per action");
  check(outcomes["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"].size()==10,"Schema");
+ // Operations are defined once in $defs and referenced from every outcome, so many actions keep the schema small.
+ std::vector<std::pair<std::string,std::string>> many;for(int i=0;i<13;++i)many.emplace_back(i%2?"neighbor":"old-state","Action number "+std::to_string(i));
+ auto large=operationSchema(opsBase.state,facts,many);bool referenced=true;
+ for(auto &item:large["properties"]["events"]["prefixItems"])for(auto &o:item["properties"]["operations"]["items"]["anyOf"]){auto r=o["$ref"].asString();referenced=referenced&&o.size()==1&&r.rfind("#/$defs/op_",0)==0&&large["$defs"].isMember(r.substr(8));}
+ check(referenced&&large["properties"]["events"]["prefixItems"].size()==13&&dump(large).size()<30000,"Operations referenced from $defs");
  // Only finished armies and fleets can be moved; every entity can change status.
  auto garrisoned=opsBase.state;garrisoned.entities["army-1"]=parse(R"({"name":"First Army","kind":"army","actor":"old-state","region":"west","status":"active","origin_event":"initial","longitude":1,"latitude":1})");
  garrisoned.entities["city-1"]=parse(R"({"name":"Old Town","kind":"city","actor":"old-state","region":"west","status":"active","origin_event":"initial","longitude":1,"latitude":1})");
- auto operation=[](const Json::Value &schema,const char *name){for(auto &o:schema["properties"]["events"]["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"])if(o["properties"]["action"]["enum"][0]==name)return o;return Json::Value();};
+ auto operation=[](const Json::Value &schema,const char *name){for(auto &o:schema["properties"]["events"]["prefixItems"][0]["properties"]["operations"]["items"]["anyOf"]){auto &d=schema["$defs"][o["$ref"].asString().substr(8)];if(d["properties"]["action"]["enum"][0]==name)return d;}return Json::Value();};
  auto garrisonSchema=operationSchema(garrisoned,encode(garrisoned),{{"old-state","March"}});
  check(operation(garrisonSchema,"move_entity")["properties"]["entity"]["enum"]==parse(R"(["army-1"])")&&operation(garrisonSchema,"set_entity_status")["properties"]["entity"]["enum"].size()==2,"Only armies and fleets are movable");
  garrisoned.entities["army-1"]["status"]="under_construction";garrisoned.entities["army-1"]["completes_turn"]=3;

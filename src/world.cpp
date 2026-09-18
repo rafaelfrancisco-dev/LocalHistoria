@@ -252,17 +252,20 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     auto string=[](int max){Json::Value j;j["type"]="string";j["minLength"]=1;j["maxLength"]=max;return j;};
     Json::Value actorId;actorId["type"]="string";actorId["pattern"]="^[A-Za-z0-9_-]{1,40}$";
     auto actor=enumeration(actors),region=enumeration(regions),entity=enumeration(entities);
-    Json::Value ops(Json::arrayValue);
+    // Each operation is defined once and referenced from every outcome: inlined, 13 outcomes made a 190 KB schema.
+    Json::Value ops(Json::arrayValue),defs(Json::objectValue);
+    auto ref=[](const std::string &name){Json::Value j;j["$ref"]="#/$defs/"+name;return j;};
+    defs["flag_design"]=flagDesignSchema();
     auto op=[&](const char *name,Json::Value properties){
         Json::Value o;o["type"]="object";o["additionalProperties"]=false;o["required"]=Json::arrayValue;o["required"].append("action");
         for(auto &k:properties.getMemberNames())o["required"].append(k);
         properties["action"]["type"]="string";properties["action"]["enum"]=Json::arrayValue;properties["action"]["enum"].append(name);
-        o["properties"]=properties;ops.append(o);
+        o["properties"]=properties;defs[std::string("op_")+name]=o;ops.append(ref(std::string("op_")+name));
     };
     Json::Value p;
     auto parties=parse(R"({"type":"array","minItems":2,"maxItems":6})");parties["items"]=actorId;
-    p=Json::objectValue;p["actor_id"]=actorId;p["name"]=string(120);p["color"]=parse(R"({"type":"string","pattern":"^#[0-9a-fA-F]{6}$"})");p["flag_design"]=flagDesignSchema();op("create_actor",p);
-    p=Json::objectValue;p["actor"]=actor;p["name"]=string(120);p["reason"]=string(500);p["change_type"]=parse(R"({"type":"string","enum":["rename","refounding","correction"]})");p["flag_design"]=flagDesignSchema();op("change_identity",p);
+    p=Json::objectValue;p["actor_id"]=actorId;p["name"]=string(120);p["color"]=parse(R"({"type":"string","pattern":"^#[0-9a-fA-F]{6}$"})");p["flag_design"]=ref("flag_design");op("create_actor",p);
+    p=Json::objectValue;p["actor"]=actor;p["name"]=string(120);p["reason"]=string(500);p["change_type"]=parse(R"({"type":"string","enum":["rename","refounding","correction"]})");p["flag_design"]=ref("flag_design");op("change_identity",p);
     if(!regions.empty()) {
         p=Json::objectValue;p["region"]=region;p["agenda"]=string(500);p["relations"]=parse(R"({"type":"string","enum":["neutral","cooperative","strained"]})");p["demand"]=parse(R"({"type":"string","maxLength":500})");op("regional_initiative",p);
         p=Json::objectValue;p["region"]=region;p["demand_id"]=string(100);p["response"]=parse(R"({"type":"string","enum":["accepted","rejected"]})");op("respond_regional",p);
@@ -309,8 +312,9 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     event["properties"]["causes"]=parse(R"({"type":"array","maxItems":4})");
     // Economic and stability consequences are qualitative; C++ turns them into bounded numbers. Optional: most events change nothing.
     auto effect=parse(R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
-    event["properties"]["effects"]=parse(R"({"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["actor","economy","stability"]}})");
-    event["properties"]["effects"]["items"]["properties"]["actor"]=actor;event["properties"]["effects"]["items"]["properties"]["economy"]=effect;event["properties"]["effects"]["items"]["properties"]["stability"]=effect;
+    defs["effect"]=parse(R"({"type":"object","additionalProperties":false,"required":["actor","economy","stability"]})");
+    defs["effect"]["properties"]["actor"]=actor;defs["effect"]["properties"]["economy"]=effect;defs["effect"]["properties"]["stability"]=effect;
+    event["properties"]["effects"]=parse(R"({"type":"array","maxItems":3})");event["properties"]["effects"]["items"]=ref("effect");
     if(causes.empty())event["properties"]["causes"]["maxItems"]=0;else event["properties"]["causes"]["items"]=enumeration(causes);
     event["properties"]["operations"]=parse(R"({"type":"array","maxItems":5})");event["properties"]["operations"]["items"]["anyOf"]=ops;
     Json::Value schema;schema["type"]="object";schema["additionalProperties"]=false;schema["required"].append("events");schema["required"].append("world_events");
@@ -334,6 +338,7 @@ Json::Value operationSchema(const WorldState &w,const Json::Value &facts,const s
     development["properties"].removeMember("operations");development["properties"].removeMember("blocked_by");
     std::set<std::string> others(actors);others.erase(w.player);if(others.empty())others=actors;development["properties"]["actor"]=enumeration(others);
     schema["properties"]["world_events"]["type"]="array";schema["properties"]["world_events"]["maxItems"]=2;schema["properties"]["world_events"]["items"]=development;
+    schema["$defs"]=defs;
     return schema;
 }
 int constructionMonths(const std::string &kind) {
