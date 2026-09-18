@@ -1,5 +1,7 @@
 # 03 · Partial and failed events: visible to players and truthful to later prompts
 
+**Status: done (2026-09-18).** Events carry `partial`/`failed`; `droppedClause` appends "(In fact: …)" to related history, regional history, recent events (`prompt_text`) and chronicle inputs; Events badges and journal prefixes; `unreachable-fixture` in the integration/browser tests. Step 6 (model rewrite) skipped: the deterministic clause covers prompts without an extra call.
+
 ## Goal
 When C++ drops one or all operations of an event, the player sees it, and later prompts read what actually
 happened rather than the model's original claim. Reasons stay out of player-facing text (that decision from
