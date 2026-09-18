@@ -28,7 +28,7 @@ Recommended order (dependencies in parentheses):
 | 09 | ui-cleanups | UI | M | |
 | 10 | turn-cancel-and-deadline | UI + server | M | |
 | 11 | clang-format | code | S (do alone, separate commit) | done 2026-09-18 |
-| 12 | split-main (after 11) | code | L | |
+| 12 | split-main (after 11) | code | L | done 2026-09-18 |
 | 13 | operation-compiler (after 11, 01, 03) | code | L | |
 | 14 | typed-keys-and-small-fixes (after 11) | code | M | |
 | 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | |

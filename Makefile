@@ -1,7 +1,7 @@
 CMAKE_PREFIX_PATH ?= $(shell brew --prefix 2>/dev/null)
 JOBS ?= 4
 GEO_PYTHON ?= .venv-geography/bin/python
-CXX_SOURCES := $(wildcard src/*.cpp include/localhistoria/*.h tests/*.cpp tools/*.cpp)
+CXX_SOURCES := $(wildcard src/*.cpp src/*.h include/localhistoria/*.h tests/*.cpp tools/*.cpp)
 
 .PHONY: all test integration run start data display clean format format-check
 all: data
