@@ -206,7 +206,7 @@ The per-request reasoning budget works: reasoning was 950–1,000 tokens against
 | P4 | Reason only when needed: `reasoningBudget = 0` unless `consequential()` is true for at least one intention; otherwise `128 × consequential actions + 256`, clamp 384–768. | `src/providers.cpp:205`, reuse `consequential()` from `src/main.cpp:93` (move it to `world.cpp`) | −30 s on quiet months, −10 s otherwise |
 | P5 | Chronicles: write them only for the player and for nations in an open conflict or ≤3-party commitment with the player; independent-slot nations use the raw excerpt. Fix S8 at the same time. | `src/main.cpp:589–635` | −20 to −35 s most months |
 | P6 | Narration: `maxLength` 2000 → 900, and pass only `status` and the events (it already drops territories). Consider a "Skip AI narration" setting. | `src/providers.cpp:151–160` | −6 s |
-| P7 | Two llama.cpp slots. Start with `--parallel 2 --ctx-size 65536` (the app checks `n_ctx` per slot ≥ 16,384 for thinking; Qwen3.5's hybrid attention keeps the KV cost low), replace the `inference` mutex with a counting semaphore of 2, and issue decision/chronicle calls two at a time (`std::async` over the actor list). Batched decode of two sequences on Metal gives ~1.7× aggregate throughput for a 4B model. | `src/providers.cpp:42`, `src/main.cpp:589–650`, `start.sh:553`, `start.ps1:107` | −40 % of decision + chronicle time (≈ −25 s) |
+| P7 | Two llama.cpp slots. Start with `--parallel 2 --ctx-size 65536` (the app checks `n_ctx` per slot ≥ 16,384 for thinking; Qwen3.5's hybrid attention keeps the KV cost low), replace the `inference` mutex with a counting semaphore of 2, and issue decision/chronicle calls two at a time (`std::async` over the actor list). Batched decode of two sequences on Metal gives ~1.7× aggregate throughput for a 4B model. | `src/providers.cpp:42`, `src/main.cpp:589–650`, `start.sh:553`, `start.ps1:107` | −40 % of decision + chronicle time (≈ −25 s). Measured 2026-09-18: no gain (two concurrent requests each run at half speed); not adopted, see `docs/MODELS.md` |
 | P8 | Schema with `$defs`: define each operation once under `$defs` and reference it from every `prefixItems` entry with `$ref`. llama.cpp's schema-to-grammar resolves local `$ref`s. Cuts the request from 194 KB to ~20 KB, shortens grammar compilation, and the same body is also posted to `/apply-template` on every trim loop iteration. | `src/world.cpp:177–259` | small but real; also removes the 6 KB × N duplication that grows with actions |
 | P9 | Fewer HTTP round trips per call: cache `/props` for 60 s; estimate tokens locally (bytes / 3.2) and only call `/apply-template` + `/tokenize` when the estimate is within 20 % of the limit. | `src/providers.cpp:62–100` | −3 to −8 s per month |
 | P10 | Build type: `Makefile:7` and `start.sh:51` configure `Debug`. Use `RelWithDebInfo`. Not on the turn's critical path, but every API call re-parses the 1.1 MB campaign JSON (`decode(store.campaign())`), and `/events` and `/entities` are called on every map move. | `Makefile`, `start.sh`, `CMakePresets.json` already uses Release | UI latency |
@@ -434,7 +434,8 @@ regress). `tests/integration.py:55` hardcodes `build/localhistoria`, so it canno
   default three independent slots and four reactive nations. Update after P1–P4.
 - `docs/EVOLVING_WORLD.md` "Measured model results" predates independent slots (it says so); re-run
   `tools/living_world_probe.py` after the performance work and replace the table.
-- `docs/MODELS.md` still recommends `--parallel 1`; update with P7.
+- `docs/MODELS.md` still recommends `--parallel 1`; update with P7. (Kept: P7 measured no gain, and
+  `docs/MODELS.md` records why.)
 
 ---
 

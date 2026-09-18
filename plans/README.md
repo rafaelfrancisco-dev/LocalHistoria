@@ -31,7 +31,7 @@ Recommended order (dependencies in parentheses):
 | 12 | split-main (after 11) | code | L | done 2026-09-18 |
 | 13 | operation-compiler (after 11, 01, 03) | code | L | |
 | 14 | typed-keys-and-small-fixes (after 11) | code | M | |
-| 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | |
+| 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | measured 2026-09-18, not adopted (no gain) |
 | 16 | windows-followups | portability | S | |
 | 17 | independent-slot-relevance | simulation | S || done 2026-09-18 |
 | 18 | effect-overrides (after 04) | simulation | S | done 2026-09-18 |

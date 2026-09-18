@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-live-') as temp:
                 if result['status']=='complete':
                     turn=api('replay')['turns'][-1]
                     row.update(allocations=turn['reference']['allocations'], intentions=turn['reference']['contexts']['intentions'], events=turn['reference']['delta']['events'], changes=turn['reference']['delta']['changes'])
-                row['inference']=[{k:r.get(k) for k in ('latency_ms','prompt_tokens','model','thinking')} for r in api('inference?job='+str(job['id']))]
+                row['inference']=[{**{k:r.get(k) for k in ('kind','latency_ms','prompt_tokens','model','thinking')},'cached_tokens':(r.get('response') or {}).get('usage',{}).get('prompt_tokens_details',{}).get('cached_tokens')} for r in api('inference?job='+str(job['id']))]
                 report.append(row);a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,indent=2))
                 print(json.dumps({k:row[k] for k in ('month','seconds_to_commit','job')}),flush=True)
                 if result['status']!='complete': break

@@ -40,3 +40,15 @@ Run decision and chronicle calls two at a time, and keep the adjudication system
 ## Acceptance
 Decision + chronicle time per month drops ≥ 35 % on the same save; adjudication `cached_tokens > 0` from the
 second month; footprint numbers recorded in `docs/MODELS.md`.
+
+## Outcome (2026-09-18): measured, not adopted
+- Memory passed: `--parallel 2 --ctx-size 65536` gives 32,768 tokens per slot (`/props`, `total_slots` 2) and
+  peaked at 4.3 GB serially and 4.4 GB with two requests at once.
+- Speed failed: llama.cpp build 11011 on the M1 Pro gets no aggregate gain from batching this hybrid model.
+  Two concurrent requests each run at half speed (prompt 350 → 178 tok/s, generation 34 → 18 tok/s), with or
+  without `--no-kv-unified`. An implementation of steps 2–4 (slot leases, concurrent chronicles and
+  decisions in order) passed all tests but left the time before adjudication unchanged (27.5 / 50.8 /
+  33.9 s against 25.9 / 51.9 / 37.1 s serial over three probe months), so it was reverted.
+- Adjudication `cached_tokens` stayed 0 either way; decisions reuse 215–224 tokens of their shared opening.
+- Revisit only if a llama.cpp release batches Qwen3.5's recurrent layers across sequences: rerun the
+  two-request check in `docs/MODELS.md` first.

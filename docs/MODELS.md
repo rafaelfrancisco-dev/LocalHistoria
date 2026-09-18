@@ -58,8 +58,11 @@ Measured on a 16 GB Apple silicon MacBook Pro, llama.cpp build 11011, with `vmma
 | 32K context, default caches, fresh | 2.0 GB | 2.5 GB |
 | 32K context, default caches, after ~40 requests | 10.2 GB (mostly swapped) | 2.5 GB |
 | 32K context, `--cache-ram 1024 --ctx-checkpoints 8`, peak | 3.8 GB | 2.5 GB |
+| 64K context, `--parallel 2` (32K per slot), same caches, peak with two requests at once | 4.4 GB | 2.5 GB |
 
 The app reads the real context size from `/props` and needs at least 8,192 tokens. Below 16,384 tokens it disables reasoning (see below). One slot (`--parallel 1`) is assumed; the app sends one request at a time.
+
+Two slots do not make a month faster on this machine, so the app does not use them. Measured with llama.cpp build 11011 on the M1 Pro, `--parallel 2 --ctx-size 65536` (with or without `--no-kv-unified`): two requests at once each read prompts at 178 tokens/s and write 18 tokens/s, half the single-request speeds, so two 1,400-word prompts with 400 output tokens took 30.1 s together against 31.8 s one after the other. With decisions and chronicles sent two at a time, the time before adjudication over three probe months was 27.5, 50.8 and 33.9 s, against 25.9, 51.9 and 37.1 s serially. Prompt caching does not help adjudication either: `usage.prompt_tokens_details.cached_tokens` was 0 on every adjudication request, while decisions reused 215–224 tokens of their shared opening.
 
 ## Speed
 
