@@ -158,12 +158,12 @@ Relevant regions show their population. The adjudication prompt asks the model t
    - seeded theatre regions still held by a party;
    - regions controlled by a party that border a region controlled by another party.
 
-   Effective intensity is `none` under an open ceasefire or peace treaty between two parties, `high` when control changed or an entity was destroyed this month, `low` when there is no front, and otherwise the declared intensity.
+   Effective intensity is `none` under an open ceasefire or peace treaty between two parties, `high` when control changed or an entity was destroyed this month, `low` when there is no front, and otherwise the declared intensity. A conflict started less than 3 months ago stays at most `medium` until control changes or an entity is destroyed.
 5. **Toll**, per month by intensity low / medium / high, scaled by kind (war and civil war 1.0, border conflict 0.4, insurgency 0.3):
 
    | | low | medium | high |
    | --- | --- | --- | --- |
-   | Military deaths, share of each party's national population (landless parties: a quarter of the front's population) | 0.0001% | 0.002% | 0.008% |
+   | Military deaths per party per front region, capped at 0.008% of the party's national population (landless parties: of a quarter of the front's population) | 40 | 400 | 1,600 |
    | Civilian deaths, share of each front region | 0.0003% | 0.0015% | 0.005% |
    | Displacement, share of each front region (plus a one-off 8% when a region changes hands) | 0.03% | 0.15% | 0.4% |
    | Front GDP loss | 0.1% | 0.4% | 1% |
@@ -176,7 +176,7 @@ Relevant regions show their population. The adjudication prompt asks the model t
    - Population is conserved except for deaths.
 6. **Stability** moves 8% of the way toward a target each month, by at most 10 points. The target is the baseline, minus 3 / 8 / 15 for the most intense war, minus 25 × the occupied share of population, minus 5 when GDP fell over 1% that month. Deaths above 0.01% of population cost another point.
 
-A year of the seeded Russo-Ukrainian War at high intensity produces about 180,000 deaths and 0.9 million displaced, and roughly 55,000 deaths in the Sudanese Civil War. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
+A year of the seeded Russo-Ukrainian War at high intensity produces about 187,000 deaths and 0.9 million displaced, and roughly 60,000 deaths in the Sudanese Civil War. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
 
 Limitations: conflicts have parties, not sides, so co-belligerents listed in one war count as opposing each other. Military deaths are not tied to entities. Regional splits are estimates.
 

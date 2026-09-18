@@ -4,13 +4,16 @@
 #include <cmath>
 #include <cstdio>
 namespace lh {
-// Monthly rates by effective intensity {low, medium, high}. Calibrated so a high-intensity war against a
-// large state costs on the order of Russia–Ukraine 2023–25 (roughly 10k military deaths a month for Russia,
+// Monthly rates by effective intensity {low, medium, high}. Calibrated so a high-intensity war along a long
+// front costs on the order of Russia–Ukraine 2023–25 (roughly 10k military deaths a month for Russia,
 // a few thousand for Ukraine, low thousands of civilians) and front regions shed people like eastern Ukraine
 // and Darfur did, while entrenched war economies adapt (Ukraine and Russia kept growing slowly through 2023–25).
-// All values are fractions of the relevant population or output per month.
+// Military deaths scale with the front, not the country's size, and are capped at a share of the party's
+// population; everything else is a fraction of the relevant population or output per month.
+// Interim: plan 19 replaces the military formula with one based on committed forces.
 namespace rate {
-constexpr double military[] = {0.000001, 0.00002, 0.00008};  // of a party's national population
+constexpr double militaryPerFrontRegion[] = {40, 400, 1600}; // deaths per party per affected region
+constexpr double militaryPopulationCap = 0.00008;            // of a party's recruiting population
 constexpr double civilian[] = {0.000003, 0.000015, 0.00005}; // of each affected region
 constexpr double displacement[] = {0.0003, 0.0015, 0.004};   // outflow from each affected region
 constexpr double seizedDisplacement = 0.08;                  // one-off when a region changes hands
@@ -477,6 +480,8 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
         else if (f.fighting) f.intensity = 2;
         else if (f.regions.empty()) f.intensity = std::min(declared, 0);
         else f.intensity = std::max(declared, 0);
+        // A newly declared conflict with no ground changing hands has not yet escalated to full war.
+        if (!f.fighting && f.intensity > 1 && c["started_turn"].isInt() && w.turn - c["started_turn"].asInt() < 3) f.intensity = 1;
         if (f.intensity < 0) f.regions.clear();
         allAffected.insert(f.regions.begin(), f.regions.end());
         fronts.push_back(f);
@@ -520,11 +525,12 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
         Int deaths = 0, displaced = 0;
         Int affectedPopulation = 0;
         for (auto &region : f.regions) affectedPopulation += integer(cT[region], "population");
-        // Military losses come out of the population each party recruits from: its whole country, or for a
-        // landless movement the front regions it fights in.
+        // Military losses grow with the front, capped by the population each party recruits from: its whole
+        // country, or for a landless movement the front regions it fights in.
         for (auto &p : f.parties) {
             auto pool = std::max(double(current[p].population), 0.25 * double(affectedPopulation));
-            auto losses = Int(std::llround(pool * rate::military[f.intensity] * multiplier * jitter(w, f.id + ":military:" + p)));
+            auto front = double(f.regions.size()) * rate::militaryPerFrontRegion[f.intensity] * multiplier * jitter(w, f.id + ":military:" + p);
+            auto losses = Int(std::llround(std::min(front, rate::militaryPopulationCap * pool)));
             std::map<std::string, double> weights;
             for (auto &region : regionIds) if (cT[region]["owner"] == p && cT[region]["controller"] == p) weights[region] = double(integer(cT[region], "population"));
             if (weights.empty()) for (auto &region : f.regions) if (cT[region]["controller"] == p) weights[region] = double(integer(cT[region], "population"));

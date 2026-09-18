@@ -84,8 +84,8 @@ int main() {
         check(month.state.territories["a1"]["population"].asInt64() > start.state.territories["a1"]["population"].asInt64(), "Internal displacement reaches the interior");
         check(month.state.territories["c1"]["population"].asInt64() > start.state.territories["c1"]["population"].asInt64(), "Refugees cross into the bystander");
         check(month.state.territories["a2"]["displaced"].asInt64() > 0, "Displacement is tracked at its origin");
-        // Military deaths: about 0.002% of each party's population a month at medium intensity (±30%).
-        check(deaths > 100 && deaths < 2000, "Plausible medium-intensity deaths: " + std::to_string(deaths));
+        // Military deaths: about 400 per party per front region a month at medium intensity (±30%), capped by population.
+        check(deaths > 100 && deaths < 2500, "Plausible medium-intensity deaths: " + std::to_string(deaths));
         check(month.state.actors["AA"]["status"]["stability"].asDouble() < 70, "War lowers stability");
         check(encode(applyMonthlyStatus(start, {}, adjacency).state) == encode(month.state), "Deterministic");
         check(encode(decode(parse(dump(encode(month.state))))) == encode(month.state), "Round-trips through saved JSON");
@@ -109,6 +109,18 @@ int main() {
         auto skirmish = start;
         skirmish.state.conflicts["c1-1"]["kind"] = "border_conflict";
         check(applyMonthlyStatus(skirmish, {}, adjacency).state.conflicts["c1-1"]["casualties"].asInt64() < deaths, "Border conflicts are smaller");
+
+        // Deaths follow the front, not the country's size: a static border clash with a 1.4 bn state stays small,
+        // and a declared-high conflict only a month old stays medium until ground changes hands.
+        auto giant = skirmish;
+        giant.state.conflicts["c1-1"]["set_intensity"] = "high";
+        giant.state.territories["a1"]["population"] = Json::Int64(1400000000);
+        auto standoff = applyMonthlyStatus(giant, {}, adjacency).state.conflicts["c1-1"];
+        check(standoff["intensity"] == "medium" && standoff["last_month_casualties"].asInt64() < 5000, "Large states' border clashes stay small: " + dump(standoff));
+        auto giantSeized = giant;
+        giantSeized.state.territories["b1"]["controller"] = "AA";
+        auto clash = applyMonthlyStatus(giantSeized, assault, adjacency).state.conflicts["c1-1"];
+        check(clash["intensity"] == "high" && clash["last_month_casualties"].asInt64() > standoff["last_month_casualties"].asInt64(), "Fighting escalates a new border conflict: " + dump(clash));
 
         // A ceasefire stops the fighting; people then drift home.
         auto truce = month;
