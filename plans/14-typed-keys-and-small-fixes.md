@@ -1,5 +1,7 @@
 # 14 · Typed keys, shared helpers and small C++ fixes
 
+**Status: done (2026-09-18).** Line numbers below predate plans 12/13. `keys.h` holds the key constants and `isOpen`/`isParty`/`controllerOf`; `lowercase` and the hand-written ID checks live in `simulation.h`, and `adjacent` in `world.h`. Only the conflict/commitment helper sites use the key constants so far. The only regex left is the static citation pattern in `history.cpp`. `-Wshadow` is on for core and services, and the build is warning-free. The event-log cache is keyed by campaign and turn and cleared by `create()`. `migrate()` sets `user_version` 1 and refuses newer saves. Colours come from a 24-colour palette with a greedy neighbour pass (`assignActorColors`); `create_actor` falls back to the palette when the model's colour is invalid instead of dropping the operation.
+
 Do plan 11 first.
 
 ## Goal
