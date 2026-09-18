@@ -1,5 +1,7 @@
 # 05 · Adjudication prompt diet, `$defs` schema, fewer HTTP round trips
 
+**Status: done (2026-09-18).** `adjudicationInput`/`mentioned` moved to `src/turn.cpp` (`turn.h`); references and full facts only for the player, fighting and grounded nations; operations, flag design and effect under `$defs`; `/props` cached 60 s and a byte estimate skips `/apply-template` + `/tokenize` below 80% of the context (`estimateShare` constructor parameter, 0 in tokenizer tests). Live: `world_probe` 9/9 valid with `$ref`; `living_world_probe --months 2` month-2 adjudication 3,806 prompt tokens (was 12,420), month 99 s.
+
 ## Goal
 Halve the adjudication prompt (12,420 tokens in month 2 → ~6,000) and shrink the JSON schema from 194 KB to
 ~20 KB, without removing anything the model needs for the player's actions.

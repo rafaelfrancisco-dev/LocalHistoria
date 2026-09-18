@@ -103,11 +103,13 @@ Events also record the wars (`conflicts`) and treaties (`commitments`) their ope
 Adjacency is the `region_neighbors` table (`tools/region_neighbors.py`): regions that touch, or lie within 0.05° across a narrow strait. The adjudication prompt receives:
 
 - the regions targeted or named by actions;
-- the bordering regions of nations an action addresses;
+- the bordering regions of nations an action addresses (up to 24 regions in all);
 - regions of the acting nations' occupations, armies and fleets;
-- regions of open conflicts.
+- the fronts of open conflicts that this month's actors fight (up to 36 regions in all).
 
-Each region comes with `within_reach_of`, listing the acting nations that can project force there.
+Entities in those regions are listed too, except cities outside the regions actions name and the fronts.
+
+A region comes with `within_reach_of` when an acting nation can project force there, listing those nations.
 
 An action that reads as an attack (invade, occupy, attack, offensive, conquer, seize, annex, bombard) gets a short hint appended to its text: use `occupy` on one or two regions whose `within_reach_of` lists the actor, plus `open_conflict` unless already at war, and never `move_entity` on cities. When no listed foreign region is within reach, the hint says to describe preparations instead. The general example sits far from the action in a long prompt; the hint puts it next to the action the model is adjudicating. For a short order such as "Invade Spain." the six-word outcome opener includes the start of the hint, so the model restates it before answering. `move_entity` only offers the active armies and fleets among the listed entities, and is absent from the schema when there are none.
 
@@ -177,7 +179,7 @@ Limitations: conflicts have parties, not sides, so co-belligerents listed in one
 
 AI nation decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
 
-Every inference reads the context size from `/props` (at least 8,192 tokens), applies the server chat template, then calls its tokenizer. The request reserves 768 output tokens, or for adjudication 768 plus 160 per outcome (bounded to 1,536–4,096) plus a reasoning budget of 256 plus 128 per consequential action (384–768, zero when no action is consequential), and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
+Every inference reads the context size from `/props` (at least 8,192 tokens, cached for 60 seconds). A request whose byte estimate fits well inside it is sent at once; otherwise the server chat template is applied and its tokenizer counts the tokens. The request reserves 768 output tokens, or for adjudication 768 plus 160 per outcome (bounded to 1,536–4,096) plus a reasoning budget of 256 plus 128 per consequential action (384–768, zero when no action is consequential), and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
 
 ## API additions
 
