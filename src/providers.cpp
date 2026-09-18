@@ -36,6 +36,39 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
 }
 LocalProvider::LocalProvider(std::string e, double t, Transport tr, double share)
     : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)), estimateShare(share) {}
+void LocalProvider::requestCancel() { cancelRequested = true; }
+void LocalProvider::clearCancel() { cancelRequested = false; }
+void LocalProvider::setDeadline(std::chrono::steady_clock::time_point t) {
+    std::lock_guard lock(settings);
+    deadline = t;
+}
+void LocalProvider::clearDeadline() { setDeadline(std::chrono::steady_clock::time_point::max()); }
+Json::Value LocalProvider::call(const std::string &endpoint, const std::string &path,
+                                const Json::Value &body) {
+    std::chrono::steady_clock::time_point until;
+    {
+        std::lock_guard lock(settings);
+        until = deadline;
+    }
+    auto check = [&] {
+        if (cancelRequested)
+            throw ValidationError("Cancelled by the player");
+        if (std::chrono::steady_clock::now() >= until)
+            throw ValidationError("Month exceeded its time budget");
+    };
+    check();
+    double limit = timeout;
+    if (until != std::chrono::steady_clock::time_point::max())
+        limit = std::min(
+            limit, std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count());
+    try {
+        return transport(endpoint, path, body, limit);
+    } catch (const std::exception &) {
+        // A request cut short by the budget reports the budget, not the transport error.
+        check();
+        throw;
+    }
+}
 Json::Value LocalProvider::completion(const Json::Value &input, const Json::Value &schema,
                                       const std::string &instruction, unsigned reasoningBudget,
                                       double temperature, const std::string &kind,
@@ -68,7 +101,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     auto props = cachedProps;
     if (props.isNull() || propsEndpoint != endpoint ||
         std::chrono::steady_clock::now() - propsAt > std::chrono::seconds(60)) {
-        props = transport(endpoint, "/props", Json::nullValue, timeout);
+        props = call(endpoint, "/props", Json::nullValue);
         if (!props["default_generation_settings"]["n_ctx"].isInt() ||
             props["default_generation_settings"]["n_ctx"].asInt() < 8192)
             throw ValidationError("Model must expose a verified context of at least 8192 tokens");
@@ -103,14 +136,14 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     else
         for (;;) {
             b["messages"][1]["content"] = dump(selected);
-            auto templated = transport(endpoint, "/apply-template", b, timeout);
+            auto templated = call(endpoint, "/apply-template", b);
             if (!templated["prompt"].isString())
                 throw ValidationError("Chat template unavailable");
             Json::Value request;
             request["content"] = templated["prompt"];
             request["add_special"] = true;
             request["parse_special"] = true;
-            auto counted = transport(endpoint, "/tokenize", request, timeout);
+            auto counted = call(endpoint, "/tokenize", request);
             if (!counted["tokens"].isArray())
                 throw ValidationError("Tokenizer unavailable");
             tokens = counted["tokens"].size();
@@ -164,7 +197,7 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
                 continue;
             throw ValidationError("Mandatory current facts and commitments exceed token budget");
         }
-    auto response = transport(endpoint, "/v1/chat/completions", b, timeout);
+    auto response = call(endpoint, "/v1/chat/completions", b);
     Json::Value record;
     record["input"] = selected;
     record["messages"] = b["messages"];

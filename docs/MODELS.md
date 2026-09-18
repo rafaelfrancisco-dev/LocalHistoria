@@ -93,7 +93,7 @@ The request accepts no tool calls or file access. The model alias is `local`. Re
 
 An AI nation's decision has the form `{"actions":[{"text":"Open trade talks with Portugal"}]}`, with one action, or two for a nation the player named or is fighting. Adjudication returns events with compact map operations; C++ validates them, enforces realistic pacing and derives the exact world delta. See [Evolving world](EVOLVING_WORLD.md). Any unreachable, timed-out, malformed or oversized result fails the turn outright: no scripted fallback, no partial state change. Resubmit once the model is healthy. Narration is requested as `{"text":"..."}` after the state commit. It is always labelled as AI narration. If it fails, the committed factual event summary is kept.
 
-The app permits `0 < timeout_seconds ≤ 600` per request (default 240), set in the JSON config file passed as the server's positional argument.
+The app permits `0 < timeout_seconds ≤ 600` per request (default 240), set in the JSON config file passed as the server's positional argument. `turn_budget_seconds` (default `2 × timeout_seconds`, at most 1800) bounds a whole month: each request's timeout is capped at what is left of it, and a month that runs out fails with "Month exceeded its time budget" and no state change. If the budget runs out after the month is committed, only the narration is skipped. The player can also cancel a running month from the UI (see [API](API.md)).
 
 The optional **Qwen3.5-9B** profile uses the same command with `-hf unsloth/Qwen3.5-9B-GGUF` ([official 9B model card](https://huggingface.co/Qwen/Qwen3.5-9B)). It uses more memory and is slower; its memory and speed have not been measured here.
 

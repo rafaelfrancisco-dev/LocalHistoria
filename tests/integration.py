@@ -53,9 +53,9 @@ class Mock(http.server.BaseHTTPRequestHandler):
   try:self.send_response(200);self.end_headers();self.wfile.write(response)
   except (BrokenPipeError,ConnectionResetError):pass
 class Server:
- def __init__(self,folder,endpoint=None,timeout=.25):
+ def __init__(self,folder,endpoint=None,timeout=.25,extra={}):
   self.p=port();self.base=f'http://127.0.0.1:{self.p}';self.config=folder/'config.json';self.save=folder/'save.sqlite';self.log=open(folder/'server.log','a')
-  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'reference_network':False}))
+  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'reference_network':False,**extra}))
   self.endpoint=endpoint
  def start(self):
   args=[str(ROOT/'build/localhistoria'),str(self.config)]
@@ -93,6 +93,21 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    jr=d.poll(j['id']);assert jr['status']=='failed' and jr['error']
    assert d.get('campaign')['state']==wd
   finally:d.stop()
+
+  budgetfolder=folder/'budget';budgetfolder.mkdir();b=Server(budgetfolder,f'http://127.0.0.1:{mock.server_port}',5,{'turn_budget_seconds':3});b.start()
+  try:
+   wb=b.get('campaign',{'country':'PT'})['state']
+   Mock.mode='slow';j=b.get('turns',order(wb,'cancel-turn',[{'text':'Send envoys to France'}]),202)
+   b.get('turns/cancel',{'job':str(j['id'])},202)
+   jr=b.poll(j['id']);assert jr['status']=='failed' and jr['error']=='Cancelled by the player',jr
+   assert b.get('campaign')['state']==wb
+   b.get('turns/cancel',{'job':str(j['id'])},409);b.get('turns/cancel',{'job':str(j['id']),'force':True},409)
+   j=b.get('turns',order(wb,'budget-turn',[{'text':'Send envoys to France'}]),202)
+   jr=b.poll(j['id']);assert jr['status']=='failed' and jr['error']=='Month exceeded its time budget',jr
+   assert b.get('campaign')['state']==wb
+   Mock.mode='valid'
+   print('Turn cancel and month budget verified',flush=True)
+  finally:b.stop()
 
   s=Server(folder,f'http://127.0.0.1:{mock.server_port}');s.start()
   try:

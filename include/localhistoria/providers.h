@@ -1,5 +1,6 @@
 #pragma once
 #include "world.h"
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <mutex>
@@ -35,6 +36,11 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Json::Value cachedProps;
     std::string propsEndpoint;
     std::chrono::steady_clock::time_point propsAt;
+    // Set from the HTTP thread; checked before each request. The deadline caps every request's
+    // timeout.
+    std::atomic<bool> cancelRequested{false};
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
+    Json::Value call(const std::string &endpoint, const std::string &path, const Json::Value &body);
     Json::Value completion(const Json::Value &, const Json::Value &, const std::string &,
                            unsigned reasoningBudget, double temperature,
                            const std::string &kind = "", const std::string &actor = "");
@@ -54,5 +60,11 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
     Json::Value takeAudit();
     void setEndpoint(const std::string &);
     std::string endpointValue() const;
+    // A cancelled or overdue call throws "Cancelled by the player" or "Month exceeded its time
+    // budget" before its next request; a request in flight finishes or times out first.
+    void requestCancel();
+    void clearCancel();
+    void setDeadline(std::chrono::steady_clock::time_point);
+    void clearDeadline();
 };
 } // namespace lh

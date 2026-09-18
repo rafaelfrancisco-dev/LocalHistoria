@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <thread>
 using namespace lh;
 int checks = 0;
 void check(bool b, const char *s) {
@@ -113,6 +114,49 @@ int main(int argc, char **argv) {
         check(validDecision.orders.size() == 1 &&
                   validDecision.orders[0].text == "Open trade talks with Portugal",
               "Valid model adapter");
+        // A cancelled or overdue month stops before its next request; the deadline caps each
+        // request's timeout.
+        {
+            double longest = 0;
+            int requests = 0;
+            bool fail = false;
+            LocalProvider bounded(
+                "http://127.0.0.1:8084", 10, [&](auto, auto path, auto, double t) -> Json::Value {
+                    ++requests;
+                    longest = std::max(longest, t);
+                    if (fail) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                        throw std::runtime_error("timeout");
+                    }
+                    if (path == "/props")
+                        return parse(R"({"default_generation_settings":)"
+                                     R"({"n_ctx":8192}})");
+                    return parse(R"({"choices":[{"message":{"content":)"
+                                 R"("{\"actions\":[]}"}}]})");
+                });
+            auto message = [&] {
+                try {
+                    bounded.decide(w, c);
+                } catch (const std::exception &e) {
+                    return std::string(e.what());
+                }
+                return std::string();
+            };
+            bounded.requestCancel();
+            check(message() == "Cancelled by the player" && requests == 0, "Cancel before request");
+            bounded.clearCancel();
+            bounded.setDeadline(std::chrono::steady_clock::now() + std::chrono::seconds(2));
+            check(message().empty() && longest > 0 && longest <= 2, "Deadline caps timeout");
+            bounded.setDeadline(std::chrono::steady_clock::now() - std::chrono::seconds(1));
+            requests = 0;
+            check(message() == "Month exceeded its time budget" && requests == 0, "Past deadline");
+            // A request cut short by the deadline reports the budget, not the transport.
+            bounded.setDeadline(std::chrono::steady_clock::now() + std::chrono::milliseconds(20));
+            fail = true;
+            check(message() == "Month exceeded its time budget", "Budget error after timeout");
+            bounded.clearDeadline();
+            check(message() == "timeout", "Transport error without deadline");
+        }
         // Adjudication reasons only for actions about war, land or treaties, and only when the
         // context can hold the reasoning.
         for (int ctx : {8192, 32768})

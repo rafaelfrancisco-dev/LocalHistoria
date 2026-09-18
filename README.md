@@ -117,7 +117,7 @@ Integration tests create disposable temporary saves and never replace your activ
 - `include/localhistoria/`, `src/`: simulation, persistence, replaceable providers, history, HTTP/job orchestration
 - `web/`: plain HTML/CSS/JavaScript, local Leaflet, flags, generated GeoJSON
 - `data/source/`: unchanged supplied inputs; `data/world.sqlite`: reproducible reference database
-- `saves/`: ignored campaign files; `config/`: example `port`/`save_path`/`timeout_seconds` config file
+- `saves/`: ignored campaign files; `config/`: example `port`/`save_path`/`timeout_seconds`/`turn_budget_seconds` config file (`turn_budget_seconds`, default twice the per-request timeout, bounds a whole month)
 
 Single-user, loopback-only scaffold. Fine-tuning, bundled models, multiplayer and production packaging are outside its scope.
 

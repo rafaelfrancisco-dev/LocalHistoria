@@ -199,11 +199,23 @@ button.primary {
   color: white;
   border-color: #526873;
 }
-#status {
-  padding: 12px 22px;
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 16px;
   background: #263d43;
+}
+#status {
+  flex: 1;
+  padding: 12px 22px;
   color: #e5cf9f;
   min-height: 45px;
+}
+#cancel-turn {
+  margin: 0;
+  padding: 5px 12px;
+  white-space: nowrap;
 }
 #turn-log {
   padding: 4px 22px 12px;
@@ -671,7 +683,7 @@ footer {
   #map {
     order: 2;
   }
-  #status {
+  .status-bar {
     order: 3;
   }
   #turn-log {

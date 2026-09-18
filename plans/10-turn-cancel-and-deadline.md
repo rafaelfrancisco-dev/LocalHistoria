@@ -1,5 +1,7 @@
 # 10 · Cancel a running month, and bound its total time
 
+**Status: done (2026-09-18).** The provider checks a cancel flag and a month deadline before each model server request, and caps every request's timeout at the time left. A request cut short by the deadline reports "Month exceeded its time budget". `TurnRunner` (`src/turn.cpp`) keeps the running job and the cancel requests under the mutex, and checks them again right before commit, so an accepted cancel never commits. `turn_budget_seconds` defaults to 2 × `timeout_seconds`, at most 1800. The route is `POST /api/v1/turns/cancel {job}`: 202 while the month is running, 409 otherwise. The client shows a "Cancel month" button and a status line with the phase, the number of model calls and the elapsed seconds. There are new unit tests in `core_tests.cpp`, and an integration test runs a server with a 3 s budget. The Cancel button has no browser test, because it would be racy.
+
 ## Goal
 A stuck or slow month can be cancelled from the UI, and a month never runs longer than a configured total
 budget. Today each model call has its own `timeout_seconds` (240 s) and a month makes up to ~11 calls, so the

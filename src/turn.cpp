@@ -2,6 +2,7 @@
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include <algorithm>
+#include <chrono>
 namespace lh {
 const size_t maxAiActors = 4;
 // Only a few chronicles per month, to bound turn time.
@@ -364,6 +365,30 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
     auto &geography = d.geography;
     auto &adjacency = d.adjacency;
     bool committed = false;
+    {
+        std::lock_guard l(mutex);
+        if (cancelRequests.erase(id)) {
+            store.execute("UPDATE jobs SET status='failed',error=? WHERE id=?",
+                          {"Cancelled by the player", id});
+            return;
+        }
+        current = id;
+        provider.clearCancel();
+        provider.setDeadline(std::chrono::steady_clock::now() +
+                             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                 std::chrono::duration<double>(d.budgetSeconds)));
+    }
+    struct Finish {
+        TurnRunner &t;
+        const std::string &id;
+        ~Finish() {
+            std::lock_guard l(t.d.mutex);
+            t.current.clear();
+            t.cancelRequests.erase(id);
+            t.d.provider.clearCancel();
+            t.d.provider.clearDeadline();
+        }
+    } finish{*this, id};
     try {
         auto turnContexts = contexts;
         auto turnIndependent = independentContexts;
@@ -503,6 +528,9 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         {
             std::lock_guard l(mutex);
             store.recordInference(id, provider.takeAudit());
+            // Checked under the lock the cancel route takes, so an accepted cancel never commits.
+            if (cancelRequests.contains(id))
+                throw ValidationError("Cancelled by the player");
             store.commit(id, result, recorded, frozen, false);
             committed = true;
             references.prepare(result.state);
@@ -529,5 +557,10 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             store.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", {e.what(), id});
         }
     }
+}
+void TurnRunner::cancel(const std::string &id) {
+    cancelRequests.insert(id);
+    if (id == current)
+        d.provider.requestCancel();
 }
 } // namespace lh

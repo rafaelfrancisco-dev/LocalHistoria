@@ -41,8 +41,11 @@
       </aside>
       <section class="workspace">
         <div id="map" aria-label="Selectable world map"></div>
-        <div id="status" role="status" aria-live="polite">
-          Choose a country to begin.
+        <div class="status-bar">
+          <div id="status" role="status" aria-live="polite">
+            Choose a country to begin.
+          </div>
+          <button id="cancel-turn" type="button" hidden>Cancel month</button>
         </div>
         <div id="turn-log" role="log" aria-live="off" hidden></div>
         <div id="turn-phase" class="visually-hidden" aria-live="polite"></div>

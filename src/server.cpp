@@ -45,6 +45,8 @@ void validateBody(const std::string &path, const Json::Value &body) {
         fields = {{"campaign_id", "string"},     {"expected_turn", "int"},
                   {"idempotency_key", "string"}, {"narration", "bool"},
                   {"orders", "array"},           {"responses", "array"}};
+    if (path == "/api/v1/turns/cancel")
+        fields = {{"job", "string"}};
     if (path == "/api/v1/model-config")
         fields = {{"llama_endpoint", "string"}};
     if (path == "/api/v1/history")
@@ -368,6 +370,15 @@ void turns(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     }
     reply(cb, s.store.job(id), 202);
 }
+void cancelTurn(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
+    std::lock_guard l(s.mutex);
+    auto id = b.get("job", "").asString();
+    auto job = s.store.job(id);
+    if (job["status"] != "running")
+        throw ValidationError("Month is not running");
+    s.turns.cancel(id);
+    reply(cb, job, 202);
+}
 void history(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb) {
     std::lock_guard l(s.mutex);
     auto code = b.isNull() ? req->getParameter("code") : b.get("code", "").asString();
@@ -551,6 +562,7 @@ void registerRoutes(Server &s) {
     route(s, "/api/v1/country", country, {Get});
     route(s, "/api/v1/jobs", jobs, {Get});
     route(s, "/api/v1/turns", turns, {Post});
+    route(s, "/api/v1/turns/cancel", cancelTurn, {Post});
     route(s, "/api/v1/history", history, {Get, Post});
     route(s, "/api/v1/inference", inference, {Get});
     route(s, "/api/v1/map", map, {Get});

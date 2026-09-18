@@ -43,6 +43,10 @@ int main(int argc, char **argv) {
         auto timeoutSeconds = config.get("timeout_seconds", 240).asDouble();
         if (timeoutSeconds <= 0 || timeoutSeconds > 600)
             throw ValidationError("Timeout must be greater than zero and at most 600 seconds");
+        // A month makes up to about a dozen calls; the budget bounds them together.
+        auto budgetSeconds = config.get("turn_budget_seconds", 2 * timeoutSeconds).asDouble();
+        if (budgetSeconds <= 0 || budgetSeconds > 1800)
+            throw ValidationError("Turn budget must be greater than zero and at most 1800 seconds");
         std::string save = config.get("save_path", "saves/campaign.sqlite").asString();
         auto parent = std::filesystem::path(save).parent_path();
         if (!parent.empty())
@@ -91,7 +95,8 @@ int main(int argc, char **argv) {
         };
         ReferencePreparer references(store, reference, mutex, referenceTransport);
         Worker worker;
-        TurnRunner turns({store, reference, provider, references, geography, adjacency, mutex});
+        TurnRunner turns(
+            {store, reference, provider, references, geography, adjacency, mutex, budgetSeconds});
         {
             std::lock_guard lock(mutex);
             references.prepare(decode(store.campaign()));

@@ -39,9 +39,14 @@ struct TurnDeps {
     const Json::Value &geography;
     const Adjacency &adjacency;
     std::mutex &mutex;
+    // Total time a month's model calls may take, from the start of run().
+    double budgetSeconds = 480;
 };
 class TurnRunner {
     TurnDeps d;
+    // Guarded by the mutex: the job in run(), and jobs the player cancelled.
+    std::string current;
+    std::set<std::string> cancelRequests;
 
   public:
     explicit TurnRunner(TurnDeps deps) : d(deps) {}
@@ -51,5 +56,8 @@ class TurnRunner {
     // Chronicles, decisions, adjudication, commit and narration; takes the mutex only around store
     // access, so inference never holds it.
     void run(const TurnPlan &, const std::string &jobId);
+    // Called under mutex for a running job: it fails before commit with "Cancelled by the player";
+    // after commit only narration is skipped.
+    void cancel(const std::string &jobId);
 };
 } // namespace lh

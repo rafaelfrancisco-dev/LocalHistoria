@@ -453,7 +453,7 @@ function logText(r) {
   if (r.kind === "narrate") return "Journal written.";
   return "Model responded.";
 }
-const PHASES = { decide: "Nations are deciding", adjudicate: "Adjudicating the month", narrate: "Writing the journal" };
+const PHASES = { chronicle: "Writing chronicles", decide: "Nations are deciding", adjudicate: "Adjudicating the month", narrate: "Writing the journal" };
 let lastPhase = null;
 function logLine(text) {
   const log = $("turn-log");
@@ -463,11 +463,13 @@ function logLine(text) {
   log.scrollTop = log.scrollHeight;
 }
 async function poll(id, withLog) {
-  let since = 0;
+  let since = 0, calls = 0, cancelling = false;
+  const started = Date.now();
   const pull = async () => {
     if (!withLog) return;
     for (const r of await api("inference?job=" + encodeURIComponent(id) + "&since=" + since)) {
       since = r.id;
+      calls++;
       logLine(logText(r));
       // Screen readers hear one line per phase, not every model call.
       if (PHASES[r.kind] && r.kind !== lastPhase) $("turn-phase").textContent = PHASES[r.kind];
@@ -479,27 +481,45 @@ async function poll(id, withLog) {
     $("turn-log").replaceChildren();
     lastPhase = null;
     lastTurnLog = null;
+    // The server stops before its next model call; nothing changes unless the month already committed.
+    $("cancel-turn").hidden = false;
+    $("cancel-turn").disabled = false;
+    $("cancel-turn").onclick = protect(async () => {
+      $("cancel-turn").disabled = true;
+      cancelling = true;
+      status("Cancelling after the current model call…");
+      sessionStorage.removeItem("pendingTurn");
+      await api("turns/cancel", { job: String(id) });
+    });
   }
-  for (let i = 0; i < 1200; i++) {
-    await pull();
-    const j = await api("jobs?id=" + encodeURIComponent(id));
-    if (j.status === "complete") {
+  try {
+    // The server's month budget is at most 30 minutes.
+    for (let i = 0; i < 4000; i++) {
       await pull();
-      if (withLog) {
-        // Kept in the newest journal entry once the month is loaded.
-        lastTurnLog = { turn: (state?.turn ?? 0) + 1, lines: [...$("turn-log").children].map((p) => p.textContent) };
-        $("turn-log").hidden = true;
+      const j = await api("jobs?id=" + encodeURIComponent(id));
+      if (j.status === "complete") {
+        await pull();
+        if (withLog) {
+          // Kept in the newest journal entry once the month is loaded.
+          lastTurnLog = { turn: (state?.turn ?? 0) + 1, lines: [...$("turn-log").children].map((p) => p.textContent) };
+          $("turn-log").hidden = true;
+        }
+        return j;
       }
-      return j;
+      if (j.status !== "running") {
+        if (withLog) $("turn-log").hidden = true;
+        throw Error(j.error || j.status);
+      }
+      const seconds = Math.round((Date.now() - started) / 1000);
+      if (!withLog) status("Working… " + id + " · the game remains responsive");
+      else if (!cancelling)
+        status(`${PHASES[lastPhase] || "Preparing the month"} · ${calls} model call${calls === 1 ? "" : "s"} · ${seconds} s`);
+      await new Promise((r) => setTimeout(r, 500));
     }
-    if (j.status !== "running") {
-      if (withLog) $("turn-log").hidden = true;
-      throw Error(j.error || j.status);
-    }
-    status("Working… " + id + " · the game remains responsive");
-    await new Promise((r) => setTimeout(r, 500));
+    throw Error("Job still running. Reload to resume monitoring.");
+  } finally {
+    if (withLog) $("cancel-turn").hidden = true;
   }
-  throw Error("Job still running. Reload to resume monitoring.");
 }
 $("search").oninput = list;
 $("search").onfocus = () => { if (phone.matches) list(); };
