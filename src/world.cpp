@@ -297,6 +297,10 @@ static double kilometres(const Json::Value &a,const Json::Value &b) {
     const double rad=3.14159265358979323846/180;double la1=a["latitude"].asDouble()*rad,la2=b["latitude"].asDouble()*rad,dl=(b["longitude"].asDouble()-a["longitude"].asDouble())*rad;
     return 6371*std::acos(std::clamp(std::sin(la1)*std::sin(la2)+std::cos(la1)*std::cos(la2)*std::cos(dl),-1.0,1.0));
 }
+// Effects ordered from worst to best, so the compiler can force a ceiling or floor on what the model wrote.
+static int rank(const std::string &effect){return effect=="severe_decline"?0:effect=="decline"?1:effect=="none"?2:effect=="growth"?3:4;}
+static std::string weaker(const std::string &a,const std::string &b){return rank(a)<=rank(b)?a:b;}
+static std::string stronger(const std::string &a,const std::string &b){return rank(a)>=rank(b)?a:b;}
 WorldDelta compileOperations(const WorldState &w,const Json::Value &response,const Adjacency &adjacency) {
     require(response.isObject()&&response["events"].isArray()&&response["events"].size()<=37&&(!response.isMember("world_events")||(response["world_events"].isArray()&&response["world_events"].size()<=3)),"Invalid operation response");
     for(auto &k:response.getMemberNames())require(k=="events"||k=="world_events","Invalid operation response");
@@ -347,6 +351,8 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         auto base="t"+std::to_string(w.turn)+"-"+slug(text,32);auto id=base;
         for(int n=2;!eventIds.insert(id).second;++n)id=base+"-"+std::to_string(n);
         std::set<std::string> actors,regions,entities,createdHere,conflicts,commitments;
+        // What this month makes obvious: parties to a war opened or escalated here (and whoever took land by force), to a trade treaty, and owners whose land was taken.
+        std::set<std::string> warParties,tradeParties,seizedOwners;
         std::vector<Json::Value> seenOps;
         // Whether an operation changed the map or a war: such events are major whatever the model calls them.
         bool structural=false;
@@ -367,7 +373,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             seenOps.push_back(o);
             auto name=o["action"].asString();auto why=name+": "+text.substr(0,300);
             // An impossible operation is dropped on its own; the rest of the event still happens.
-            auto before=std::make_tuple(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments);
+            auto before=std::make_tuple(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners);
             try {
             auto str=[&](const char *k){if(!o[k].isString()||o[k].asString().empty())throw Infeasible("incomplete "+name);return o[k].asString();};
             auto region=[&]{auto r=str("region");if(!w.territories.isMember(r))throw Infeasible("unknown region");return r;};
@@ -436,6 +442,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 v["kind"]=type;v["started_turn"]=w.turn;
                 if(kind=="conflict"){auto level=o["intensity"].asString();v["set_intensity"]=v["intensity"]=(level=="low"||level=="high")?level:"medium";v["affected_regions"]=Json::arrayValue;v["casualties"]=v["displaced"]=Json::Int64(0);}
                 touch(kind,cid,Json::nullValue,id,why)=v;(kind=="conflict"?conflicts:commitments).insert(cid);
+                if(kind=="conflict"?(type=="war"||type=="civil_war"||v["set_intensity"]=="high"):(type=="trade_agreement"||type=="union"))for(auto &m:members)(kind=="conflict"?warParties:tradeParties).insert(m);
             } else if(name=="resolve_conflict"||name=="resolve_commitment") {
                 auto kind=name=="resolve_conflict"?std::string("conflict"):std::string("commitment");
                 auto cid=str(kind.c_str());auto &collection=kind=="conflict"?w.conflicts:w.commitments;
@@ -448,7 +455,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 auto &parties=w.conflicts[cid]["actors"];
                 if(std::find(parties.begin(),parties.end(),Json::Value(ev))==parties.end())throw Infeasible("only a party can escalate or scale down "+displayName(w,"conflict",cid));
                 touch("conflict",cid,w.conflicts[cid],id,why)["set_intensity"]=level;conflicts.insert(cid);
-                for(auto &a:parties)actors.insert(a.asString());
+                for(auto &a:parties){actors.insert(a.asString());if(level=="high")warParties.insert(a.asString());}
             } else if(name=="build") {
                 auto r=region();auto builder=party("actor");auto kind=str("kind");
                 auto t=current("territory",w.territories,r);
@@ -499,11 +506,12 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                         if(!established)throw Infeasible("independence needs national agreement or an established relevant conflict");
                     }
                     if(!cession&&!annexation&&!returned)throw Infeasible(controller==ev?"cannot hand over land it does not own":"must occupy "+w.territories[r]["name"].asString()+" for at least a month before annexing it");
+                    if(!cession&&to!=owner&&!owner.empty()){seizedOwners.insert(owner);warParties.insert(ev);}
                     t["owner"]=to;t["controller"]=to;
                 } else if(name=="occupy") {
                     auto by=party("by");
                     if(by!=ev&&!createdHere.contains(by))throw Infeasible("an occupation must be carried out by the acting nation");
-                    if(controller!=by)take(ev,r);
+                    if(controller!=by){take(ev,r);if(!owner.empty()&&owner!=by){seizedOwners.insert(owner);warParties.insert(ev);}}
                     t["controller"]=by;
                 } else {
                     if(ev==owner&&controller!=owner)take(ev,r);
@@ -516,7 +524,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
             auto kind=o["kind"].asString();
             structural=structural||shaping.contains(name)||(name=="add_commitment"&&kind!="trade_agreement"&&kind!="other")||(name=="build"&&kind=="event_site")||(name=="set_entity_status"&&o["status"]=="destroyed");
             } catch(const Infeasible &x) {
-                std::tie(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments)=before;
+                std::tie(pending,index,created,newActors,taken,aliases,names,actors,regions,entities,createdHere,conflicts,commitments,warParties,tradeParties,seizedOwners)=before;
                 Json::Value d;d["action"]=name;d["reason"]=x.what();dropped.append(d);
             }
         }
@@ -525,7 +533,7 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         for(auto &a:createdHere){bool land=false;for(auto &c:pending)land=land||(c.kind=="territory"&&c.after["owner"]==a);if(!land)throw Infeasible("a new state needs territory");}
         } catch(const Infeasible &x) {
             std::tie(pending,index,created,newActors,taken,aliases,names)=snapshot;
-            actors.clear();regions.clear();entities.clear();conflicts.clear();commitments.clear();structural=false;
+            actors.clear();regions.clear();entities.clear();conflicts.clear();commitments.clear();warParties.clear();tradeParties.clear();seizedOwners.clear();structural=false;
             blocked="infeasible";
             Json::Value d;d["action"]="event";d["reason"]=x.what();dropped.append(d);
         }
@@ -556,15 +564,31 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
         }
         for(auto k:{"initiative_type","regional_actor"})if(e.isMember(k))event[k]=e[k];
         // Only something that happened has consequences; malformed or unknown effects are dropped, not fatal.
-        if(blocked=="none"&&e["effects"].isArray()) {
-            Json::Value effects(Json::arrayValue);
-            for(auto &x:e["effects"]) {
+        if(blocked=="none") {
+            struct Effect{std::string actor,economy,stability;bool forced;};
+            std::vector<Effect> effects;
+            auto find=[&](const std::string &a){return std::find_if(effects.begin(),effects.end(),[&](const Effect &f){return f.actor==a;});};
+            if(e["effects"].isArray())for(auto &x:e["effects"]) {
                 if(effects.size()>=3||!x.isObject()||!x["actor"].isString()||!x["economy"].isString()||!x["stability"].isString())continue;
                 auto a=actorRef(x["actor"].asString());auto economy=x["economy"].asString(),stability=x["stability"].asString();
-                if(!known(a)||!validEffect(economy)||!validEffect(stability)||(economy=="none"&&stability=="none"))continue;
-                Json::Value effect;effect["actor"]=a;effect["economy"]=economy;effect["stability"]=stability;effects.append(effect);
+                if(!known(a)||!validEffect(economy)||!validEffect(stability)||(economy=="none"&&stability=="none")||find(a)!=effects.end())continue;
+                effects.push_back({a,economy,stability,false});
             }
-            if(!effects.empty())event["effects"]=effects;
+            // The small model rewards aggression and punishes victims at random; the month's operations settle the sign.
+            auto entry=[&](const std::string &a,const std::string &economy,const std::string &stability)->Effect& {
+                auto f=find(a);
+                if(f==effects.end()){effects.push_back({a,economy,stability,true});return effects.back();}
+                f->forced=true;return *f;
+            };
+            for(auto &p:warParties){auto &f=entry(p,"none","none");f.economy=weaker(f.economy,"decline");if(p!=ev)f.stability=weaker(f.stability,"decline");}
+            for(auto &p:tradeParties){auto &f=entry(p,"none","none");f.economy=stronger(f.economy,"growth");}
+            for(auto &p:seizedOwners){auto &f=entry(p,"none","none");f.stability=weaker(f.stability,"decline");}
+            std::erase_if(effects,[](const Effect &f){return f.economy=="none"&&f.stability=="none";});
+            // Forced entries survive the cap; among the model's own, the weightiest stay.
+            auto weight=[](const Effect &f){return std::abs(rank(f.economy)-2)+std::abs(rank(f.stability)-2);};
+            std::stable_sort(effects.begin(),effects.end(),[&](const Effect &a,const Effect &b){return a.forced!=b.forced?a.forced:weight(a)>weight(b);});
+            if(effects.size()>3)effects.resize(3);
+            if(!effects.empty()){event["effects"]=Json::arrayValue;for(auto &f:effects){Json::Value x;x["actor"]=f.actor;x["economy"]=f.economy;x["stability"]=f.stability;event["effects"].append(x);}}
         }
         event["identity_changes"]=Json::arrayValue;
         for(const auto &c:pending)if(c.kind=="actor"&&c.event==id&&c.after["flag_revision"].isUInt()&&c.after["flag_revision"]!=c.before["flag_revision"]){Json::Value link;link["actor"]=c.id;link["revision"]=c.after["flag_revision"];event["identity_changes"].append(link);}

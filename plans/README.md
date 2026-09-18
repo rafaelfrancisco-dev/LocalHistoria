@@ -34,7 +34,7 @@ Recommended order (dependencies in parentheses):
 | 15 | parallel-slots (after 04, 05; same 4B model, no 9B) | performance | M | |
 | 16 | windows-followups | portability | S | |
 | 17 | independent-slot-relevance | simulation | S | |
-| 18 | effect-overrides (after 04) | simulation | S | |
+| 18 | effect-overrides (after 04) | simulation | S | done 2026-09-18 |
 | 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L | |
 | 20 | release-build-and-docs (last) | build + docs | S | |
 

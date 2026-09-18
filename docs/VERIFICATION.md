@@ -32,7 +32,8 @@ A live check on 2026-09-17 ran `./start.sh` (Qwen3.5-4B via `llama serve`), then
 - **Before the fix**, adjudication included the fronts of every seeded war, giving an 11.4k-token prompt that ran out of output tokens.
 - **After the fix**, with fronts limited to wars of acting nations and an answer budget that scales with the number of actions, the prompt was 5.2k tokens and the turn took 181 s.
 - **Outcome.** The model opened a low-intensity *Portuguese-Spanish Border War* (35 killed and 889 displaced along 12 border regions) and a *Portugal-Morocco Defence Pact*. The seeded wars reported their monthly tolls.
-- **Weakness.** The small model tends to attach mild "growth" effects to routine events, including Spain's economy for being attacked; C++ caps keep this bounded.
+- **Weakness.** The small model tends to attach mild "growth" effects to routine events, including Spain's economy for being attacked; C++ caps keep this bounded, and since plan 18 the compiler corrects the sign for parties to new or escalated wars, owners of seized regions and parties to trade treaties.
+- **Effect overrides (2026-09-18).** `build/world_probe` with the same model: before the override the `conflict` scenario (Spain occupies West, a high-intensity `border_conflict`) gave Spain `economy: growth`; after it, Spain and Portugal both get `decline`/`decline`. A one-month `tools/living_world_probe.py` run committed in 59 s and replayed identically.
 
 The Python data suite verifies 258 unique feature IDs, France/Norway/Kosovo/Taiwan normalization, unresolved metadata handling, 239 actor records, 152,970 city records, separate country/city Wikidata fields, absence of synthetic national population totals and complete supplied flag coverage.
 

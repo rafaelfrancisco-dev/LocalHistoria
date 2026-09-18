@@ -1,5 +1,7 @@
 # 18 · Deterministic overrides of model effects
 
+**Status: done (2026-09-18).** Implemented in `compileOperations` with per-event `warParties`, `tradeParties` and `seizedOwners`; live check recorded in `docs/VERIFICATION.md`.
+
 Do plan 04 first (it makes `effects` optional).
 
 ## Goal
