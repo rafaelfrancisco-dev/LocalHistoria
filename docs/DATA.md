@@ -12,6 +12,8 @@ The imported database and normalized map are reproducible from project-owned inp
 | `data/source/stats_overrides.json` | Documented estimates, each with a source note, for the 33 actors the World Bank omits or leaves incomplete (e.g. Taiwan, North Korean GDP, small dependencies, uninhabited territories). They are flagged `estimated` in the game. |
 | `data/source/world_2026.json` | Curated wars, occupations and treaties in force on 1 January 2026, with front regions and three non-state parties (RSF, Myanmar's National Unity Government, AFC/M23). Simplified to whole ADM1 regions; a game starting point, not an authoritative record. |
 | `web/vendor/leaflet.js`, `.css` | Leaflet 1.9.4, downloaded from version-pinned unpkg URLs. BSD-2-Clause license retained. No tile provider is used. |
+| `web/vendor/topojson-client.min.js` | topojson-client 3.1.0, `dist/topojson-client.min.js` from the npm tarball. ISC license retained. |
+| `web/regions.topojson`, `web/world.geojson` (+ `.gz`) | Derived display geometry, written by `tools/display_geometry.py` from `data/world.sqlite` and `countries.geojson`. Simplified for the browser only; see [Geography](EVOLVING_WORLD.md#geography). Checksums `display_sha256` / `world_display_sha256` in `data/source/gbOpen/manifest.json`. |
 | Drogon 1.9.13 | Installed library, MIT license retained. Transitive dependencies remain separately licensed in their installed distributions. |
 | JsonCpp 1.9.8 | Installed library, upstream MIT/public-domain notice retained. |
 | SQLite | Linked system/development library; [public domain](https://sqlite.org/copyright.html). |

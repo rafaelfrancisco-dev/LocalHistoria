@@ -10,7 +10,14 @@ The importer clips ADM1 polygons against supplied country outlines, rejects over
 
 The reference database retains all supplied cities and separately indexes locations verified inside a region. Campaigns seed the three largest located cities per initial actor. New ports, bases, armies, cities and event sites persist in campaign state. Entity requests apply viewport/zoom filters and cap responses at 200. Unseeded reference cities are retained as reference data, not campaign entities.
 
-Rebuild with `make geography-env` then `make data` when inputs change. For an explicit rebuild, run `.venv-geography/bin/python tools/import_data.py` followed by `.venv-geography/bin/python tools/import_regions.py`. Importing existing pinned files is offline and verifies their checksums. `--download` explicitly permits fetching missing pinned source files. Run `make geography-test` for exhaustive overlap, coverage and source verification.
+**Authoritative vs. display geometry.** The full geometry lives only in `data/world.sqlite` `regions.geometry`. `containsPoint`, adjacency, interiors and replay use it; `manifest.json` `geometry_sha256` is its checksum (`display_geometry.geometry_digest`). The browser gets a derived copy, `tools/display_geometry.py`:
+
+- `web/regions.topojson` (8.5 MB, 3.0 MB gzipped, from 124 MB of GeoJSON). All region boundaries are snap-rounded together on a 0.000001° grid and re-polygonized, so neighbours share every border vertex. Rings are cut into arcs at junctions, each shared arc is stored once, and each arc is simplified once (Douglas-Peucker, 0.01°), so borders cannot open gaps. Arcs are then quantized to 10⁶ steps and delta-encoded. Polygon parts narrower than 0.005° or smaller than 0.000025 deg² are dropped for display, always keeping each region's largest part. These are almost all residual slivers where subdivision coastlines miss the country outline. Some simplified polygons self-touch; the canvas fills even-odd, and `regions_test.py` checks each one against its authoritative outline.
+- `web/world.geojson` (3.1 MB, 0.9 MB gzipped), the pre-campaign country outlines simplified per feature at 0.02°.
+
+Each is written with a deterministic `.gz` that Drogon serves as-is (`gzip_static`). `/api/v1/map` versions the region URL by content hash, so the browser caches it as immutable. HTML, JS and CSS are `no-cache` (revalidated by Last-Modified). The browser builds the region layer once and on later months only replaces properties and restyles. It keeps the topology's arcs so the Countries map mode can mesh national borders (and dashed occupation lines) from current ownership.
+
+Rebuild with `make geography-env` then `make data` when inputs change; `make display` rebuilds only the display files from the existing SQLite (about 1.5 minutes). For an explicit rebuild, run `.venv-geography/bin/python tools/import_data.py` followed by `.venv-geography/bin/python tools/import_regions.py` (which ends with the display pass). Importing existing pinned files is offline and verifies their checksums. `--download` explicitly permits fetching missing pinned source files. Run `make geography-test` for exhaustive overlap, coverage and source verification.
 
 ## Monthly simulation
 
@@ -183,7 +190,8 @@ Every inference reads the context size from `/props` (at least 8,192 tokens, cac
 
 ## API additions
 
-- `GET /api/v1/map`: immutable `geometry_url`, campaign `territories`, and `turn`; join features by permanent ID. The browser caches geometry and refreshes campaign properties.
+- `GET /api/v1/map`: `geometry_url` (`/regions.topojson?v=<content hash>`, served gzipped with `Cache-Control: immutable`), campaign `territories`, and `turn`; join the topology's `regions` geometries by permanent ID. The browser caches geometry and refreshes campaign properties. Map moves are debounced (300 ms) and refetch entities only outside the last padded viewport or in a new month; event markers refetch only in a new month.
+- `GET /api/v1/campaign` carries an `ETag` (hash of the response) and answers `If-None-Match` with 304.
 - `GET /api/v1/entities?west=...&east=...&south=...&north=...&zoom=...`: at most 200 entities; cities appear at zoom 4+. `?id=...` retrieves an individual entity regardless of viewport.
 - `GET /api/v1/prepare`: reference coverage; `POST` with `{}` starts explicit preparation and returns a pollable job.
 - `GET /api/v1/inference?job=...&since=...`: exact recorded model requests/results for a job, tagged `kind` (`decide`/`adjudicate`/`narrate`), `actor` and the parsed `answer`. Each request/adjudication/decision flushes as soon as it lands, before the month is committed, so a running turn can be polled for a live log; `since` (the highest `id` already seen) returns only what is new.

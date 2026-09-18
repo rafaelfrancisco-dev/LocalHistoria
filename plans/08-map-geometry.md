@@ -1,5 +1,7 @@
 # 08 · Map geometry: 124 MB GeoJSON → < 10 MB, gzip, caching, fewer refetches
 
+**Status: done (2026-09-18).** Display geometry is `web/regions.topojson` (`tools/display_geometry.py`: noded linework → shared arcs → per-arc Douglas-Peucker 0.01°, residual slivers dropped), 8.5 MB / 3.0 MB gzipped. The Python `topojson` package was too slow on 4.5 M vertices, so arcs are built in-house. `world.geojson` is 3.1 MB / 0.9 MB. Served via `gzip_static` with an immutable, content-versioned URL. The layer is built once, `moveend` is debounced and cached by viewport and month, and `/campaign` has an ETag/304. Added a **Countries** map mode meshing national borders from current ownership (vendored topojson-client 3.1.0). Browser test: heap 153 MB (was 853), mode switch 3 ms synchronous restyle.
+
 ## Goal
 The campaign page must not download 124 MB and hold 850 MB of heap.
 

@@ -124,6 +124,9 @@ int main(int argc, char **argv) {
         store.recover();
         Json::Value geography(Json::objectValue);
         for(auto &r:reference.query("SELECT id,geometry FROM regions"))geography[r["id"].asString()]=parse(r["geometry"].asString());
+        // Display geometry is immutable per build, so its URL carries a content version the browser may cache forever.
+        std::string geometryVersion;
+        {std::ifstream in("web/regions.topojson",std::ios::binary);std::string bytes((std::istreambuf_iterator<char>(in)),{});geometryVersion=utils::getSha256(bytes).substr(0,16);}
         Adjacency adjacency;
         for(auto &r:reference.query("SELECT a,b FROM region_neighbors"))adjacency[r["a"].asString()].insert(r["b"].asString());
         // National statistics, regional shares and the January 2026 wars and treaties.
@@ -189,6 +192,18 @@ int main(int argc, char **argv) {
             r->addHeader("X-Content-Type-Options", "nosniff");
             cb(r);
         };
+        // Revalidated JSON: an unchanged response costs a 304 instead of the full body.
+        auto replyCached = [](const HttpRequestPtr &req, auto cb, const Json::Value &j) {
+            Json::StreamWriterBuilder writer;writer["indentation"]="";
+            auto body=Json::writeString(writer,j),etag="\""+utils::getMd5(body)+"\"";
+            auto r=HttpResponse::newHttpResponse();
+            if(req->getHeader("if-none-match")==etag)r->setStatusCode(k304NotModified);
+            else {r->setBody(body);r->setContentTypeCode(CT_APPLICATION_JSON);}
+            r->addHeader("ETag",etag);
+            r->addHeader("Cache-Control","no-cache");
+            r->addHeader("X-Content-Type-Options","nosniff");
+            cb(r);
+        };
         using CB = std::function<void(const HttpResponsePtr &)>;
         auto route = [&](const std::string &path, auto handler, std::vector<HttpMethod> methods) {
             std::vector<internal::HttpConstraint> constraints;
@@ -252,7 +267,7 @@ int main(int argc, char **argv) {
             app().registerHandler(path, std::move(endpoint), constraints);
         };
         route("/api/v1/campaign",
-              [&](auto, auto b, auto cb) {
+              [&](auto req, auto b, auto cb) {
                   std::lock_guard l(mutex);
                   Json::Value j;
                   if (!b.isNull()) {
@@ -288,7 +303,7 @@ int main(int argc, char **argv) {
                   j["active_jobs"] =
                       store.query("SELECT id,status FROM jobs WHERE status='running'");
                   j["llama_endpoint"] = provider.endpointValue();
-                  reply(cb, j);
+                  if (b.isNull()) replyCached(req, cb, j); else reply(cb, j);
               },
               {Get, Post});
         route("/api/v1/flag", [&](auto req,auto,auto cb) {
@@ -616,7 +631,7 @@ int main(int argc, char **argv) {
             reply(cb,records);
         },{Get});
         route("/api/v1/map", [&](auto,auto,auto cb) {
-            std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j;j["geometry_url"]="/regions.geojson";j["territories"]=w.territories;j["turn"]=w.turn;reply(cb,j);
+            std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j;j["geometry_url"]="/regions.topojson?v="+geometryVersion;j["territories"]=w.territories;j["turn"]=w.turn;reply(cb,j);
         },{Get});
         route("/api/v1/entities", [&](auto req,auto,auto cb) {
             std::lock_guard l(mutex);auto w=decode(store.campaign());Json::Value j(Json::arrayValue);
@@ -690,7 +705,18 @@ int main(int argc, char **argv) {
             .setLogLevel(trantor::Logger::kWarn)
             .setClientMaxBodySize(32768)
             .setDocumentRoot("web")
-            .setFileTypes({"html", "js", "css", "svg", "png", "ico", "geojson"})
+            .setFileTypes({"html", "js", "css", "svg", "png", "ico", "geojson", "topojson"})
+            .registerCustomExtensionMime("geojson", "application/geo+json")
+            .registerCustomExtensionMime("topojson", "application/json")
+            // Serve the pre-compressed web/*.gz next to each file when the browser accepts gzip.
+            .setGzipStatic(true)
+            .registerPreSendingAdvice([](const HttpRequestPtr &req, const HttpResponsePtr &r) {
+                auto &path = req->path();
+                if (path.starts_with("/api/")) return;
+                bool versioned = !req->getParameter("v").empty() &&
+                                 (path.ends_with(".topojson") || path.ends_with(".geojson"));
+                r->addHeader("Cache-Control", versioned ? "public, max-age=31536000, immutable" : "no-cache");
+            })
             .addListener("127.0.0.1", config.get("port", 8080).asInt())
             .setThreadNum(2);
         std::cout << "LocalHistoria: http://127.0.0.1:" << config.get("port", 8080).asInt()

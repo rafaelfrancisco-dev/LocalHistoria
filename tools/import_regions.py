@@ -88,9 +88,7 @@ def main():
             f=normalize(original,n);code=f['properties']['code'];rid=(code or f['id'])+'-coverage-residual'
             features.append({'type':'Feature','id':rid,'properties':{'id':rid,'name':f['properties']['name']+' — unresolved coverage','code':code,'initial_affiliation':code or '', 'kind':'residual','playable':bool(code)},'geometry':mapping(missing)})
             geos[rid]=missing;affiliations[rid]=code or ''
-    out={'type':'FeatureCollection','features':features}
-    (ROOT/'web/regions.geojson').write_text(json.dumps(out,separators=(',',':')))
-    manifest['geometry_sha256']=hashlib.sha256((ROOT/'web/regions.geojson').read_bytes()).hexdigest()
+    # The full geometry lives only in SQLite; display_geometry derives the browser's copy and its checksums.
     (CACHE/'manifest.json').write_text(json.dumps(manifest,indent=2))
     db=sqlite3.connect(ROOT/'data/world.sqlite')
     db.executescript('DROP TABLE IF EXISTS regions; CREATE TABLE regions(id TEXT PRIMARY KEY,name TEXT,affiliation TEXT,kind TEXT,geometry TEXT); DROP TABLE IF EXISTS region_cities; CREATE TABLE region_cities(id TEXT PRIMARY KEY,region TEXT,name TEXT,latitude REAL,longitude REAL,population INTEGER); CREATE INDEX region_city_view ON region_cities(latitude,longitude,population); DROP TABLE IF EXISTS neighbors; CREATE TABLE neighbors(a TEXT,b TEXT,PRIMARY KEY(a,b));')
@@ -110,6 +108,7 @@ def main():
             a,b=affiliations[ids[i]],affiliations[ids[k]]
             if a and b and a!=b and g.intersects(shapes[k]):db.execute('INSERT OR IGNORE INTO neighbors VALUES(?,?)',(a,b))
     db.commit();
-    import region_interiors, region_neighbors
+    import region_interiors, region_neighbors, display_geometry
+    display_geometry.main()
     print(f'Imported {len(features)} regions and {seeded} located cities',flush=True)
 if __name__=='__main__':main()

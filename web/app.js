@@ -141,21 +141,31 @@ function styleFor(f) {
   const owner = f.properties.owner ?? f.properties.code;
   const isSelected = owner === selected;
   const isPlayer = state && owner === state.player;
+  const fillColor = isSelected ? "#d9b875" : state?.actors?.[owner]?.color || (f.properties.playable ? "#537d83" : "#39464d");
+  const fillOpacity = isSelected ? 0.9 : 0.65;
+  // Countries mode: translucent fills leave anti-aliased seams along every subdivision edge, so each region is
+  // painted opaque in its colour pre-blended over the map background and stroked in that same colour.
+  if (mapMode === "countries" && state) {
+    const flat = blend(fillColor, "#0d202b", fillOpacity);
+    return { stroke: true, color: flat, weight: 1, opacity: 1, dashArray: null, fillColor: flat, fillOpacity: 1 };
+  }
   return {
     color: isPlayer && !isSelected ? "#dcbb7b" : "#a0b5b2",
     weight: isSelected || isPlayer ? 2 : 0.6,
     dashArray: f.properties.controller && f.properties.controller !== owner ? "3 3" : null,
-    fillColor: isSelected
-      ? "#d9b875"
-      : state?.actors?.[owner]?.color || (f.properties.playable
-        ? "#537d83"
-        : "#39464d"),
-    fillOpacity: isSelected ? 0.9 : 0.65,
+    fillColor,
+    fillOpacity,
   };
+}
+function blend(color, background, alpha) {
+  const rgb = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const [a, b] = [rgb(color), rgb(background)];
+  return "#" + a.map((v, i) => Math.round(v * alpha + b[i] * (1 - alpha)).toString(16).padStart(2, "0")).join("");
 }
 function restyleMap() {
   diplomacyCache = null;
   layers?.eachLayer((l) => l.setStyle(styleFor(l.feature)));
+  renderCountryBorders();
   renderLegend();
 }
 function renderStats() {
@@ -605,9 +615,12 @@ const mapControls = L.control.layers({}, {Entities:entityLayers}).addTo(map);
 let entityRequest = 0;
 async function refreshEntities() {
   if (!state) return;
-  const request = ++entityRequest, b=map.getBounds();
+  const key=monthKey(), cities=map.getZoom()>=4, view=map.getBounds();
+  if (entityFetch && entityFetch.key===key && entityFetch.cities===cities && !entityFetch.full && entityFetch.bounds.contains(view)) return;
+  const request = ++entityRequest, b=view.pad(0.5);
   const entities=await api(`entities?west=${b.getWest()}&east=${b.getEast()}&south=${b.getSouth()}&north=${b.getNorth()}&zoom=${map.getZoom()}`);
   if (request !== entityRequest) return;
+  entityFetch={key,cities,bounds:b,full:entities.length>=200};
   entityLayers.clearLayers();
   for (const e of entities) {
     const label=document.createElement("div");
@@ -616,45 +629,87 @@ async function refreshEntities() {
     L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff",dashArray:e.status==="under_construction"?"2 3":null}).bindPopup(label).addTo(entityLayers);
   }
 }
-map.on("moveend",protect(refreshEntities));
-let regionGeometry=null;
+// Pans are debounced, and a view inside the last (padded) fetch of the same month needs no request.
+let moveTimer = null, entityFetch = null;
+map.on("moveend", () => { clearTimeout(moveTimer); moveTimer = setTimeout(protect(refreshEntities), 300); });
+const monthKey = () => state && `${state.campaign_id}:${state.turn}`;
+// Region geometry is fetched and turned into layers once; later months only replace properties and restyle.
+let regionLayer = null, regionTopology = null, regionById = new Map(), eventMarkerKey = null;
+function regionLabel(p) {
+  if (mapMode === "countries") {
+    const owner = state.actors[p.owner]?.name || p.owner || "Unresolved territory";
+    return p.controller && p.owner && p.controller !== p.owner ? `${owner} · ${p.name} occupied by ${state.actors[p.controller]?.name || p.controller}` : owner;
+  }
+  return `${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
+}
 async function refreshCampaignMap() {
   const snapshot=await api("map");
-  if (!regionGeometry) regionGeometry=await (await fetch(snapshot.geometry_url)).json();
-  const geo={type:"FeatureCollection",features:regionGeometry.features.map(f=>({...f,properties:{...snapshot.territories[f.id],id:f.id}}))};
-  if (layers) {mapControls.removeLayer(layers);map.removeLayer(layers);}
-  layers=L.geoJSON(geo,{style:styleFor,onEachFeature:(f,l)=>{
-    const p=f.properties,label=document.createElement("span");
-    label.textContent=`${p.name} · ${p.id} · owner ${p.owner || "unresolved"} · controller ${p.controller || "unresolved"}`;
-    l.bindTooltip(()=>{
-      if (mapMode!=="diplomacy") return label;
-      const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")+(p.displaced?` · ${p.displaced.toLocaleString()} displaced`:"")];
-      if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
-      for (const c of Object.values(state.conflicts)) if (c.status==="open"&&(c.affected_regions||[]).includes(p.id)) lines.push(`Front: ${c.name} (${c.intensity})`);
-      const treaties=Object.values(state.commitments).filter(c=>c.status==="open"&&c.actors.includes(p.owner)).map(c=>c.name);
-      if (treaties.length) lines.push("Treaties: "+treaties.slice(0,4).join(", ")+(treaties.length>4?` +${treaties.length-4}`:""));
-      const box=document.createElement("span");box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
-    });
-    l.on("click",protect(async()=>{const added=state&&!$("controls").hidden&&addTarget(p.id);if(p.controller || p.owner) await select(p.controller || p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:label.textContent);}));
-  }}).addTo(map);
-  mapControls.addOverlay(layers,"Territories and occupation");
+  if (!regionLayer) {
+    regionTopology=await (await fetch(snapshot.geometry_url)).json();
+    const geo=topojson.feature(regionTopology,regionTopology.objects.regions);
+    for (const f of geo.features) f.properties={...snapshot.territories[f.id],id:f.id};
+    regionLayer=L.geoJSON(geo,{style:styleFor,onEachFeature:(f,l)=>{
+      // The layer holds its own LatLngs; only properties are read from the feature from now on.
+      regionById.set(f.id,l);f.geometry=null;
+      l.bindTooltip(()=>{
+        const p=l.feature.properties,box=document.createElement("span");
+        if (mapMode!=="diplomacy") { box.textContent=regionLabel(p); return box; }
+        const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")+(p.displaced?` · ${p.displaced.toLocaleString()} displaced`:"")];
+        if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
+        for (const c of Object.values(state.conflicts)) if (c.status==="open"&&(c.affected_regions||[]).includes(p.id)) lines.push(`Front: ${c.name} (${c.intensity})`);
+        const treaties=Object.values(state.commitments).filter(c=>c.status==="open"&&c.actors.includes(p.owner)).map(c=>c.name);
+        if (treaties.length) lines.push("Treaties: "+treaties.slice(0,4).join(", ")+(treaties.length>4?` +${treaties.length-4}`:""));
+        box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
+      });
+      l.on("click",protect(async()=>{const p=l.feature.properties,added=state&&!$("controls").hidden&&addTarget(p.id);if(p.controller || p.owner) await select(p.controller || p.owner);status(added?`Added ${p.name} to action ${activeAction+1}`:regionLabel(p));}));
+    }});
+  } else for (const [id,l] of regionById) l.feature.properties={...snapshot.territories[id],id};
+  if (layers!==regionLayer) {
+    if (layers) {mapControls.removeLayer(layers);map.removeLayer(layers);}
+    layers=regionLayer.addTo(map);
+    mapControls.addOverlay(layers,"Territories and occupation");
+  }
+  restyleMap();
   await Promise.all([refreshEntities(), refreshEventMarkers()]);
 }
-// Map mode: political ownership, or wars, fronts, occupations and the selected country's treaties.
+// Countries mode draws no subdivisions: borders are meshed from the shared region arcs wherever the owner changes.
+let countryBorders = null, countryBordersKey = null;
+function renderCountryBorders() {
+  const show = mapMode === "countries" && state && regionTopology && layers === regionLayer;
+  if (!show) { if (countryBorders) map.removeLayer(countryBorders); return; }
+  const key = `${monthKey()}:${state.player}`;
+  if (key !== countryBordersKey) {
+    if (countryBorders) map.removeLayer(countryBorders);
+    const obj = regionTopology.objects.regions, prop = (g) => regionById.get(g.id).feature.properties;
+    const owner = (g) => prop(g).owner || "", controller = (g) => prop(g).controller || owner(g);
+    const border = (a, b) => a === b || owner(a) !== owner(b);
+    const player = (a, b) => owner(a) === state.player || owner(b) === state.player;
+    const line = (filter, style) => L.geoJSON(topojson.mesh(regionTopology, obj, filter), { interactive: false, style: () => style });
+    countryBorders = L.layerGroup([
+      line((a, b) => border(a, b) && !player(a, b), { color: "#1f2a2f", weight: 1.2, opacity: 0.9 }),
+      line((a, b) => a !== b && owner(a) === owner(b) && controller(a) !== controller(b), { color: "#1f2a2f", weight: 1, dashArray: "3 3", opacity: 0.9 }),
+      line((a, b) => border(a, b) && player(a, b), { color: "#dcbb7b", weight: 2 }),
+    ]);
+    countryBordersKey = key;
+  }
+  countryBorders.addTo(map);
+}
+// Map mode: political ownership with regions, countries without subdivisions, or wars, fronts, occupations and treaties.
 function readPreference(key, fallback) {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
 }
+const MAP_MODES = ["political", "countries", "diplomacy"];
 function setMapMode(mode) {
-  mapMode = mode === "diplomacy" ? "diplomacy" : "political";
+  mapMode = MAP_MODES.includes(mode) ? mode : "political";
   try { localStorage.setItem("mapMode", mapMode); } catch {}
-  if (mapMode === "political") highlight = null;
+  if (mapMode !== "diplomacy") highlight = null;
   for (const b of modeControl.getContainer()?.querySelectorAll("button") || []) b.setAttribute("aria-pressed", b.dataset.mode === mapMode);
   restyleMap();
 }
 const modeControl = L.control({ position: "topleft" });
 modeControl.onAdd = () => {
   const box = L.DomUtil.create("div", "map-modes leaflet-bar");
-  for (const [mode, text] of [["political", "Political"], ["diplomacy", "Wars & treaties"]]) {
+  for (const [mode, text] of [["political", "Political"], ["countries", "Countries"], ["diplomacy", "Wars & treaties"]]) {
     const b = L.DomUtil.create("button", "", box);
     b.type = "button";
     b.dataset.mode = mode;
@@ -699,8 +754,7 @@ function renderLegend() {
     box.append(clear);
   }
 }
-mapMode = readPreference("mapMode", "political") === "diplomacy" ? "diplomacy" : "political";
-setMapMode(mapMode);
+setMapMode(readPreference("mapMode", "political"));
 
 // Wars & treaties menu.
 let diplomacyTab = "wars";
@@ -879,10 +933,11 @@ function eventPopup(events) {
   return box;
 }
 async function refreshEventMarkers() {
-  if (!state) return;
-  const request = ++eventMarkerRequest;
+  if (!state || eventMarkerKey === monthKey()) return;
+  const request = ++eventMarkerRequest, key = monthKey();
   const { events } = await api("events?on_map=1");
   if (request !== eventMarkerRequest) return;
+  eventMarkerKey = key;
   eventLayers.clearLayers();
   const groups = new Map();
   for (const ev of events)

@@ -2,12 +2,12 @@ CMAKE_PREFIX_PATH ?= $(shell brew --prefix 2>/dev/null)
 JOBS ?= 4
 GEO_PYTHON ?= .venv-geography/bin/python
 
-.PHONY: all test integration run start data clean
+.PHONY: all test integration run start data display clean
 all: data
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
 	cmake --build build -j $(JOBS)
-data: data/world.sqlite web/world.geojson data/.stats-imported
-data/world.sqlite web/world.geojson: tools/import_data.py data/source/countries.geojson data/source/json-cities.json.gz
+data: data/world.sqlite web/regions.topojson data/.stats-imported
+data/world.sqlite: tools/import_data.py data/source/countries.geojson data/source/json-cities.json.gz
 	$(GEO_PYTHON) -c "import shapely"
 	python3 tools/import_data.py
 	$(GEO_PYTHON) tools/import_regions.py
@@ -31,6 +31,13 @@ clean:
 geography-env:
 	python3 -m venv .venv-geography
 	.venv-geography/bin/pip install -r tools/requirements-geography.txt
+
+# Browser display geometry (simplified TopoJSON regions, GeoJSON countries) from the existing SQLite.
+# import_regions.py also runs it; this rebuilds only the display files.
+web/regions.topojson web/world.geojson: tools/display_geometry.py
+	$(GEO_PYTHON) tools/display_geometry.py
+display:
+	$(GEO_PYTHON) tools/display_geometry.py
 
 geography-test:
 	$(GEO_PYTHON) tests/regions_test.py

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild geography and SQLite reference data from project-owned inputs."""
+"""Rebuild SQLite reference data from project-owned inputs. The browser's world.geojson comes from display_geometry.py."""
 import gzip, json, re, sqlite3, pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OVERRIDES = {'France':'FR','Norway':'NO','Kosovo':'XK','Taiwan':'TW'}
@@ -10,7 +10,6 @@ def normalize(feature, index):
 def main():
     raw=json.loads((ROOT/'data/source/countries.geojson').read_text())
     features=[normalize(f,i) for i,f in enumerate(raw['features'])]
-    (ROOT/'web/world.geojson').write_text(json.dumps({'type':'FeatureCollection','features':features},separators=(',',':')))
     path=ROOT/'data/world.sqlite'; path.unlink(missing_ok=True)
     db=sqlite3.connect(path)
     db.executescript('CREATE TABLE countries(code TEXT PRIMARY KEY,name TEXT NOT NULL,country_wikidata TEXT); CREATE TABLE cities(id INTEGER PRIMARY KEY,code TEXT,name TEXT,population INTEGER,latitude REAL,longitude REAL,city_wikidata TEXT); CREATE INDEX city_country ON cities(code,population DESC);')

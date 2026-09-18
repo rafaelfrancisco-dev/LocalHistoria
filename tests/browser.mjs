@@ -10,7 +10,8 @@ assert.equal(
   null,
   "Browser test requires an empty disposable save",
 );
-const browser = await chromium.launch({ headless: true });
+// Precise, collectable heap readings: the size check measures what the page retains, not pending garbage.
+const browser = await chromium.launch({ headless: true, args: ["--js-flags=--expose-gc", "--enable-precise-memory-info"] });
 try {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1050 },
@@ -73,6 +74,23 @@ try {
   await page.locator(".map-legend button").click();
   await page.getByRole("button", { name: "Political" }).click();
   await page.waitForFunction(() => mapMode === "political" && document.querySelector(".map-legend").hidden);
+  // Display geometry is small enough to keep the page light and restyles fast (Chromium reports heap size).
+  const heap = await page.evaluate(() => { window.gc?.(); return performance.memory?.usedJSHeapSize; });
+  console.log("JS heap after campaign load:", heap ? `${Math.round(heap / 1e6)} MB` : "unavailable");
+  if (heap !== undefined) assert.ok(heap < 300e6, `JS heap ${heap}`);
+  const switchMs = await page.evaluate(() => { const t = performance.now(); setMapMode("diplomacy"); const d = performance.now() - t; setMapMode("political"); return d; });
+  console.log("Map mode switch:", Math.round(switchMs), "ms");
+  assert.ok(switchMs < 150, `map mode switch took ${switchMs} ms`);
+  // Countries mode: regions painted seamlessly in their own colour, national borders meshed from current ownership.
+  await page.getByRole("button", { name: "Countries" }).click();
+  assert.deepEqual(await page.evaluate(() => {
+    let seams = 0, portugal;
+    layers.eachLayer((l) => { if (l.options.color !== l.options.fillColor || l.options.fillOpacity !== 1) seams++; if (l.feature.properties.owner === "PT") portugal = l.options.fillColor; });
+    const lines = countryBorders.getLayers().reduce((n, g) => n + g.getLayers().length, 0);
+    return { mode: mapMode, seams, portugal, shown: map.hasLayer(countryBorders), lines: lines > 0 };
+  }), { mode: "countries", seams: 0, portugal: "#c5a96e", shown: true, lines: true });
+  await page.getByRole("button", { name: "Political" }).click();
+  assert.equal(await page.evaluate(() => map.hasLayer(countryBorders)), false);
   await page.locator("#action-0").fill("Invest in the national railway network");
   await page.locator("#add-action").click();
   await page.locator("#action-1").fill("Open trade talks with Spain");
@@ -81,10 +99,14 @@ try {
   await page.waitForFunction(
     () => document.querySelector("#action-1")?.value === "Open trade talks with Spain",
   );
+  await page.waitForFunction(() => layers?.getLayers().length > 3000);
+  await page.evaluate(() => { window.firstRegionLayer = layers; });
   await page.locator("#turn").click();
   await page.waitForFunction(
     () => document.querySelector("#date").textContent === "February 2026" && !busy,
   );
+  // A new month updates the existing region layer in place instead of rebuilding it.
+  assert.equal(await page.evaluate(() => layers === window.firstRegionLayer), true);
   await page
     .locator("#journal details")
     .first()

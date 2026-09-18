@@ -25,7 +25,7 @@ World tests cover named wars and treaties, invalid kinds, effect validation, par
 - a model-declared war getting its fallback name, a front and casualties;
 - a save from before national status gaining it and still replaying.
 
-The browser test covers the stats panel, the Wars & treaties dialog, and the map mode colouring Donetsk as a front.
+The browser test covers the stats panel, the Wars & treaties dialog, the map mode colouring Donetsk as a front, the Countries mode (no subdivision outlines, meshed national borders), a JS heap below 300 MB after campaign load (153 MB measured), and the region layer surviving a new month without being rebuilt.
 
 A live check on 2026-09-17 ran `./start.sh` (Qwen3.5-4B via `llama serve`), then a Portugal turn with "Declare war on Spain over the disputed Olivenza border and send troops to occupy Galicia" and "Sign a defence pact with Morocco":
 

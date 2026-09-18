@@ -4,11 +4,18 @@ sys.path.insert(0,str(root/'tools'))
 from import_data import normalize
 f=json.loads((root/'web/world.geojson').read_text())['features']
 assert len({x['id'] for x in f})==len(f)==258
+# Browser display geometry stays small, keeps every region and ships a byte-identical gzip for gzip_static.
+import gzip
+topology=root/'web/regions.topojson'
+assert topology.stat().st_size<12_000_000,topology.stat().st_size
+for path in (topology,root/'web/world.geojson'):assert gzip.decompress(path.with_name(path.name+'.gz').read_bytes())==path.read_bytes(),path
+display=[g['id'] for g in json.loads(topology.read_text())['objects']['regions']['geometries']]
 for name,code in [('France','FR'),('Norway','NO'),('Kosovo','XK'),('Taiwan','TW')]:
  assert normalize({'properties':{'name':name,'ISO3166-1-Alpha-2':'-99'}},0)['properties']['code']==code
 assert not normalize({'properties':{'name':'Unresolved'}},5)['properties']['playable']
 assert any(not x['properties']['playable'] for x in f)
 db=sqlite3.connect(root/'data/world.sqlite')
+assert len(display)==len(set(display))==db.execute('SELECT count(*) FROM regions').fetchone()[0]
 assert db.execute('SELECT count(*) FROM cities').fetchone()[0]==152970
 assert db.execute('SELECT count(*) FROM countries WHERE country_wikidata IS NOT NULL').fetchone()[0]==0
 assert db.execute('SELECT city_wikidata FROM cities WHERE city_wikidata IS NOT NULL LIMIT 1').fetchone()[0].startswith('Q')
