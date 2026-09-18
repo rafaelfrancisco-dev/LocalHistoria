@@ -97,6 +97,20 @@ int main() {
         const auto &m = month.state.actors["UA"]["status"]["military"];
         check(m["reserve"].asInt() == 1176000 && m["active"].asInt() > 900000 && m["active"].asInt() < 924000, "Ukraine mobilises 2% reserves and loses active personnel");
         check(encode(month.state) == encode(applyMonthlyStatus({real, {}}, {}, realAdj).state), "Monthly military state deterministic");
+        // Seizing a region displaces the people the fighting reaches, not a whole province.
+        auto seize = [&](const std::string &taker, const std::string &loser, const std::string &name) {
+            auto state = real; auto id = region(loser, name);
+            if (!(state.conflicts.isMember("c0-1") && taker == "RU")) state.conflicts["c9-1"] = parse(R"({"name":"Test War","kind":"war","status":"open","intensity":"high","started_turn":0,"casualties":0,"displaced":0})"), state.conflicts["c9-1"]["actors"].append(taker), state.conflicts["c9-1"]["actors"].append(loser);
+            WorldDelta d; Json::Value ch; ch["kind"] = "territory"; ch["id"] = id; ch["before"] = state.territories[id]; state.territories[id]["controller"] = taker; ch["after"] = state.territories[id]; d.changes.append(ch);
+            auto population = state.territories[id]["population"].asDouble();
+            auto out = applyMonthlyStatus({state, {}}, d, realAdj);
+            auto share = (out.state.territories[id]["displaced"].asDouble() - state.territories[id].get("displaced", 0).asDouble()) / population;
+            std::cout << taker << " seizes " << name << " (" << population / 1e6 << " M): " << share * 100 << "% displaced\n";
+            return share;
+        };
+        auto punjab = seize("IN", "PK", "Punjab");
+        check(punjab > 0.001 && punjab < 0.02, "A province-sized seizure displaces the combat zone, not 8% of the province");
+        check(seize("RU", "UA", "Dnipropetrovsk Oblast") > 0.08, "Russia's committed force still reaches a whole oblast");
         std::cout << "Military inventory, reservations, combat, migration and attrition passed\n";
     } catch (const std::exception &e) { std::cerr << e.what() << "\n"; return 1; }
 }

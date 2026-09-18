@@ -13,6 +13,7 @@ constexpr double militaryPopulationCap = 0.00008;            // of a party's rec
 constexpr double civilian[] = {0.000003, 0.000015, 0.00005}; // of each affected region
 constexpr double displacement[] = {0.0003, 0.0015, 0.004};   // outflow from each affected region
 constexpr double seizedDisplacement = 0.08;                  // one-off when a region changes hands
+constexpr double residentsPerCombatant = 20;                  // people caught in a seizure per soldier committed there
 constexpr double refugeeShare = 0.35;                        // of the displaced who cross a border
 constexpr double returnShare = 0.03;                         // of the displaced who return once it is calm
 constexpr double frontGdpLoss[] = {0.001, 0.004, 0.01};
@@ -609,9 +610,27 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
 
     // 4. War fronts: where each open conflict is actually fought this month.
     std::set<std::string> seized;
+    std::map<std::string, std::pair<std::string, std::string>> seizedBy; // region -> (new controller, previous controller)
     for (const auto &c : delta.changes) {
-        if (c["kind"] == "territory" && !c["before"].isNull() && c["before"]["controller"] != c["after"]["controller"]) seized.insert(c["id"].asString());
+        if (c["kind"] == "territory" && !c["before"].isNull() && c["before"]["controller"] != c["after"]["controller"]) {
+            seized.insert(c["id"].asString());
+            seizedBy[c["id"].asString()] = {c["after"]["controller"].asString(), c["before"]["controller"].asString()};
+        }
     }
+    // The one-off flight on seizure reaches the people the fighting reaches: with inventories, at most
+    // residentsPerCombatant per soldier both sides committed there, not a whole province.
+    auto seizedShare = [&](const std::string &region, double population) {
+        if (!seized.contains(region)) return 0.0;
+        if (population <= 0) return rate::seizedDisplacement;
+        auto exposed = population;
+        const auto &[taker, loser] = seizedBy[region];
+        if (static_cast<const WorldState &>(forceStart).actors[taker]["status"]["military"].isObject()) {
+            double committed = force::committedPersonnel(forceStart, adjacency, taker, {region});
+            if (static_cast<const WorldState &>(forceStart).actors[loser]["status"]["military"].isObject()) committed += force::committedPersonnel(forceStart, adjacency, loser, {region});
+            exposed = std::min(population, rate::residentsPerCombatant * committed);
+        }
+        return exposed == population ? rate::seizedDisplacement : rate::seizedDisplacement * exposed / population;
+    };
     struct Front {
         std::string id;
         std::set<std::string> parties;
@@ -749,7 +768,8 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
             auto &t = T[region];
             auto population = double(integer(t, "population"));
             deaths += kill(region, Int(std::llround(population * rate::civilian[f.intensity] * multiplier * jitter(w, f.id + ":civilian:" + region))));
-            auto outflow = Int(std::llround(double(integer(t, "population")) * (rate::displacement[f.intensity] * multiplier * jitter(w, f.id + ":displacement:" + region) + (seized.contains(region) ? rate::seizedDisplacement : 0))));
+            auto remaining = double(integer(t, "population"));
+            auto outflow = Int(std::llround(remaining * (rate::displacement[f.intensity] * multiplier * jitter(w, f.id + ":displacement:" + region) + seizedShare(region, remaining))));
             if (outflow <= 0) continue;
             auto owner = cT[region]["owner"].asString();
             std::map<std::string, double> internal, abroad;
