@@ -64,14 +64,16 @@ The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are projec
 
 A turn is one month, and the game keeps outcomes realistic:
 
-- Force reaches only regions bordering land you control, or near your active armies and fleets. At most two regions can change hands by force per month.
+- Force reaches only regions bordering land you control, or near your active armies and fleets. Actual troops, aircraft, warships, wealth and defender advantages determine whether zero, one or two regions can be taken; the overall cap is two per month.
 - Conquest takes two steps: occupy a region first, then annex it in a later month.
 - Armies advance one region per month and fleets sail up to 1,500 km.
-- Construction takes months: armies 2, bases 3, fleets 4, ports 6, cities 24.
+- Construction takes months: armies 2, bases 3, fleets 4, ports 6, cities 24. Concurrent projects are limited by GDP; armies and fleets reserve available personnel and warships.
 - At most one new state can emerge per month, and it needs territory.
 - Nations act only within their authority: only parties start, end or sign, nations only build for themselves, and destroying another nation's units needs a war with it. A treaty needs every party's own action that month to name the partner. When an AI nation offers you one, it appears above your action cards with its terms and duration. Accept or decline it before ending the next month, or it lapses.
 - Treaties do things. A peace treaty can end a war, cede regions or allow an agreed occupation, and a ceasefire pauses its war. Treaties can expire, be renewed or amended, and acting against a partner breaks them.
 - An action beyond these limits still appears in the journal as a failed attempt, and the rest of the month proceeds.
+
+For example, Portugal ordering “Conquer all of Spain” or “Occupy Galicia” produces a failed, aborted or symbolic attempt: its starting military is too weak to occupy Spanish regions. Spain can threaten Portugal; India can initially take at most one Pakistani region per month. Troop losses, equipment attrition and reserve mobilisation are computed by the game. Military estimates are labelled in the country inspector.
 
 Actions without map effects (reforms, trade, research, diplomacy) are recorded as events and shape later adjudication through the campaign history.
 

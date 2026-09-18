@@ -35,7 +35,7 @@ Recommended order (dependencies in parentheses):
 | 16 | windows-followups | portability | S | |
 | 17 | independent-slot-relevance | simulation | S | |
 | 18 | effect-overrides (after 04) | simulation | S | done 2026-09-18 |
-| 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L | |
+| 19 | military-inventory-and-battle-model (after 01, 02; supersedes 02's military deaths) | simulation + data | L | done 2026-09-18 |
 | 20 | release-build-and-docs (last) | build + docs | S | |
 
 Baseline numbers to beat (real save, India, Qwen3.5-4B, M1 Pro): month 1 159 s, month 2 212 s;

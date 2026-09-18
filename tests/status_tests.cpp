@@ -171,6 +171,7 @@ int main() {
         StatusSeed real;
         for (auto &r : reference.query("SELECT * FROM country_stats")) real.countries[r["code"].asString()] = r;
         for (auto &r : reference.query("SELECT * FROM region_stats")) real.regions[r["id"].asString()] = r;
+        for (auto &r : reference.query("SELECT * FROM military_stats")) real.military[r["code"].asString()] = r;
         real.world = parse(reference.query("SELECT document FROM world_seed")[0]["document"].asString());
         WorldState world;
         world.player = "PT";

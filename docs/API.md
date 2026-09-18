@@ -37,6 +37,13 @@ National status:
 - Actors carry `status`: `stability`, `baseline_stability`, `gdp_growth`, `pop_growth` (annual %), `currency`, `symbol`, `usd_rate`, `estimated`, `last_gdp_change` and `last_population_change`.
 - `national_status[actor]` is derived from owned regions: `population`, `population_text`, `gdp` (e.g. `"€306.8 billion (US$346.6 billion)"`), `gdp_usd`, `gdp_per_capita`, `stability` (label and score), `stability_score`, `economic_trend`, `wars`, `treaties`, `occupied_regions`, `occupying_regions`, `displaced` and `estimated`.
 
+Military inventory:
+
+- `actors[id].status.military` contains non-negative integer `active`, `reserve`, `ships`, `aircraft` and an `estimated` flag. `status.military_spend_usd` retains reference spending; zero can mean unknown.
+- `national_status[id].military` exposes those fields plus `uncommitted_personnel`, `uncommitted_ships` and `label`; `military_text` is the readable summary. Model context replaces the numeric `status.military` object with that summary. API clients continue to receive numbers.
+- Army entities carry integer `personnel`; fleets carry integer `ships`. Active and unfinished formations reserve inventory; inactive formations release it. `loss_accounted` on destroyed formations prevents repeat deductions.
+- Turns with `status_version: 2` use inventory-based combat and casualties. A legacy save receives a frozen `reference.military_seed` on its first upgraded turn; replay applies this without current reference data. Historical turns without inventories retain the old casualty calculation.
+
 Wars and treaties:
 
 - Conflicts have `name`, `kind` (`war`, `border_conflict`, `insurgency`, `civil_war`), `started_turn`, optional `ended_turn`, `set_intensity` (declared), `intensity` (effective this month: `none`, `low`, `medium`, `high`), `affected_regions`, cumulative `casualties` and `displaced`, and `last_month_casualties`/`last_month_displaced`. Seeded wars also have a `theatre`.

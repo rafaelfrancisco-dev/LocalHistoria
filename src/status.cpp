@@ -3,14 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <climits>
 namespace lh {
-// Monthly rates by effective intensity {low, medium, high}. Calibrated so a high-intensity war along a long
-// front costs on the order of Russia–Ukraine 2023–25 (roughly 10k military deaths a month for Russia,
-// a few thousand for Ukraine, low thousands of civilians) and front regions shed people like eastern Ukraine
-// and Darfur did, while entrenched war economies adapt (Ukraine and Russia kept growing slowly through 2023–25).
-// Military deaths scale with the front, not the country's size, and are capped at a share of the party's
-// population; everything else is a fraction of the relevant population or output per month.
-// Interim: plan 19 replaces the military formula with one based on committed forces.
+// Population-based military rates are retained only for replay of pre-inventory turns.
+// New campaigns use committed forces below; civilian and economic rates remain unchanged.
 namespace rate {
 constexpr double militaryPerFrontRegion[] = {40, 400, 1600}; // deaths per party per affected region
 constexpr double militaryPopulationCap = 0.00008;            // of a party's recruiting population
@@ -114,6 +110,14 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
         s["estimated"] = status.get("estimated", false).asBool();
     } else
         s["available"] = false;
+    if (status["military"].isObject()) {
+        s["military"] = status["military"];
+        s["military"]["uncommitted_personnel"] = force::uncommittedPersonnel(w, a);
+        s["military"]["uncommitted_ships"] = force::uncommittedShips(w, a);
+        s["military"]["label"] = force::militaryLabel(w, a);
+        s["military_text"] = force::militarySummary(w, a);
+        s["military_spend_usd"] = status["military_spend_usd"];
+    }
     s["wars"] = Json::arrayValue;
     for (auto &id : w.conflicts.getMemberNames()) {
         auto &c = w.conflicts[id];
@@ -183,6 +187,150 @@ double jitter(const WorldState &w, const std::string &key) {
 }
 } // namespace
 
+namespace force {
+namespace {
+const Json::Value &inventory(const WorldState &w, const std::string &a) { return w.actors[a]["status"]["military"]; }
+bool near(const Adjacency &adj, const std::string &from, const std::string &to) { return from == to || (adj.contains(from) && adj.at(from).contains(to)); }
+bool mobilised(const WorldState &w, const std::string &a) {
+    for (const auto &c : w.conflicts) if (c["status"] == "open" && (c["kind"] == "war" || c["kind"] == "civil_war") && involves(c, a)) return true;
+    return false;
+}
+int uncommitted(const WorldState &w, const std::string &a, const char *kind, const char *field, const char *total, int legacy) {
+    Int n = integer(inventory(w, a), total);
+    for (const auto &e : w.entities)
+        if (e["actor"] == a && e["kind"] == kind && (e["status"] == "active" || e["status"] == "under_construction")) n -= e.get(field, legacy).asInt64();
+    return int(std::clamp<Int>(n, 0, INT_MAX));
+}
+bool landless(const WorldState &w, const std::string &a) {
+    for (const auto &t : w.territories) if (t["owner"] == a || t["controller"] == a) return false;
+    return true;
+}
+}
+int uncommittedPersonnel(const WorldState &w, const std::string &a) { return uncommitted(w, a, "army", "personnel", "active", 10000); }
+int uncommittedShips(const WorldState &w, const std::string &a) { return uncommitted(w, a, "fleet", "ships", "ships", 3); }
+double quality(const WorldState &w, const std::string &a) {
+    Int population = 0, gdp = 0;
+    for (const auto &t : w.territories) if (t["owner"] == a) { population += integer(t, "population"); gdp += integer(t, "gdp_usd"); }
+    return std::clamp(std::sqrt(population > 0 ? double(gdp) / double(population) / 15000 : 0), 0.5, 1.6);
+}
+int constructionCapacity(const WorldState &w, const std::string &a) {
+    double gdp = 0;
+    for (const auto &t : w.territories) if (t["owner"] == a) gdp += number(t, "gdp_usd");
+    return std::max(1, int(std::min(double(INT_MAX), std::floor(gdp / 150e9))));
+}
+int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
+    std::set<std::string> enemies;
+    for (const auto &c : w.conflicts) if (c["status"] == "open" && involves(c, a))
+        for (const auto &p : c["actors"]) if (p != a) enemies.insert(p.asString());
+    // Neighbours are not enemies simply because they share a peaceful border.
+    for (const auto &[r, neighbours] : adj) {
+        const auto &t = w.territories[r];
+        if (t["controller"] != a) continue;
+        for (const auto &n : neighbours) {
+            const auto &other = w.territories[n];
+            auto p = other["controller"].asString();
+            if (!p.empty() && p != a && ((other["owner"] == a) || (t["owner"] == p))) enemies.insert(p);
+        }
+    }
+    return std::max(1, int(enemies.size()));
+}
+double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::string &a, const std::vector<std::string> &regions) {
+    if (landless(w, a)) return (mobilised(w, a) ? 0.30 : 0.20) * number(inventory(w, a), "active") / fronts(w, adj, a);
+    double n = (mobilised(w, a) ? 0.30 : 0.20) * uncommittedPersonnel(w, a) / fronts(w, adj, a);
+    for (const auto &e : w.entities) if (e["actor"] == a && e["kind"] == "army" && e["status"] == "active")
+        for (const auto &r : regions) if (near(adj, e["region"].asString(), r)) { n += e.get("personnel", 10000).asInt(); break; }
+    return std::min(n, number(inventory(w, a), "active"));
+}
+Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std::string &a, const std::string &region, bool defending) {
+    const auto &m = inventory(w, a);
+    int count = defending ? fronts(w, adj, a) : 1;
+    bool noLand = landless(w, a), naval = !noLand && w.territories[region].get("coastal", false).asBool();
+    double land = 0;
+    if (!noLand) for (const auto &e : w.entities) if (e["status"] == "active") {
+        auto at = e["region"].asString();
+        if (at == region && (e["kind"] == "port" || e["kind"] == "fleet" || e.get("port", false).asBool())) naval = true;
+        if (e["actor"] != a || !near(adj, at, region)) continue;
+        if (e["kind"] == "army") land += e.get("personnel", 10000).asInt();
+        if (e["kind"] == "fleet") naval = true;
+    }
+    auto share = defending ? (mobilised(w, a) ? 0.40 : 0.25) : (mobilised(w, a) ? 0.30 : 0.20);
+    land += share * (noLand ? number(m, "active") : uncommittedPersonnel(w, a)) / count;
+    double air = (defending ? 0.50 : 0.30) * number(m, "aircraft") * 200 / count;
+    double sea = naval ? 0.30 * number(m, "ships") * 1500 : 0;
+    double cp = quality(w, a) * (land + air + sea) * (defending ? 1.5 : 1);
+    if (defending) {
+        for (const auto &c : w.conflicts) if (c["status"] == "open" && c["kind"] == "civil_war" && involves(c, a)) { cp *= 0.6; break; }
+        if (number(w.actors[a]["status"], "stability", 50) < 25) cp *= 0.8;
+    }
+    Json::Value out; out["land"] = land; out["air"] = air; out["sea"] = sea; out["cp"] = cp;
+    return out;
+}
+Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a, const std::string &d, const std::string &r) {
+    double attack = committedForce(w, adj, a, r, false)["cp"].asDouble();
+    double defend = committedForce(w, adj, d, r, true)["cp"].asDouble();
+    for (const auto &c : w.conflicts) if (c["status"] == "open" && involves(c, a) && involves(c, d) && c["started_turn"].isInt() && w.turn - c["started_turn"].asInt() >= 12) { attack *= 0.6; break; }
+    int cap = attack <= 0 ? 0 : defend <= 0 || attack >= 1.5 * defend ? 2 : attack >= 0.75 * defend ? 1 : 0;
+    Json::Value out; out["attack"] = attack; out["defend"] = defend; out["capacity"] = cap; return out;
+}
+int assaultCapacity(const WorldState &w, const Adjacency &adj, const std::string &a, const std::string &d, const std::string &r) { return assault(w, adj, a, d, r)["capacity"].asInt(); }
+std::string militaryLabel(const WorldState &w, const std::string &a) {
+    const auto &m = inventory(w, a);
+    auto cp = quality(w, a) * (number(m, "active") + number(m, "aircraft") * 200 + number(m, "ships") * 1500);
+    return cp < 20000 ? "negligible" : cp < 200000 ? "minor" : cp < 1000000 ? "regional power" : cp < 5000000 ? "major power" : "superpower";
+}
+std::string reachDescription(const WorldState &w, const Adjacency &adj, const std::string &a, const std::string &r) {
+    if (!inventory(w, a).isObject()) return a;
+    auto d = w.territories[r]["controller"].asString(); if (d.empty()) d = w.territories[r]["owner"].asString();
+    if (d == a) return a + " (controlled)";
+    auto f = assault(w, adj, a, d, r); int cap = f["capacity"].asInt();
+    return a + " (" + (cap == 2 ? "superior" : cap == 1 ? "limited" : "too weak") + ": about " + grouped(Int(std::llround(f["attack"].asDouble() / 1000)) * 1000) + " effective strength against " + grouped(Int(std::llround(f["defend"].asDouble() / 1000)) * 1000) + (cap == 2 ? "; up to 2 regions)" : cap == 1 ? "; 1 region)" : ")");
+}
+std::string militarySummary(const WorldState &w, const std::string &a) {
+    const auto &m = inventory(w, a);
+    std::string out = "Active " + people(integer(m, "active")) + " (" + people(uncommittedPersonnel(w, a)) + " uncommitted), reserve " + people(integer(m, "reserve")) + ", " + grouped(integer(m, "ships")) + " major warships, " + grouped(integer(m, "aircraft")) + " combat aircraft; " + militaryLabel(w, a);
+    for (const auto &e : w.entities) if (e["actor"] == a && e["status"] == "active" && (e["kind"] == "army" || e["kind"] == "fleet"))
+        out += "; " + e["name"].asString() + " at " + w.territories[e["region"].asString()]["name"].asString() + ": " + grouped(e.get(e["kind"] == "army" ? "personnel" : "ships", e["kind"] == "army" ? 10000 : 3).asInt64()) + (e["kind"] == "army" ? " troops" : " ships");
+    return out;
+}
+} // namespace force
+
+bool hasMilitary(const WorldState &w) {
+    for (const auto &a : w.actors) if (!a["status"]["military"].isObject()) return false;
+    return !w.actors.empty();
+}
+void seedMilitary(WorldState &w, const StatusSeed &seed) {
+    auto t = totals(w);
+    for (const auto &a : w.actors.getMemberNames()) {
+        auto &s = w.actors[a]["status"];
+        if (s["military"].isObject()) continue;
+        const auto &row = seed.military[a];
+        Json::Value m;
+        int active = row.isObject() ? row.get("active", 0).asInt() : std::max(200, int(std::llround(double(t[a].population) * 0.003)));
+        m["active"] = active; m["reserve"] = row.get("reserve", active / 2);
+        m["ships"] = row.get("ships", 0); m["aircraft"] = row.get("aircraft", 0); m["estimated"] = row.get("estimated", 1);
+        s["military"] = m; s["military_spend_usd"] = row.get("spend_usd", Int(0));
+    }
+    for (auto &e : w.entities) {
+        if (e["kind"] == "army" && !e.isMember("personnel")) e["personnel"] = 10000;
+        if (e["kind"] == "fleet" && !e.isMember("ships")) e["ships"] = 3;
+        // Previously destroyed legacy units have already left the old simulation.
+        if (e["status"] == "destroyed" && (e["kind"] == "army" || e["kind"] == "fleet")) e["loss_accounted"] = true;
+    }
+    // Legacy campaigns may have more abstract formations than their imported inventory can supply.
+    // Reduce their allocations proportionally rather than invent additional national personnel or ships.
+    for (const auto &a : w.actors.getMemberNames()) for (const auto *kind : {"army", "fleet"}) {
+        const char *field = std::string(kind) == "army" ? "personnel" : "ships";
+        const char *total = std::string(kind) == "army" ? "active" : "ships";
+        std::map<std::string, double> weights; Int assigned = 0;
+        for (const auto &id : w.entities.getMemberNames()) { const auto &e = w.entities[id]; if (e["actor"] == a && e["kind"] == kind && (e["status"] == "active" || e["status"] == "under_construction")) { weights[id] = number(e, field); assigned += integer(e, field); } }
+        auto available = integer(w.actors[a]["status"]["military"], total);
+        if (assigned > available) {
+            auto allocated = distribute(available, weights);
+            for (const auto &[id, weight] : weights) w.entities[id][field] = allocated[id];
+        }
+    }
+}
+
 bool validConflictKind(const std::string &k) { return k == "war" || k == "border_conflict" || k == "insurgency" || k == "civil_war"; }
 bool validCommitmentKind(const std::string &k) {
     return k == "alliance" || k == "defence_pact" || k == "non_aggression_pact" || k == "trade_agreement" || k == "ceasefire" || k == "peace_treaty" || k == "union" || k == "other";
@@ -195,11 +343,12 @@ Json::Value encode(const StatusSeed &s) {
     j["countries"] = s.countries;
     j["regions"] = s.regions;
     j["world"] = s.world;
+    j["military"] = s.military;
     return j;
 }
 StatusSeed decodeSeed(const Json::Value &j) {
     if (!j.isObject() || !j["countries"].isObject() || !j["regions"].isObject()) throw ValidationError("Invalid status seed");
-    return {j["countries"], j["regions"], j["world"]};
+    return {j["countries"], j["regions"], j["world"], j.get("military", Json::Value(Json::objectValue))};
 }
 bool hasStatus(const WorldState &w) {
     for (auto &id : w.actors.getMemberNames())
@@ -227,7 +376,7 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
         t["gdp_usd"] = seed.regions.isMember(id) ? integer(seed.regions[id], "gdp_usd") : Int(0);
         t["displaced"] = Int(0);
     }
-    if (!worldEvents || !seed.world.isObject()) return;
+    if (!worldEvents || !seed.world.isObject()) { if (!seed.military.empty()) seedMilitary(w, seed); return; }
     for (auto &a : seed.world["actors"].getMemberNames()) {
         auto &v = seed.world["actors"][a];
         auto base = v["base"].asString();
@@ -257,6 +406,15 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
                     t["occupation_gdp"] = Int(std::llround(double(integer(t, "gdp_usd")) / rate::occupationGdpFloor));
                 }
         w.conflicts["c0-" + std::to_string(++n)] = v;
+        int unit = 0;
+        for (auto e : c["entities"]) {
+            e["kind"] = "army"; e["status"] = "active";
+            e["origin_event"] = "seed";
+            auto region = e["region"].asString();
+            e["longitude"] = w.territories[region].get("longitude", 0);
+            e["latitude"] = w.territories[region].get("latitude", 0);
+            w.entities["military-seed-" + std::to_string(n) + "-" + std::to_string(++unit)] = e;
+        }
     }
     n = 0;
     for (auto &c : seed.world["commitments"]) {
@@ -265,6 +423,7 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
         v["status"] = "open";
         w.commitments["k0-" + std::to_string(++n)] = v;
     }
+    if (!seed.military.empty()) seedMilitary(w, seed);
 }
 std::string formatMoney(double usd, const Json::Value &status) {
     auto code = status.get("currency", "USD").asString();
@@ -363,6 +522,27 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
     Resolution r = base;
     auto &w = r.state;
     auto &T = w.territories;
+    // Freeze force inputs before any operations, growth, deaths or mobilisation this month.
+    auto forceStart = base.state;
+    for (const auto &change : delta.changes) {
+        auto kind = change["kind"].asString(), id = change["id"].asString();
+        Json::Value *collection = kind == "actor" ? &forceStart.actors : kind == "territory" ? &forceStart.territories : kind == "entity" ? &forceStart.entities : kind == "conflict" ? &forceStart.conflicts : nullptr;
+        if (collection) { if (change["before"].isNull()) collection->removeMember(id); else (*collection)[id] = change["before"]; }
+    }
+    std::map<std::string, Int> militaryLosses, aircraftLosses, shipLosses;
+    std::set<std::string> mobilising;
+    auto accountDestroyed = [&] {
+        for (auto &e : w.entities) {
+            if (e["status"] != "destroyed" || e.get("loss_accounted", false).asBool() || (e["kind"] != "army" && e["kind"] != "fleet")) continue;
+            if (!static_cast<const WorldState &>(w).actors[e["actor"].asString()]["status"]["military"].isObject()) continue;
+            auto &m = w.actors[e["actor"].asString()]["status"]["military"];
+            const char *field = e["kind"] == "army" ? "active" : "ships";
+            m[field] = std::max<Int>(0, integer(m, field) - integer(e, e["kind"] == "army" ? "personnel" : "ships"));
+            e["loss_accounted"] = true;
+        }
+    };
+    accountDestroyed();
+
     // Reads go through const views so missing members are never inserted as nulls.
     const Json::Value &cT = w.territories, &cActors = w.actors;
     auto regionIds = T.getMemberNames();
@@ -382,8 +562,11 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
         s["stability"] = s["baseline_stability"] = std::min(number(s, "stability", 50), 45.0);
         s.removeMember("last_gdp_change");
         s.removeMember("last_population_change");
+        // A new actor cannot copy its parent's entire military inventory.
+        s.removeMember("military"); s.removeMember("military_spend_usd");
         w.actors[a]["status"] = s;
     }
+    if (hasMilitary(forceStart) && !hasMilitary(w)) seedMilitary(w, StatusSeed{});
     auto before = totals(w);
 
     // 1. Baseline demographic and economic trend.
@@ -531,11 +714,36 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
             auto pool = std::max(double(current[p].population), 0.25 * double(affectedPopulation));
             auto front = double(f.regions.size()) * rate::militaryPerFrontRegion[f.intensity] * multiplier * jitter(w, f.id + ":military:" + p);
             auto losses = Int(std::llround(std::min(front, rate::militaryPopulationCap * pool)));
+            const auto &m = static_cast<const WorldState &>(forceStart).actors[p]["status"]["military"];
+            if (m.isObject()) {
+                static constexpr double deathRate[]{0.0005, 0.004, 0.015};
+                std::vector<std::string> affected;
+                const auto &startConflict = forceStart.conflicts[f.id];
+                for (const auto &region : startConflict["affected_regions"]) affected.push_back(region.asString());
+                if (affected.empty()) for (const auto &region : startConflict["theatre"]) affected.push_back(region.asString());
+                // New wars use their declared front, but never this month's newly built or moved forces.
+                if (affected.empty()) affected = f.regions;
+                losses = Int(std::llround(force::committedPersonnel(forceStart, adjacency, p, affected) * deathRate[f.intensity] * multiplier * jitter(forceStart, f.id + ":military:" + p)));
+                auto available = integer(w.actors[p]["status"]["military"], "active") + integer(w.actors[p]["status"]["military"], "reserve");
+                losses = std::min(losses, std::max<Int>(0, available - militaryLosses[p]));
+                militaryLosses[p] += losses;
+                bool enemyAircraft = false, enemyShips = false;
+                for (const auto &enemy : f.parties) if (enemy != p) {
+                    const auto &other = forceStart.actors[enemy]["status"]["military"];
+                    enemyAircraft = enemyAircraft || integer(other, "aircraft") > 0;
+                    enemyShips = enemyShips || integer(other, "ships") > 0;
+                }
+                if (enemyAircraft) aircraftLosses[p] += Int(std::floor(number(m, "aircraft") * 0.30 * (f.intensity == 2 ? 0.01 : f.intensity == 1 ? 0.003 : 0)));
+                if (enemyShips) shipLosses[p] += Int(std::floor(number(m, "ships") * 0.30 * (f.intensity == 2 ? 0.005 : f.intensity == 1 ? 0.0015 : 0)));
+                if (f.intensity == 2 && (kind == "war" || kind == "civil_war")) mobilising.insert(p);
+            }
             std::map<std::string, double> weights;
             for (auto &region : regionIds) if (cT[region]["owner"] == p && cT[region]["controller"] == p) weights[region] = double(integer(cT[region], "population"));
             if (weights.empty()) for (auto &region : f.regions) if (cT[region]["controller"] == p) weights[region] = double(integer(cT[region], "population"));
             if (weights.empty()) for (auto &region : f.regions) weights[region] = double(integer(cT[region], "population"));
-            for (auto &[region, n] : distribute(losses, weights)) deaths += kill(region, n);
+            Int demographicLoss = 0;
+            for (auto &[region, n] : distribute(losses, weights)) demographicLoss += kill(region, n);
+            deaths += m.isObject() ? losses : demographicLoss;
         }
         for (auto &region : f.regions) {
             auto &t = T[region];
@@ -575,6 +783,46 @@ Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta, c
         r.events.push_back({*f.parties.begin(), "war_toll", f.id,
                             displayName(w, "conflict", f.id) + " (" + c["intensity"].asString() + " intensity): about " + grouped(deaths) + " killed and " + grouped(displaced) + " displaced this month in " + where + "."});
     }
+
+    // 5b. Apply all inventory changes after computing every conflict from the same frozen inputs.
+    for (const auto &a : w.actors.getMemberNames()) {
+        if (!static_cast<const WorldState &>(w).actors[a]["status"]["military"].isObject()) continue;
+        auto &m = w.actors[a]["status"]["military"];
+        Int active = integer(m, "active"), lost = std::min(active, militaryLosses[a]);
+        std::map<std::string, double> allocations;
+        Int assigned = 0;
+        for (const auto &id : w.entities.getMemberNames()) {
+            const auto &e = w.entities[id];
+            if (e["actor"] == a && e["kind"] == "army" && (e["status"] == "active" || e["status"] == "under_construction")) { allocations[id] = number(e, "personnel"); assigned += integer(e, "personnel"); }
+        }
+        allocations[""] = double(std::max<Int>(0, active - assigned));
+        for (const auto &[id, count] : distribute(lost, allocations)) if (!id.empty()) {
+            auto &e = w.entities[id]; e["personnel"] = std::max<Int>(0, integer(e, "personnel") - count);
+            if (integer(e, "personnel") < 2000) {
+                e["status"] = "destroyed"; e.removeMember("completes_turn");
+                r.events.push_back({a, "war_toll", id, e["name"].asString() + " was destroyed in " + w.territories[e["region"].asString()]["name"].asString() + "."});
+            }
+        }
+        m["active"] = active - lost;
+        m["reserve"] = std::max<Int>(0, integer(m, "reserve") - (militaryLosses[a] - lost));
+        m["aircraft"] = std::max<Int>(0, integer(m, "aircraft") - aircraftLosses[a]);
+        m["ships"] = std::max<Int>(0, integer(m, "ships") - shipLosses[a]);
+        // Attrition cannot leave fleets promising more ships than exist nationally.
+        std::map<std::string, double> fleets; Int fleetTotal = 0;
+        for (const auto &id : w.entities.getMemberNames()) { const auto &e = w.entities[id]; if (e["actor"] == a && e["kind"] == "fleet" && (e["status"] == "active" || e["status"] == "under_construction")) { fleets[id] = number(e, "ships"); fleetTotal += integer(e, "ships"); } }
+        if (fleetTotal > integer(m, "ships")) {
+            auto remaining = distribute(integer(m, "ships"), fleets);
+            for (const auto &[id, weight] : fleets) {
+                auto &e = w.entities[id]; e["ships"] = remaining[id];
+                if (!remaining[id]) { e["status"] = "destroyed"; e["loss_accounted"] = true; e.removeMember("completes_turn"); r.events.push_back({a, "war_toll", id, e["name"].asString() + " was destroyed in " + w.territories[e["region"].asString()]["name"].asString() + "."}); }
+            }
+        }
+        if (mobilising.contains(a)) {
+            Int moved = std::min(integer(m, "reserve"), Int(std::floor(number(forceStart.actors[a]["status"]["military"], "reserve") * 0.02)));
+            m["reserve"] = integer(m, "reserve") - moved; m["active"] = integer(m, "active") + moved;
+        }
+    }
+    accountDestroyed();
 
     // 6. Displaced people return home once their region is calm and back under its owner's control.
     for (auto &id : regionIds) {

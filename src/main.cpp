@@ -136,6 +136,7 @@ int main(int argc, char **argv) {
         auto seedRows=reference.query("SELECT document FROM world_seed WHERE id=1");
         if(statusSeed.countries.empty()||seedRows.empty())throw std::runtime_error("Reference database lacks national statistics; run make data");
         statusSeed.world=parse(seedRows[0]["document"].asString());
+        for (auto &r : reference.query("SELECT * FROM military_stats")) statusSeed.military[r["code"].asString()] = r;
         std::string endpoint = llamaFlagGiven
                                    ? validateEndpoint(llamaFlagValue)
                                    : validateEndpoint(store.setting("llama_endpoint",
@@ -396,8 +397,10 @@ int main(int argc, char **argv) {
                   if (b["campaign_id"] != w.campaignId || w.campaignId.empty())
                       throw ValidationError("Stale campaign");
                   // Saves from before national status gain it at this month; replay re-seeds from the frozen inputs.
+                  bool militaryBackfill = !hasMilitary(w);
                   bool backfill = !hasStatus(w);
                   if (backfill) seedStatus(w, statusSeed, false);
+                  if (militaryBackfill) seedMilitary(w, statusSeed);
                   auto orders = parseOrders(b["orders"]);
                   auto payload = dump(b);
                   auto existing = store.query("SELECT id,payload FROM jobs WHERE key=?",
@@ -427,6 +430,7 @@ int main(int argc, char **argv) {
                   refs["status_version"] = statusVersion;
                   if (b.isMember("responses")) refs["proposal_responses"] = b["responses"];
                   if (backfill) refs["status_seed"] = encode(statusSeed);
+                  if (militaryBackfill) refs["military_seed"] = encode(statusSeed);
                   auto mentions=mentioned(w,w.player,orders);
                   // AI nations that act this month: those the player addresses first, then ongoing disputes and one rotating neighbor.
                   std::vector<std::string> candidates(mentions.actors.begin(),mentions.actors.end());

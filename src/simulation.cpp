@@ -210,6 +210,10 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         }
     // The nation's size, wealth, stability and wars ground every decision, adjudication and narration.
     f["status"] = nationalStatus(w, a);
+    if (f["status"].isMember("military_text")) {
+        f["status"]["military"] = f["status"]["military_text"];
+        f["status"].removeMember("military_text");
+    }
     for (auto kind : {"conflicts", "commitments"}) {
         bool conflict = std::string(kind) == "conflicts";
         auto &collection = conflict ? w.conflicts : w.commitments;

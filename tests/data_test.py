@@ -35,3 +35,27 @@ seed=json.loads(db.execute('SELECT document FROM world_seed').fetchone()[0]);reg
 assert {'Russo-Ukrainian War','Sudanese Civil War'}<={c['name'] for c in seed['conflicts']} and 'North Atlantic Treaty Organization' in {c['name'] for c in seed['commitments']}
 for c in seed['conflicts']:assert set(c['affected_regions'])<=regions and all(set(v)<=regions for v in c['occupied'].values())
 print('Data normalization, city separation, missing-code handling, flags, national statistics and the 2026 world seed passed')
+# Military inventories are independently sourced; observations keep their own years.
+db.row_factory=sqlite3.Row
+military={r['code']:dict(r) for r in db.execute('SELECT * FROM military_stats')}
+assert set(military)==set(stats)|set(seed['actors'])
+curated=json.loads((root/'data/source/military_2026.json').read_text())['countries']
+assert len(curated)>=70
+for code,m in military.items():
+ assert all(isinstance(m[k],int) and m[k]>=0 for k in ('active','reserve','ships','aircraft','spend_usd')),m
+ assert m['source'] and m['estimated'] in (0,1)
+ assert m['active_year']>=0 and m['spend_year']>=0
+references={'US':(1330000,800000,240,2700),'CN':(2035000,510000,200,1900),'IN':(1455000,1155000,47,640),'RU':(1320000,2000000,90,1500),'KR':(500000,3100000,50,470),'KP':(1280000,600000,75,450),'PK':(660000,550000,25,400),'UA':(900000,1200000,0,100),'IR':(610000,350000,25,330),'IL':(170000,465000,12,340),'ES':(133000,15000,14,140),'PT':(28000,210000,7,27),'MG':(13500,0,0,0),'KM':(1000,0,0,0)}
+for c,values in references.items():
+ for field,expected in zip(('active','reserve','ships','aircraft'),values):assert abs(military[c][field]-expected)<=expected*.15,(c,field,military[c][field],expected)
+ assert military[c]['estimated']==1 # Scenario overrides are never disguised as World Bank observations.
+assert military['PT']['active_year']==2025 and military['PT']['spend_year']==2024
+assert curated['PT']['aircraft_observed_2025']==21 and curated['IN']['aircraft_observed_2025']==643
+assert len(seed['conflicts'][0]['entities'])==4
+assert all(e['region'] in regions and e['personnel']>0 for e in seed['conflicts'][0]['entities'])
+from import_stats import military as import_military
+# Known zeros remain zeros; missing fields use the documented fallbacks, including non-state actors.
+fallback=import_military(['ZZ'],{'ZZ':{'population':10000}},{'actors':{}})['ZZ']
+assert (fallback['active'],fallback['reserve'],fallback['ships'],fallback['aircraft'],fallback['estimated'])==(200,100,0,0,1)
+assert military['MG']['reserve']==0 and military['rapid-support-forces']['active']==100000
+print('Military references, provenance, fallbacks, observed aircraft and seeded formations passed')

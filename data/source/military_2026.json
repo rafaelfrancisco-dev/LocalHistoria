@@ -1,0 +1,1152 @@
+{
+  "countries": {
+    "AE": {
+      "aircraft": 115,
+      "aircraft_observed_2025": 115,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 32. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders. Ships: https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; carriers + cruisers + destroyers + frigates + submarines; mixed dates, provisional estimate. Amphibious categories not added where assault ships cannot be distinguished from landing craft.",
+      "year": 2025
+    },
+    "AF": {
+      "aircraft": 1,
+      "aircraft_observed_2025": 1,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 12. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AM": {
+      "aircraft": 17,
+      "aircraft_observed_2025": 17,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 12. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 210000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AO": {
+      "aircraft": 83,
+      "aircraft_observed_2025": 83,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 12. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AR": {
+      "aircraft": 34,
+      "aircraft_observed_2025": 34,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 12. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 6,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AT": {
+      "aircraft": 15,
+      "aircraft_observed_2025": 15,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 109200,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AU": {
+      "aircraft": 86,
+      "aircraft_observed_2025": 86,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 21450,
+      "ships": 18,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "AZ": {
+      "aircraft": 30,
+      "aircraft_observed_2025": 30,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 300000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BD": {
+      "aircraft": 42,
+      "aircraft_observed_2025": 42,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 9,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BE": {
+      "aircraft": 43,
+      "aircraft_observed_2025": 43,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 14. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 5900,
+      "ships": 2,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BF": {
+      "aircraft": 3,
+      "aircraft_observed_2025": 3,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BG": {
+      "aircraft": 15,
+      "aircraft_observed_2025": 15,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 14. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 3000,
+      "ships": 3,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BH": {
+      "aircraft": 24,
+      "aircraft_observed_2025": 24,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BR": {
+      "aircraft": 84,
+      "aircraft_observed_2025": 84,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 14. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 124600,
+      "ships": 14,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BW": {
+      "aircraft": 11,
+      "aircraft_observed_2025": 11,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 14. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "BY": {
+      "aircraft": 86,
+      "aircraft_observed_2025": 86,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 13. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 289500,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CA": {
+      "aircraft": 66,
+      "aircraft_observed_2025": 66,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 16,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CD": {
+      "aircraft": 6,
+      "aircraft_observed_2025": 6,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CF": {
+      "aircraft": 6,
+      "aircraft_observed_2025": 6,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CG": {
+      "aircraft": 2,
+      "aircraft_observed_2025": 2,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CH": {
+      "aircraft": 43,
+      "aircraft_observed_2025": 43,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CL": {
+      "aircraft": 45,
+      "aircraft_observed_2025": 45,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 13,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CM": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CN": {
+      "aircraft": 1900,
+      "aircraft_observed_2025": 1583,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15,16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 1900; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 510000,
+      "ships": 200,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CO": {
+      "aircraft": 40,
+      "aircraft_observed_2025": 40,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 14,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CU": {
+      "aircraft": 11,
+      "aircraft_observed_2025": 11,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "CZ": {
+      "aircraft": 28,
+      "aircraft_observed_2025": 28,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 17. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "DE": {
+      "aircraft": 192,
+      "aircraft_observed_2025": 192,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 34100,
+      "ships": 16,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "DK": {
+      "aircraft": 35,
+      "aircraft_observed_2025": 35,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 17. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 44200,
+      "ships": 5,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "DO": {
+      "aircraft": 8,
+      "aircraft_observed_2025": 8,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 17. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "DZ": {
+      "aircraft": 144,
+      "aircraft_observed_2025": 144,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 12. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 150000,
+      "ships": 15,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "EC": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 118000,
+      "ships": 4,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "EG": {
+      "aircraft": 328,
+      "aircraft_observed_2025": 328,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 17. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 479000,
+      "ships": 23,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ER": {
+      "aircraft": 1,
+      "aircraft_observed_2025": 1,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ES": {
+      "aircraft": 140,
+      "aircraft_observed_2025": 149,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 140; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 15000,
+      "ships": 14,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ET": {
+      "aircraft": 25,
+      "aircraft_observed_2025": 25,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "FI": {
+      "aircraft": 54,
+      "aircraft_observed_2025": 54,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 233000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "FR": {
+      "aircraft": 226,
+      "aircraft_observed_2025": 226,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 38100,
+      "ships": 27,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GA": {
+      "aircraft": 6,
+      "aircraft_observed_2025": 6,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GB": {
+      "aircraft": 144,
+      "aircraft_observed_2025": 144,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 33. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 23,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders. Ships: https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; carriers + cruisers + destroyers + frigates + submarines; mixed dates, provisional estimate. Amphibious categories not added where assault ships cannot be distinguished from landing craft.",
+      "year": 2025
+    },
+    "GE": {
+      "aircraft": 5,
+      "aircraft_observed_2025": 5,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GH": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GM": {
+      "aircraft": 1,
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18).",
+      "year": 2025
+    },
+    "GN": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GQ": {
+      "aircraft": 2,
+      "aircraft_observed_2025": 2,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GR": {
+      "aircraft": 178,
+      "aircraft_observed_2025": 178,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 264500,
+      "ships": 24,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "GT": {
+      "aircraft": 4,
+      "aircraft_observed_2025": 4,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 63850,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "HN": {
+      "aircraft": 11,
+      "aircraft_observed_2025": 11,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 19. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 60000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "HR": {
+      "aircraft": 10,
+      "aircraft_observed_2025": 10,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 16. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "HU": {
+      "aircraft": 12,
+      "aircraft_observed_2025": 12,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 20. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 20000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ID": {
+      "aircraft": 75,
+      "aircraft_observed_2025": 75,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 20. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 400000,
+      "ships": 16,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "IL": {
+      "aircraft": 340,
+      "aircraft_observed_2025": 278,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 21. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 340; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 465000,
+      "ships": 12,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "IN": {
+      "aircraft": 640,
+      "aircraft_observed_2025": 643,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 20. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 640; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 1155000,
+      "ships": 47,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "IQ": {
+      "aircraft": 62,
+      "aircraft_observed_2025": 62,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 21. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "IR": {
+      "aircraft": 330,
+      "aircraft_observed_2025": 218,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 21. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 330; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 350000,
+      "ships": 25,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "IT": {
+      "aircraft": 156,
+      "aircraft_observed_2025": 156,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 21,22. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 14500,
+      "ships": 29,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "JO": {
+      "aircraft": 50,
+      "aircraft_observed_2025": 50,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 22. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 65000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "JP": {
+      "aircraft": 255,
+      "aircraft_observed_2025": 255,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 22. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 55900,
+      "ships": 70,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KE": {
+      "aircraft": 17,
+      "aircraft_observed_2025": 17,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 22. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KG": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KM": {
+      "aircraft": 0,
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md.",
+      "year": 2025
+    },
+    "KP": {
+      "aircraft": 450,
+      "aircraft_observed_2025": 482,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 26. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 450; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 600000,
+      "ships": 75,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KR": {
+      "aircraft": 470,
+      "aircraft_observed_2025": 413,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 470; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 3100000,
+      "ships": 50,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KW": {
+      "aircraft": 43,
+      "aircraft_observed_2025": 43,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 23. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 23700,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "KZ": {
+      "aircraft": 88,
+      "aircraft_observed_2025": 88,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 22. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "LA": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "LB": {
+      "aircraft": 9,
+      "aircraft_observed_2025": 9,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 23. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "LK": {
+      "aircraft": 5,
+      "aircraft_observed_2025": 5,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "LY": {
+      "aircraft": 22,
+      "aircraft_observed_2025": 22,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 23. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MA": {
+      "aircraft": 83,
+      "aircraft_observed_2025": 83,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 150000,
+      "ships": 3,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MG": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 0; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ML": {
+      "aircraft": 21,
+      "aircraft_observed_2025": 21,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MM": {
+      "aircraft": 83,
+      "aircraft_observed_2025": 83,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 7,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MN": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 137000,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MR": {
+      "aircraft": 4,
+      "aircraft_observed_2025": 4,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MX": {
+      "aircraft": 36,
+      "aircraft_observed_2025": 36,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 81500,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MY": {
+      "aircraft": 38,
+      "aircraft_observed_2025": 38,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 23. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 53600,
+      "ships": 4,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "MZ": {
+      "aircraft": 8,
+      "aircraft_observed_2025": 8,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 24. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NA": {
+      "aircraft": 11,
+      "aircraft_observed_2025": 11,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 25. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NE": {
+      "aircraft": 2,
+      "aircraft_observed_2025": 2,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 25. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NG": {
+      "aircraft": 38,
+      "aircraft_observed_2025": 38,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 25. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 1,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NL": {
+      "aircraft": 32,
+      "aircraft_observed_2025": 32,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 25. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 6350,
+      "ships": 12,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NO": {
+      "aircraft": 32,
+      "aircraft_observed_2025": 32,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 26. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 10,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "NZ": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 3270,
+      "ships": 2,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "OM": {
+      "aircraft": 39,
+      "aircraft_observed_2025": 39,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 26. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 3,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PE": {
+      "aircraft": 37,
+      "aircraft_observed_2025": 37,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 27. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 15,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PH": {
+      "aircraft": 25,
+      "aircraft_observed_2025": 25,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 27. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 6,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PK": {
+      "aircraft": 400,
+      "aircraft_observed_2025": 418,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 26. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 400; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 550000,
+      "ships": 25,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PL": {
+      "aircraft": 103,
+      "aircraft_observed_2025": 103,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 27. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 5,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PT": {
+      "aircraft": 27,
+      "aircraft_observed_2025": 21,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 28. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 27; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 210000,
+      "ships": 7,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "PY": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "QA": {
+      "aircraft": 108,
+      "aircraft_observed_2025": 108,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 28. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "RO": {
+      "aircraft": 21,
+      "aircraft_observed_2025": 21,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 28. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 3,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "RS": {
+      "aircraft": 28,
+      "aircraft_observed_2025": 28,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "RU": {
+      "aircraft": 1500,
+      "aircraft_observed_2025": 1522,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 28. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 1500; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 2000000,
+      "ships": 90,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SA": {
+      "aircraft": 364,
+      "aircraft_observed_2025": 364,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 6,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SD": {
+      "aircraft": 73,
+      "aircraft_observed_2025": 73,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SE": {
+      "aircraft": 71,
+      "aircraft_observed_2025": 71,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 5,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SG": {
+      "aircraft": 100,
+      "aircraft_observed_2025": 100,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 14,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SK": {
+      "aircraft": 2,
+      "aircraft_observed_2025": 2,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SV": {
+      "aircraft": 15,
+      "aircraft_observed_2025": 15,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 18. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 9900,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "SY": {
+      "aircraft": 225,
+      "aircraft_observed_2025": 225,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TD": {
+      "aircraft": 7,
+      "aircraft_observed_2025": 7,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 15. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "reserve": 0,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Reserve: https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel (accessed 2026-09-18). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TG": {
+      "aircraft": 0,
+      "aircraft_observed_2025": 0,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. . https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TH": {
+      "aircraft": 92,
+      "aircraft_observed_2025": 92,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 31. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 9,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TM": {
+      "aircraft": 51,
+      "aircraft_observed_2025": 51,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 32. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TN": {
+      "aircraft": 10,
+      "aircraft_observed_2025": 10,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 31. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TR": {
+      "aircraft": 201,
+      "aircraft_observed_2025": 201,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 31. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 29,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TW": {
+      "aircraft": 285,
+      "aircraft_observed_2025": 285,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 30,31. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 30,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "TZ": {
+      "aircraft": 14,
+      "aircraft_observed_2025": 14,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 31. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 0,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "UA": {
+      "aircraft": 100,
+      "aircraft_observed_2025": 100,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 32. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 100; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 1200000,
+      "ships": 0,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "UG": {
+      "aircraft": 6,
+      "aircraft_observed_2025": 6,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 32. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "US": {
+      "aircraft": 2700,
+      "aircraft_observed_2025": 2679,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 33. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf Scenario retains plan 19 rounded estimate 2700; observed value retained separately for audit.",
+      "estimated": 1,
+      "reserve": 800000,
+      "ships": 240,
+      "source": "Plan 19 rounded 2024-25 scenario estimates; compared with https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel and https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; not verified 2025 observations. See docs/DATA.md. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "UY": {
+      "aircraft": 6,
+      "aircraft_observed_2025": 6,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 2,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders. Ships: https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; carriers + cruisers + destroyers + frigates + submarines; mixed dates, provisional estimate. Amphibious categories not added where assault ships cannot be distinguished from landing craft.",
+      "year": 2025
+    },
+    "UZ": {
+      "aircraft": 71,
+      "aircraft_observed_2025": 71,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "VE": {
+      "aircraft": 30,
+      "aircraft_observed_2025": 30,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 3,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders. Ships: https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; carriers + cruisers + destroyers + frigates + submarines; mixed dates, provisional estimate. Amphibious categories not added where assault ships cannot be distinguished from landing craft.",
+      "year": 2025
+    },
+    "VN": {
+      "aircraft": 73,
+      "aircraft_observed_2025": 73,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 8,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders. Ships: https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment; carriers + cruisers + destroyers + frigates + submarines; mixed dates, provisional estimate. Amphibious categories not added where assault ships cannot be distinguished from landing craft.",
+      "year": 2025
+    },
+    "YE": {
+      "aircraft": 76,
+      "aircraft_observed_2025": 76,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ZA": {
+      "aircraft": 2,
+      "aircraft_observed_2025": 2,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 29. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "ships": 6,
+      "source": "https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment (accessed 2026-09-18; mixed observation dates, provisional 2025 scenario estimate; landing craft excluded). Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    },
+    "ZW": {
+      "aircraft": 13,
+      "aircraft_observed_2025": 13,
+      "aircraft_source": "FlightGlobal World Air Forces 2025, Combat aircraft / Active columns only, pp. 34. https://www.flightglobal.com/download?ac=106507 ; mirror https://www.airforce.mil.zm/pluginAppObj/pluginAppObj_710/world_air_forces_directory_20251_243110.pdf",
+      "estimated": 1,
+      "source": "Aircraft from FlightGlobal 2025; other fields use explicit fallbacks unless supplied. Aircraft: see aircraft_source; excludes trainers, helicopters, transports and future orders.",
+      "year": 2025
+    }
+  },
+  "license": "CC BY-SA 4.0 for Wikipedia-derived entries; FlightGlobal factual aircraft totals attributed separately; plan 19 scenario estimates.",
+  "note": "January 2026 scenario inventories. Provisional estimates are explicitly flagged; source dates and category definitions differ. See docs/DATA.md for discrepancies."
+}

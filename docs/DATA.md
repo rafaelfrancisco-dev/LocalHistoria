@@ -36,3 +36,43 @@ Normalization is explicit: France→FR, Norway→NO, Kosovo→XK, Taiwan→TW. O
 `countries.country_wikidata` begins NULL; country mappings are stored with cached references after verified country-level lookup. `cities.city_wikidata` is only the city's supplied identifier. Country details never reuse it for article grounding. Country names come from the map, not summed city statistics.
 
 Upstream API references: [MediaWiki REST API](https://www.mediawiki.org/wiki/API:REST_API/Reference), [Wikidata SPARQL](https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service). The app only refreshes a selected country on explicit request, retains bounded excerpts rather than full articles, and records which source revision each turn used.
+
+## Military inventories (January 2026 scenario)
+
+`active` means active-duty people (the World Bank series also includes paramilitary personnel).
+`reserve` means trained reserve personnel. `ships` means principal surface combatants of frigate
+size or larger, including carriers and amphibious assault ships, plus submarines; patrol boats,
+corvettes, mine warfare, landing craft and auxiliaries are excluded. `aircraft` means fixed-wing
+fighters, attack aircraft and bombers, excluding trainers, helicopters, transports and drones.
+
+`tools/import_stats.py` imports World Bank `MS.MIL.TOTL.P1` and `MS.MIL.XPND.CD`; `--download`
+refreshes the snapshot. `military_stats` contains code, active, reserve, ships, aircraft, spend_usd,
+year, estimated, source, active_year and spend_year. Observation years are independent: `year`
+is the curated scenario year, not a claim that the World Bank observation is from that year.
+The default import is offline. Non-state actors take their estimates from `world_2026.json`.
+
+Sources: [Wikipedia personnel](https://en.wikipedia.org/wiki/List_of_countries_by_number_of_military_and_paramilitary_personnel),
+[Wikipedia equipment](https://en.wikipedia.org/wiki/List_of_countries_by_level_of_military_equipment),
+and [FlightGlobal World Air Forces 2025](https://www.flightglobal.com/download?ac=106507).
+The two equipment-list titles proposed in plan 19 were unavailable; the actual equipment article
+and the publisher's aircraft directory were used instead. Attribution and licences are in
+[licenses/military-data.md](../licenses/military-data.md). Curated entries carry source notes;
+ship estimates based on mixed-date tables are provisional rather than verified 2025 observations.
+Amphibious categories are excluded where assault ships cannot be separated from landing craft.
+
+**Source discrepancies are explicit.** The newest downloaded World Bank personnel observations
+are generally from 2020 and include paramilitary forces (Portugal 52,000; India 3,068,000;
+Ukraine 298,000). The fourteen plan-19 reference countries use its rounded scenario estimates
+through `stats_overrides.json` and `military_2026.json`, with `estimated: 1`. The original World Bank
+values remain intact. These overrides satisfy the scenario's reference bounds; they are not
+claimed to be verified current figures. Aircraft observations from the 2025 directory remain
+alongside the scenario value as `aircraft_observed_2025`, with page references in `aircraft_source`.
+Notable differences: Portugal 21 observed / 27 scenario; China 1,583 / 1,900; Iran 218 / 330;
+Israel 278 / 340. The plan's Israeli ship estimate also includes more vessels than the strict
+frigate-plus-submarine definition supports. These scenario estimates must not be used as a
+real-world military inventory report.
+
+Missing fields use the explicit `military_fallbacks` policy in `stats_overrides.json`: active
+`max(200, round(population × 0.003))`, reserves `floor(active × 0.5)`, ships/aircraft zero.
+Missing spending is unknown, represented by zero. Every such row is flagged estimated and names
+its missing fields. A documented zero is preserved rather than replaced by a fallback.

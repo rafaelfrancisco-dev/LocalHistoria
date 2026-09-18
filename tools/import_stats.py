@@ -8,7 +8,8 @@ import argparse, datetime, json, pathlib, sqlite3, urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT/'data/source'
 INDICATORS = {'SP.POP.TOTL': 'population', 'NY.GDP.MKTP.CD': 'gdp_usd', 'NY.GDP.MKTP.KD.ZG': 'gdp_growth',
-              'SP.POP.GROW': 'pop_growth', 'GOV_WGI_PV.SC': 'stability', 'PA.NUS.FCRF': 'usd_rate'}
+              'SP.POP.GROW': 'pop_growth', 'GOV_WGI_PV.SC': 'stability', 'PA.NUS.FCRF': 'usd_rate',
+              'MS.MIL.TOTL.P1': 'military_personnel', 'MS.MIL.XPND.CD': 'military_spend_usd'}
 API = 'https://api.worldbank.org/v2'
 EURO_AREA = 'XC'
 # Regional split: part follows verified city population, part is spread evenly as a rural floor.
@@ -47,7 +48,7 @@ def national(codes):
         s = {'currency': currencies[code]['code'], 'symbol': currencies[code]['symbol'], 'estimated': 0, 'year': 0,
              'source': 'World Bank Open Data (CC BY 4.0), retrieved ' + snapshot['retrieved']}
         for indicator, field in INDICATORS.items():
-            if field == 'usd_rate':
+            if field in ('usd_rate', 'military_personnel', 'military_spend_usd'):
                 continue
             if field in o:
                 s[field] = o[field]; s['estimated'] = 1
@@ -125,8 +126,45 @@ def seed(db, codes):
                 resolved['intensity'] = item['intensity']
                 resolved['occupied'] = {a: [region(p) for p in pairs] for a, pairs in item['occupied'].items()}
                 resolved['affected_regions'] = [region(p) for p in item['affected']]
+                resolved['entities'] = [dict(e, region=region(e['region'])) for e in item.get('entities', [])]
             document[kind].append(resolved)
     return document
+
+def military(codes, stats, world):
+    snapshot = json.loads((SOURCE/'country_stats.json').read_text())
+    curated = json.loads((SOURCE/'military_2026.json').read_text())['countries']
+    overrides = json.loads((SOURCE/'stats_overrides.json').read_text()).get('military', {})
+    result = {}
+    for code in sorted(set(codes) | set(world['actors'])):
+        c, o = curated.get(code, {}), overrides.get(code, {})
+        personnel = snapshot['indicators'].get('MS.MIL.TOTL.P1', {}).get(code, {})
+        spend = snapshot['indicators'].get('MS.MIL.XPND.CD', {}).get(code, {})
+        active = o.get('active', personnel.get('value'))
+        missing = []
+        if active is None:
+            active = max(200, int(stats[code]['population'] * 0.003 + 0.5)) if code in stats else 200
+            missing.append('active=0.3% population (minimum 200)')
+        s = {'active': int(active), 'spend_usd': int(spend.get('value', 0)),
+             'active_year': o.get('year', personnel.get('year', 0)), 'spend_year': spend.get('year', 0),
+             'year': c.get('year', personnel.get('year', 0)), 'estimated': int(bool(o) or bool(c.get('estimated'))),
+             'source': 'World Bank MS.MIL.TOTL.P1/MS.MIL.XPND.CD (CC BY 4.0); military snapshot retrieved ' + snapshot.get('military_retrieved', snapshot['retrieved'])}
+        for field, fallback in [('reserve', s['active'] // 2), ('ships', 0), ('aircraft', 0)]:
+            s[field] = c.get(field, fallback)
+            if field not in c: missing.append(field + '=fallback')
+        if not spend: missing.append('spend_usd=unknown (0)')
+        if c.get('source'): s['source'] += '; ' + c['source']
+        if o.get('source'): s['source'] += '; ' + o['source']
+        if code in world['actors']:
+            actor = world['actors'][code]
+            for field in ('active', 'reserve', 'ships', 'aircraft'): s[field] = actor.get(field, 0)
+            s.update(year=2025, active_year=2025, estimated=1, source='world_2026.json: plan 19 non-state actor estimate; spending unknown')
+        elif missing:
+            s['estimated'] = 1
+            s['source'] += '; stats_overrides.json military_fallbacks: ' + ', '.join(missing)
+        for field in ('active', 'reserve', 'ships', 'aircraft', 'spend_usd'):
+            if not isinstance(s[field], int) or s[field] < 0: raise SystemExit(f'{code}: invalid military {field}')
+        result[code] = s
+    return result
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--download', action='store_true'); args = parser.parse_args()
@@ -135,14 +173,18 @@ def main():
     db = sqlite3.connect(ROOT/'data/world.sqlite')
     codes = [c for c, in db.execute('SELECT code FROM countries ORDER BY code')]
     stats = national(codes)
+    world = seed(db, codes)
+    inventories = military(codes, stats, world)
     db.executescript('DROP TABLE IF EXISTS country_stats; CREATE TABLE country_stats(code TEXT PRIMARY KEY,population INTEGER,gdp_usd INTEGER,gdp_growth REAL,pop_growth REAL,stability REAL,currency TEXT,symbol TEXT,usd_rate REAL,year INTEGER,estimated INTEGER,source TEXT);'
                      'DROP TABLE IF EXISTS region_stats; CREATE TABLE region_stats(id TEXT PRIMARY KEY,population INTEGER,gdp_usd INTEGER);'
                      'DROP TABLE IF EXISTS world_seed; CREATE TABLE world_seed(id INTEGER PRIMARY KEY CHECK(id=1),document TEXT NOT NULL);')
+    db.executescript('DROP TABLE IF EXISTS military_stats; CREATE TABLE military_stats(code TEXT PRIMARY KEY,active INTEGER,reserve INTEGER,ships INTEGER,aircraft INTEGER,spend_usd INTEGER,year INTEGER,estimated INTEGER,source TEXT,active_year INTEGER,spend_year INTEGER);')
+    db.executemany('INSERT INTO military_stats VALUES(?,?,?,?,?,?,?,?,?,?,?)', [(c, *[s[k] for k in ('active','reserve','ships','aircraft','spend_usd','year','estimated','source','active_year','spend_year')]) for c,s in inventories.items()])
     db.executemany('INSERT INTO country_stats VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                    [(c, s['population'], s['gdp_usd'], s['gdp_growth'], s['pop_growth'], s['stability'], s['currency'], s['symbol'], s['usd_rate'], s['year'], s['estimated'], s['source']) for c, s in stats.items()])
     regions = regional(db, stats)
     db.executemany('INSERT INTO region_stats VALUES(?,?,?)', [(r, p, g) for r, (p, g) in sorted(regions.items())])
-    db.execute('INSERT INTO world_seed VALUES(1,?)', (json.dumps(seed(db, codes), sort_keys=True),))
+    db.execute('INSERT INTO world_seed VALUES(1,?)', (json.dumps(world, sort_keys=True),))
     db.commit()
     print(f'Imported statistics for {len(stats)} actors ({sum(s["estimated"] for s in stats.values())} with estimates), {len(regions)} regional shares and the January 2026 world seed')
 

@@ -1,4 +1,5 @@
 #include "localhistoria/turn.h"
+#include "localhistoria/status.h"
 namespace lh {
 Mentions mentioned(const WorldState &w, const std::string &actor, const TurnOrders &orders) {
     Mentions m;
@@ -103,7 +104,7 @@ Json::Value adjudicationInput(const WorldState &w, const std::map<std::string, C
         auto t = w.territories[id];
         for (auto k : {"longitude", "latitude", "initial_affiliation", "kind", "gdp_usd", "occupation_gdp"}) t.removeMember(k);
         for (auto &a : acting)
-            if (reaches(w, adjacency, a, id)) t["within_reach_of"].append(a);
+            if (reaches(w, adjacency, a, id)) t["within_reach_of"].append(force::reachDescription(w, adjacency, a, id));
         input["facts"]["territories"][id] = t;
     }
     for (auto &id : w.entities.getMemberNames()) {

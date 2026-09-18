@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
                 for(const auto &action:turn["intentions"][actor]) {Json::Value single(Json::arrayValue);single.append(action);parseOrders(single);}
             // Saves that predate national status were seeded from frozen inputs on their first later month.
             if (turn["reference"].isMember("status_seed")) seedStatus(world, decodeSeed(turn["reference"]["status_seed"]), false);
+            if (turn["reference"].isMember("military_seed")) seedMilitary(world, decodeSeed(turn["reference"]["military_seed"]));
             auto result = resolve(world);
             WorldDelta delta;
             if(turn["reference"].isMember("delta")){delta=parseDelta(turn["reference"]["delta"]);result=applyDelta(result,delta,input["geography"]);}

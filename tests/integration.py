@@ -98,6 +98,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
   try:
    created=s.get('campaign',{'country':'PT'});w=created['state'];assert w['turn']==0 and len(w['actors'])==242 and 'countries' not in w
    pt=created['national_status']['PT'];assert 10_000_000<pt['population']<11_500_000 and pt['gdp'].startswith('€') and 'US$' in pt['gdp'] and pt['stability'],pt
+   assert 23800 <= pt['military']['active'] <= 32200 and pt['military']['uncommitted_personnel'] == pt['military']['active'],pt
    names={c['name'] for c in w['conflicts'].values()}|{c['name'] for c in w['commitments'].values()};assert {'Russo-Ukrainian War','North Atlantic Treaty Organization','European Union'}<=names,names
    assert any(t['controller']=='RU' and t['owner']=='UA' for t in w['territories'].values())
    assert s.get('country?code=PT')['status']['population']==pt['population']

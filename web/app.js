@@ -176,10 +176,9 @@ function renderStats() {
     (e) => e.actor === selected && e.status !== "destroyed",
   );
   const involved = (v) => v.status === "open" && v.actors.includes(selected);
-  const count = (kind, statuses = ["active"]) =>
-    entities.filter((e) => e.kind === kind && statuses.includes(e.status)).length;
   const building = entities.filter((e) => e.status === "under_construction").length;
   const national = nationalStatus[selected];
+  const military = national?.military;
   if (national?.gdp) {
     const [local, dollars] = national.gdp.split(" (");
     const wars = national.wars.map((w) => `${w.name} (${w.intensity})`).join(" · ");
@@ -190,6 +189,12 @@ function renderStats() {
       ["stability", national.stability.replace(/ \(.*/, ""), national.stability.match(/\((.*)\)/)?.[1] || ""],
       ["economy", national.economic_trend.replace(/ \(.*/, ""), national.economic_trend.match(/\((.*)\)/)?.[1] || ""],
       ["at war", national.wars.length ? wars : "At peace", "", true],
+      ...(military ? [
+        ["Active troops" + (military.estimated ? " · estimate" : ""), military.active.toLocaleString(), `${military.uncommitted_personnel.toLocaleString()} uncommitted`],
+        ["Reserve", military.reserve.toLocaleString(), "Available for mobilisation"],
+        ["Warships", military.ships.toLocaleString(), `${military.uncommitted_ships.toLocaleString()} uncommitted`],
+        ["Combat aircraft", military.aircraft.toLocaleString(), "National air support"],
+      ] : []),
     ]) {
       const cell = document.createElement("div");
       cell.className = "stat" + (wide ? " wide" : "");
@@ -205,7 +210,6 @@ function renderStats() {
     ["regions", territories.filter((t) => t.owner === selected).length],
     ["occupied by others", territories.filter((t) => t.owner === selected && t.controller !== selected).length],
     ["occupying", territories.filter((t) => t.controller === selected && t.owner !== selected).length],
-    ["armies · fleets", count("army") + " · " + count("fleet")],
     ["under construction", building],
     ["conflicts · treaties", Object.values(state.conflicts).filter(involved).length + " · " + Object.values(state.commitments).filter(involved).length],
   ]) {
@@ -625,7 +629,7 @@ async function refreshEntities() {
   for (const e of entities) {
     const label=document.createElement("div");
     const status=e.status==="under_construction"?`under construction until ${month(e.completes_turn-1)}`:e.kind==="event_site"&&e.expires_turn!==undefined?`fades at the end of ${month(e.expires_turn-1)}`:e.status;
-    label.textContent=`${e.name} · ${kindLabel(e.kind)} · ${actorName(e.actor)} · ${status} · ${state.territories[e.region]?.name||e.region}`;
+    label.textContent=`${e.name}${e.kind === "army" ? ` · ${(e.personnel ?? 10000).toLocaleString()} troops` : e.kind === "fleet" ? ` · ${(e.ships ?? 3).toLocaleString()} ships` : ""} · ${kindLabel(e.kind)} · ${actorName(e.actor)} · ${status} · ${state.territories[e.region]?.name||e.region}`;
     L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff",dashArray:e.status==="under_construction"?"2 3":null}).bindPopup(label).addTo(entityLayers);
   }
 }

@@ -58,7 +58,9 @@ The model does not write deltas directly. Asking a 4B model for exact `before`/`
 One turn is one month. The prompt tells the model to advance large goals by a step. C++ enforces physical limits it cannot talk its way around, judging everything against the start-of-month world:
 
 - **Reach.** Force (`occupy`, an owner retaking land, destroying another nation's entity) reaches a region only if it borders land the actor controls, or holds or borders one of its active armies or fleets. Residual sliver regions grant no reach.
-- **Tempo.** At most two regions per actor change hands by force per month.
+- **Strength.** Quality is `clamp(sqrt(GDP per capita / 15000), 0.5, 1.6)`. Local active armies plus 20% of uncommitted personnel (30% in an open war/civil war), 30% of combat aircraft × 200, and eligible naval support form attack strength. Defence uses 25%/40% uncommitted personnel and 50% aircraft divided across distinct enemies, a 1.5 advantage, and the same naval support. Naval support is 30% of warships × 1,500 where a port/fleet/port-marked city exists or the nation's fleet is nearby; this is the permitted coastal approximation. Civil war multiplies defence by 0.6; stability below 25 by 0.8. An attacker in a shared conflict at least twelve months old gets ×0.6. Peaceful neighbours are not enemies.
+- **Tempo.** Attack/defence ratios of at least 1.5 allow two regions; at least 0.75 allows one; below 0.75 allows none. Limits apply per attacker/defender, alongside a global maximum of two regions per actor. Formations are subtracted from uncommitted pools, never counted twice.
+- **Capacity.** Concurrent construction is `max(1, floor(GDP / US$150 billion))`, excluding event sites. Armies reserve 10% of active personnel rounded to 1,000, clamped to 5,000–150,000 and available personnel; fleets reserve 25% of warships rounded to a whole ship, clamped to 1–30 and available ships. Unfinished formations also reserve inventory; inactive units release it. Destroyed units lose their allocation once. Reactivation requires available inventory.
 - **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month.
 - **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished.
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities.
@@ -94,7 +96,7 @@ Clauses that took effect are kept on the treaty as `terms` (a cession records th
 
 Only these settlements carry the internal `settle_proposal` operation, so a model cannot answer for the player. Proposals are answered once, only in a later month, and are part of the recorded delta, so replay needs no extra input. Pending proposals appear in each party's decision facts (`treaty_proposals`), and the proposer acts in the month the answer arrives.
 
-An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. The event is saved with `partial: true` when some of its operations (or treaty terms) were dropped, or `failed: true` when every operation was. The Events dialog shows a "partly happened" or "did not happen" badge, and the journal line starts with "Partial · " or "Failed · ". Later prompts read what actually happened: related history, regional history, recent events and chronicle inputs append a short clause built from the dropped actions, such as "Invade Pakistan (In fact: no forces moved.)". The saved text, the journal and the narration keep the model's description. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
+An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. The event is saved with `partial: true` when some of its operations (or treaty terms) were dropped, or `failed: true` when every operation was. The Events dialog shows a "partly happened" or "did not happen" badge, and the journal line starts with "Partial · " or "Failed · ". Later prompts read what actually happened: related history, regional history, recent events and chronicle inputs append a short clause built from the dropped actions, such as "Invade Pakistan (In fact: no forces moved.)", or "(In fact: not every region changed hands.)" when some but not all of an event's seizures went through. The saved text, the journal and the narration keep the model's description. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
 
 Events also record the wars (`conflicts`) and treaties (`commitments`) their operations opened, escalated or ended.
 
@@ -163,22 +165,25 @@ Relevant regions show their population. The adjudication prompt asks the model t
 
    | | low | medium | high |
    | --- | --- | --- | --- |
-   | Military deaths per party per front region, capped at 0.008% of the party's national population (landless parties: of a quarter of the front's population) | 40 | 400 | 1,600 |
+   | Military deaths as share of committed personnel per party | 0.05% | 0.4% | 1.5% |
    | Civilian deaths, share of each front region | 0.0003% | 0.0015% | 0.005% |
    | Displacement, share of each front region (plus a one-off 8% when a region changes hands) | 0.03% | 0.15% | 0.4% |
    | Front GDP loss | 0.1% | 0.4% | 1% |
    | GDP drag across the parties' land | 0.005% | 0.02% | 0.05% |
 
-   - Deaths come out of the population a party recruits from, at most 1% of a region per month.
+   - Committed personnel are the party's active armies in or adjacent to the conflict's affected regions plus its 20%/30% share of uncommitted personnel divided by distinct enemies. Landless actors use their active inventory and no territory-based formations. Inputs are frozen before this month's operations; deterministic jitter is 0.7–1.3.
+   - Deaths reduce active personnel first, then reserves. Allocated armies and uncommitted personnel share active losses proportionally. Armies falling below 2,000 are destroyed; their remainder leaves active strength as dispersed/captured personnel, without counting it again as deaths. A journal entry names the destroyed formation.
+   - With opposing aircraft, high/medium intensity removes floor(30% × aircraft × 1%/0.3%); opposing ships similarly removes floor(30% × ships × 0.5%/0.15%). Low intensity has no equipment attrition. High-intensity war/civil-war participants move floor(2% × starting reserves) to active once per month, after losses.
+   - Military deaths also reduce recruiting-region population where available, with the existing 1%-per-region allocation bound; recorded military deaths are bounded by military inventory rather than that demographic approximation.
    - 35% of displaced people cross into bordering non-party countries; the rest go to the owner's unaffected regions. With nowhere safe, they go anywhere else in the country.
    - Half of per-capita output moves with them.
    - Once a region is calm and back under its owner, 3% of its displaced return each month.
    - Population is conserved except for deaths.
 6. **Stability** moves 8% of the way toward a target each month, by at most 10 points. The target is the baseline, minus 3 / 8 / 15 for the most intense war, minus 25 × the occupied share of population, minus 5 when GDP fell over 1% that month. Deaths above 0.01% of population cost another point.
 
-A year of the seeded Russo-Ukrainian War at high intensity produces about 187,000 deaths and 0.9 million displaced, and roughly 60,000 deaths in the Sudanese Civil War. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
+A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
 
-Limitations: conflicts have parties, not sides, so co-belligerents listed in one war count as opposing each other. Military deaths are not tied to entities. Regional splits are estimates.
+Limitations: conflicts have parties, not sides, so co-belligerents listed in one war count as opposing each other. Military inventories include explicitly labelled estimates and mixed source years. Regional splits are estimates.
 
 ## Historical preparation and context
 
@@ -228,7 +233,7 @@ End-to-end campaign (disposable save, Portugal on real ADM1 regions; one AI nati
 1. **Turn 1.** "Build a port in Viana do Castelo", "Launch a national education reform", "Conquer all of Spain this month":
    - the port started construction (due in 6 months);
    - the reform was recorded without map changes;
-   - the conquest became a declaration of war, occupation of bordering Galicia and an expeditionary army under construction.
+   - Historical pre-inventory result: the conquest became a declaration of war, occupation of bordering Galicia and an expeditionary army under construction. Plan 19 supersedes this: Portugal is now too weak to occupy Galicia.
 2. **Turn 2.** "Occupy Comunitat Valenciana", "Raise a new army in Guarda":
    - the model judged the distant occupation impossible until the army was ready;
    - the Guarda army started construction.
@@ -246,3 +251,13 @@ Earlier runs showed the model's typical mistakes. It sometimes picks the wrong o
  Structural validity is separate from whether a model outcome sensibly follows a player's action. There is no combat strength model: reach and tempo limit what force can do, but whether an attack succeeds is the model's judgment. A small model may misunderstand an action or narrate background events of little consequence. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
 
 See [living political world](../README.md#a-living-political-world) and [architecture](ARCHITECTURE.md#independent-politics-and-identity-persistence) for regional authorization, identity operations, deterministic flags and compatibility. The model timing results above predate the three additional independent monthly actions.
+
+### Military definitions and compatibility
+
+Active personnel are active-duty people (World Bank inputs may include paramilitary personnel); reserves are trained reserve personnel. Warships are frigate-size or larger principal surface combatants, carriers and amphibious assault ships plus submarines, excluding corvettes, patrol boats, mine warfare, landing craft and auxiliaries. Combat aircraft are fixed-wing fighters, attack aircraft and bombers, excluding trainers, helicopters, transports and drones. Source discrepancies and estimated scenario overrides are documented in [DATA.md](DATA.md).
+
+Strength labels use quality × (active + aircraft × 200 + ships × 1,500): below 20,000 negligible; below 200,000 minor; below 1 million regional power; below 5 million major power; otherwise superpower. The seed labels US/CN major powers and India a regional power.
+
+Legacy formation defaults are 10,000 personnel / 3 ships. Military backfill preserves current GDP, population, wars and inventories, and proportionally reduces overallocated legacy formations to the available national inventory. Old destroyed units are treated as already accounted for. New actors receive estimated inventories rather than cloning a parent's forces. Frozen military seed references and the historical no-inventory casualty branch preserve replay.
+
+The written formulas govern the examples: India at roughly 165,000 versus 154,000 is **limited**, not superior; the seeded long-war Russian attack at Dnipropetrovsk is roughly 439,000 versus 434,000, allowing one region. Adding field armies also decreases the uncommitted pool.

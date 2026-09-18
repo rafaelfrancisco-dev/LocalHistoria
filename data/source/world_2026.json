@@ -1,13 +1,14 @@
 {
  "note": "Curated major wars and treaties in force on 1 January 2026, the campaign start. Region names refer to geoBoundaries ADM1 names in data/world.sqlite. The control and front lines are simplified to whole regions. This is a game starting point, not an authoritative account.",
  "actors": {
-  "rapid-support-forces": {"name": "Rapid Support Forces", "color": "#8a6d3b", "base": "SD"},
-  "national-unity-government": {"name": "National Unity Government of Myanmar", "color": "#5f8a5a", "base": "MM"},
-  "afc-m23": {"name": "Congo River Alliance (AFC/M23)", "color": "#7a5c8a", "base": "CD"}
+  "rapid-support-forces": {"name": "Rapid Support Forces", "color": "#8a6d3b", "base": "SD", "active": 100000, "reserve": 0, "ships": 0, "aircraft": 0},
+  "national-unity-government": {"name": "National Unity Government of Myanmar", "color": "#5f8a5a", "base": "MM", "active": 65000, "reserve": 0, "ships": 0, "aircraft": 0},
+  "afc-m23": {"name": "Congo River Alliance (AFC/M23)", "color": "#7a5c8a", "base": "CD", "active": 6000, "reserve": 0, "ships": 0, "aircraft": 0}
  },
  "conflicts": [
   {"name": "Russo-Ukrainian War", "kind": "war", "started": "2022-02", "intensity": "high", "actors": ["RU", "UA"],
    "text": "Russia's full-scale invasion of Ukraine, begun in February 2022, continues as a war of attrition along a front stretching from Kharkiv to Kherson, with long-range drone and missile strikes on both sides.",
+   "entities": [{"name": "Ukrainian First Army", "actor": "UA", "personnel": 90000, "region": ["UA", "Dnipropetrovsk Oblast"]}, {"name": "Ukrainian Second Army", "actor": "UA", "personnel": 90000, "region": ["UA", "Dnipropetrovsk Oblast"]}, {"name": "Russian First Army", "actor": "RU", "personnel": 132000, "region": ["UA", "Donetsk Oblast"]}, {"name": "Russian Second Army", "actor": "RU", "personnel": 132000, "region": ["UA", "Donetsk Oblast"]}],
    "occupied": {"RU": [["UA", "Autonomous Republic of Crimea"], ["UA", "Luhansk Oblast"], ["UA", "Donetsk Oblast"]]},
    "affected": [["UA", "Donetsk Oblast"], ["UA", "Luhansk Oblast"], ["UA", "Zaporizhia Oblast"], ["UA", "Kherson Oblast"], ["UA", "Kharkiv Oblast"], ["UA", "Sumy Oblast"], ["UA", "Dnipropetrovsk Oblast"], ["RU", "Belgorod Oblast"], ["RU", "Kursk Oblast"]]},
   {"name": "Sudanese Civil War", "kind": "civil_war", "started": "2023-04", "intensity": "high", "actors": ["SD", "rapid-support-forces"],

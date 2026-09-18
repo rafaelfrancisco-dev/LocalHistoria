@@ -35,5 +35,85 @@
   "VA": {"population": 800, "gdp_usd": 20000000, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "source": "Holy See estimate"},
   "VG": {"gdp_usd": 1500000000, "gdp_growth": 2.0, "stability": 85, "source": "BVI Central Statistics Office estimate"},
   "WF": {"population": 11200, "gdp_usd": 200000000, "gdp_growth": 0.5, "pop_growth": -1.0, "stability": 88, "source": "INSEE / IEOM estimate"}
- }
+ },
+ "military": {
+  "US": {
+    "active": 1330000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "CN": {
+    "active": 2035000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "IN": {
+    "active": 1455000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "RU": {
+    "active": 1320000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "KR": {
+    "active": 500000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "KP": {
+    "active": 1280000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "PK": {
+    "active": 660000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "UA": {
+    "active": 900000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "IR": {
+    "active": 610000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "IL": {
+    "active": 170000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "ES": {
+    "active": 133000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "PT": {
+    "active": 28000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "MG": {
+    "active": 13500,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  },
+  "KM": {
+    "active": 1000,
+    "year": 2025,
+    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  }
+},
+ "military_fallbacks": {
+  "active": "max(200, round(population * 0.003))",
+  "reserve": "floor(active * 0.5)",
+  "ships": 0,
+  "aircraft": 0,
+  "spend_usd": 0,
+  "source": "Missing military fields are estimates, not observed zeros. Missing spending means unknown, represented by zero."
+}
 }

@@ -89,7 +89,7 @@ int main(){try{
  // Out of reach: Heart borders no land the aggressor controls.
  auto far=compile(R"({"events":[{"description":"Deep strike","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"occupy","region":"island","by":"old-state"}]}]})");
  check(infeasible(far)&&far.events[0]["text"]=="Deep strike"&&!far.events[0].isMember("blocked_by")&&changed(far,"territory","march")&&!changed(far,"territory","island"),"Unreachable region dropped, the rest of its event holds");
- check(far.events[0]["partial"]==true&&!far.events[0].isMember("failed")&&droppedClause(far.events[0])==" (In fact: no territory changed hands.)",("A partly dropped event is partial: "+dump(far.events[0])).c_str());
+ check(far.events[0]["partial"]==true&&!far.events[0].isMember("failed")&&droppedClause(far.events[0])==" (In fact: not every region changed hands.)",("A partly dropped event is partial: "+dump(far.events[0])).c_str());
  auto blitz=compile(R"({"events":[{"description":"Blitz","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"open_conflict","actors":["old-state","neighbor"],"text":"War"}]},
   {"description":"Second front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]},
   {"description":"Third front","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"heart","by":"old-state"}]}]})");
@@ -277,7 +277,7 @@ int main(){try{
   Store log(":memory:");auto start=opsBase.state;start.turn=0;log.create(start,false);
   auto first=resolve(start);auto partial=compileOperations(first.state,parse(R"({"events":[{"description":"Deep strike","actor":"old-state","blocked_by":"none","background":false,"causes":[],"operations":[{"action":"occupy","region":"march","by":"old-state"},{"action":"occupy","region":"island","by":"old-state"}]}]})"),adjacency);
   auto month=applyDelta(first,partial,geo);Json::Value r;r["delta"]=encode(partial);log.commit(log.submit(0,"partial-1","{}")["id"].asString(),month,{},r);
-  auto current=month.state;auto truth="Deep strike (In fact: no territory changed hands.)";
+  auto current=month.state;auto truth="Deep strike (In fact: not every region changed hands.)";
   check(log.campaignContext(current,"old-state").facts["related_history"][0]["text"]==truth,"Related history reads what happened");
   auto journal=log.journal();check(journal[0]["events"][0]["text"]=="Deep strike"&&journal[0]["events"][0]["prompt_text"]==truth,("Journal keeps the model's text: "+dump(journal[0]["events"])).c_str());
   check(context(current,"old-state",journal,{}).facts["recent_events"][0]==truth,"Recent events read what happened");

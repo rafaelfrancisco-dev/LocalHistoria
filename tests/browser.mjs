@@ -58,6 +58,12 @@ try {
   // National status in real currency, the Wars & treaties menu and its map mode.
   await page.waitForFunction(() => document.querySelector("#stats").innerText.includes("€"));
   assert.match(await page.locator("#stats").innerText(), /GDP[\s\S]*US\$[\s\S]*population[\s\S]*stability/i);
+  assert.match(await page.locator("#stats").innerText(), /28,000[\s\S]*Active troops[\s\S]*uncommitted[\s\S]*210,000[\s\S]*Reserve[\s\S]*Warships[\s\S]*Combat aircraft/);
+  await page.evaluate(() => { const e = Object.values(state.entities).find(e => e.kind === "army" && e.actor === "UA"); map.setView([e.latitude, e.longitude], 7); });
+  await page.waitForFunction(() => entityLayers.getLayers().some(l => l.getPopup()?.getContent()?.textContent.includes("90,000 troops")));
+  await page.evaluate(() => { entityLayers.getLayers().find(l => l.getPopup()?.getContent()?.textContent.includes("90,000 troops")).openPopup(); });
+  assert.match(await page.locator(".leaflet-popup-content").innerText(), /Ukrainian .* Army · 90,000 troops/);
+  await page.evaluate(() => { map.closePopup(); });
   await page.locator("#diplomacy-open").click();
   await page.locator("#diplomacy").waitFor({ state: "visible" });
   assert.match(await page.locator("#diplomacy-list").innerText(), /Russo-Ukrainian War[\s\S]*Since February 2022/);

@@ -56,7 +56,7 @@ std::string attackGuidance(const std::string &actor,const std::string &text,cons
     if(!attack)return "";
     if(territories.isObject())for(auto &id:territories.getMemberNames()) {
         auto &t=territories[id];if(t["controller"]==actor)continue;
-        for(auto &a:t["within_reach_of"])if(a==actor)return " [attack: use occupy on one or two regions whose within_reach_of lists "+actor+", plus open_conflict unless already at war; never move_entity on cities]";
+        for(auto &a:t["within_reach_of"])if(a.isString()&&(a.asString()==actor||a.asString().rfind(actor+" (",0)==0)&&a.asString().find("too weak")==std::string::npos)return " [attack: use occupy on one or two regions whose within_reach_of lists "+actor+", plus open_conflict unless already at war; never move_entity on cities]";
     }
     return " [no region within reach: describe preparations, no occupy]";
 }
@@ -155,6 +155,12 @@ Resolution applyDelta(const Resolution &base,const WorldDelta &d,const Json::Val
         require(!e.isMember("expires_turn")||(e["kind"]=="event_site"&&e["status"]=="active"&&e["expires_turn"].isInt()&&e["expires_turn"].asInt()>w.turn&&e["expires_turn"].asInt()<=w.turn+eventMapMonths),"Invalid event site expiry");
         require(!(e["kind"]=="event_site"&&base.state.entities[id].isNull())||e.isMember("expires_turn"),"New event sites need an expiry");
         require(e["kind"]=="city"||e["kind"]=="port"||e["kind"]=="base"||e["kind"]=="army"||e["kind"]=="fleet"||e["kind"]=="event_site","Invalid entity kind");
+        for (auto field : {"personnel", "ships"})
+            require(!e.isMember(field) || (e[field].isInt() && e[field].asInt() >= 0), "Invalid formation quantity");
+        if (static_cast<const WorldState &>(w).actors[e["actor"].asString()]["status"]["military"].isObject()) {
+            require(e["kind"] != "army" || e["personnel"].isInt(), "Army needs personnel");
+            require(e["kind"] != "fleet" || e["ships"].isInt(), "Fleet needs ships");
+        }
         require(e["longitude"].isNumeric()&&e["latitude"].isNumeric()&&containsPoint(geo[e["region"].asString()],e["longitude"].asDouble(),e["latitude"].asDouble()),"Entity location outside region");
         require(e["origin_event"].isString()&&(eventIds.contains(e["origin_event"].asString())||base.state.entities[id]["origin_event"]==e["origin_event"]),"Invalid originating event");
     }
@@ -380,7 +386,7 @@ std::string droppedClause(const Json::Value &event) {
     std::vector<std::string> phrases;
     for(auto &d:event["dropped_operations"]) {
         auto a=d["action"].asString();std::string p;
-        if(a=="occupy"||a=="transfer_territory"||a=="restore_control")p="no territory changed hands";
+        if(a=="occupy"||a=="transfer_territory"||a=="restore_control")p=failed?"no territory changed hands":"not every region changed hands";
         else if(a=="move_entity")p="no forces moved";
         else if(a=="build")p="no construction began";
         else if(a=="open_conflict")p="no war began";
@@ -434,6 +440,23 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
     };
     auto current=[&](const std::string &kind,const Json::Value &collection,const std::string &id)->Json::Value {
         auto key=kind+":"+id;return index.contains(key)?pending[index[key]].after:collection[id];
+    };
+    auto allocatedWorld=[&] {
+        auto now=w;
+        for(const auto &p:pending) if(p.kind=="entity") {
+            now.entities[p.id]=p.after;
+            if(p.after["status"]=="destroyed" && p.before["status"]!="destroyed") {
+                auto a=p.after["actor"].asString();
+                if(!static_cast<const WorldState &>(now).actors[a]["status"]["military"].isObject())continue;
+                const char *field=p.after["kind"]=="army"?"active":"ships";
+                const char *quantity=p.after["kind"]=="army"?"personnel":"ships";
+                if(p.after["kind"]=="army"||p.after["kind"]=="fleet") {
+                    auto &m=now.actors[a]["status"]["military"];
+                    m[field]=std::max(0,m[field].asInt()-p.after.get(quantity,p.after["kind"]=="army"?10000:3).asInt());
+                }
+            }
+        }
+        return now;
     };
     auto near=[&](const std::string &from,const std::string &to){return from==to||(adjacency.contains(from)&&adjacency.at(from).contains(to));};
     auto reaches=[&](const std::string &a,const std::string &r){return lh::reaches(w,adjacency,a,r);};
@@ -566,6 +589,13 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 if(!known(a))throw Infeasible("unknown actor "+a);return a;};
             auto take=[&](const std::string &a,const std::string &r){
                 if(!reaches(a,r))throw Infeasible("no border, army or fleet within reach of "+w.territories[r]["name"].asString());
+                auto defender=w.territories[r]["controller"].asString();if(defender.empty())defender=w.territories[r]["owner"].asString();
+                if(w.actors[a]["status"]["military"].isObject()&&defender!=a){
+                    int cap=force::assaultCapacity(w,adjacency,a,defender,r);
+                    if(!cap)throw Infeasible("too weak to occupy "+w.territories[r]["name"].asString());
+                    int used=0;for(const auto &held:taken[a]){auto d=w.territories[held]["controller"].asString();if(d.empty())d=w.territories[held]["owner"].asString();if(d==defender&&held!=r)++used;}
+                    if(used>=cap)throw Infeasible("military strength limits gains against this defender this month");
+                }
                 taken[a].insert(r);if(taken[a].size()>2)throw Infeasible("at most two regions can change hands by force in one month");
             };
             if(!regional.empty()&&name!="regional_initiative")throw Infeasible("regional initiatives require an explicit national response for national operations");
@@ -721,6 +751,20 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                 // Construction takes months; the finished entity appears when resolve() reaches completes_turn.
                 if(int months=constructionMonths(kind)){v["status"]="under_construction";v["completes_turn"]=w.turn+months;}else v["status"]="active";
                 if(kind=="event_site")v["expires_turn"]=w.turn+eventMapMonths;
+                if(w.actors[builder]["status"]["military"].isObject()&&kind!="event_site") {
+                    auto allocated=allocatedWorld();int projects=0;
+                    for(const auto &e:allocated.entities)if(e["actor"]==builder&&e["status"]=="under_construction"&&e["kind"]!="event_site")++projects;
+                    if(projects>=force::constructionCapacity(w,builder))throw Infeasible("construction capacity reached");
+                    if(kind=="army") {
+                        int available=force::uncommittedPersonnel(allocated,builder);
+                        if(available<5000)throw Infeasible("no troops left to form an army");
+                        v["personnel"]=std::min(available,std::clamp(int(std::round(w.actors[builder]["status"]["military"]["active"].asDouble()/10000))*1000,5000,150000));
+                    } else if(kind=="fleet") {
+                        int available=force::uncommittedShips(allocated,builder);
+                        if(!available)throw Infeasible("no major warships available");
+                        v["ships"]=std::min(available,std::clamp(int(std::round(w.actors[builder]["status"]["military"]["ships"].asDouble()*0.25)),1,30));
+                    }
+                }
                 touch("entity",eid,Json::nullValue,id,why)=v;actors.insert(builder);regions.insert(r);entities.insert(eid);
             } else if(name=="move_entity"||name=="set_entity_status") {
                 auto eid=str("entity");if(!w.entities.isMember(eid))throw Infeasible("unknown or unfinished entity");
@@ -747,6 +791,12 @@ WorldDelta compileOperations(const WorldState &w,const Json::Value &response,con
                         for(auto &c:pending)war=war||(c.kind=="conflict"&&fighting(c.after));
                         if(!war)throw Infeasible("not at war with "+w.actors[owner]["name"].asString());
                         hostile.insert(owner);
+                    }
+                    if(ev!=owner&&status!="active"&&w.actors[ev]["status"]["military"].isObject()&&force::assaultCapacity(w,adjacency,ev,owner,w.entities[eid]["region"].asString())<1)throw Infeasible("too weak to defeat this formation");
+                    if(status=="active"&&v["status"]=="inactive"&&w.actors[owner]["status"]["military"].isObject()) {
+                        auto allocated=allocatedWorld();
+                        if(v["kind"]=="army"&&force::uncommittedPersonnel(allocated,owner)<v.get("personnel",10000).asInt())throw Infeasible("no troops left to reactivate army");
+                        if(v["kind"]=="fleet"&&force::uncommittedShips(allocated,owner)<v.get("ships",3).asInt())throw Infeasible("no major warships available");
                     }
                     v["status"]=status;if(status!="under_construction")v.removeMember("completes_turn");
                     if(status!="active")v.removeMember("expires_turn");

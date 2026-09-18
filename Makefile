@@ -14,7 +14,7 @@ data/world.sqlite: tools/import_data.py data/source/countries.geojson data/sourc
 	python3 tools/import_stats.py
 	touch data/.stats-imported
 # National statistics need only Python: refreshing them never rebuilds geography.
-data/.stats-imported: tools/import_stats.py data/source/country_stats.json data/source/currencies.json data/source/stats_overrides.json data/source/world_2026.json
+data/.stats-imported: tools/import_stats.py data/source/country_stats.json data/source/currencies.json data/source/stats_overrides.json data/source/world_2026.json data/source/military_2026.json
 	python3 tools/import_stats.py
 	touch $@
 test: all
