@@ -1,5 +1,7 @@
 # 02 · War toll calibration for large states
 
+**Status: done (2026-09-18).** `militaryPerFrontRegion` {40, 400, 1,600} per party per front region, capped at `militaryPopulationCap` 0.008% of the recruiting pool; conflicts under 3 months old stay at most medium without fighting. High stayed at 1,600: Russo-Ukrainian War 187k deaths / 0.9 M displaced a year, Sudan 60k. Medium-war test bound widened to 2,500 (was 2,062). Live India probe not run; covered by the 1.4 bn border-conflict test.
+
 ## Goal
 Interim fix. Plan 19 later replaces the military-death formula with one based on the forces actually
 committed; keep this plan small and do not build on its constants elsewhere.
