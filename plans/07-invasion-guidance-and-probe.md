@@ -1,5 +1,7 @@
 # 07 · Make "Invade X" produce `occupy`, and prove it with the probe
 
+**Status: done (2026-09-18).** `move_entity` enumerates only active armies and fleets; attack orders get an occupy hint via `attackGuidance`. Probe "invasion" matched 2/3 runs, "treaty_consent" 3/3 (expects the pact until plan 01 lands); table in `docs/EVOLVING_WORLD.md`.
+
 ## Goal
 The 4B model should turn an invasion order into `occupy` on a reachable region (plus `open_conflict`), not
 `move_entity` on a city. The probe should test this and fail on semantically wrong but valid output.
