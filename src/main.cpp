@@ -1,5 +1,5 @@
-#include "campaign_factory.h"
-#include "server.h"
+#include "server/campaign_factory.h"
+#include "server/server.h"
 #include <drogon/drogon.h>
 #include <fcntl.h>
 #include <filesystem>

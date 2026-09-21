@@ -1,4 +1,4 @@
-#include "campaign_factory.h"
+#include "server/campaign_factory.h"
 #include <cstdio>
 #include <drogon/utils/Utilities.h>
 namespace lh {

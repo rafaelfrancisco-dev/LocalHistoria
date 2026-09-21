@@ -62,9 +62,12 @@ Amphibious categories are excluded where assault ships cannot be separated from 
 
 **Source discrepancies are explicit.** The newest downloaded World Bank personnel observations
 are generally from 2020 and include paramilitary forces (Portugal 52,000; India 3,068,000;
-Ukraine 298,000). The fourteen plan-19 reference countries use its rounded scenario estimates
-through `stats_overrides.json` and `military_2026.json`, with `estimated: 1`. The original World Bank
-values remain intact. These overrides satisfy the scenario's reference bounds; they are not
+Ukraine 298,000). Plan 19 replaced that series for fourteen reference countries; plan 21 replaced
+it for every remaining actor, because counting gendarmeries and state police as soldiers inflated
+many armies by roughly half (Brazil read 762,000 against a standing army near 360,000, France
+304,000 against 205,000). Every `active` value now comes from `military_2026.json` with
+`estimated: 1`; `stats_overrides.json` remains the higher-priority patch layer and the World Bank
+series the last resort. The original World Bank values remain intact. These overrides satisfy the scenario's reference bounds; they are not
 claimed to be verified current figures. Aircraft observations from the 2025 directory remain
 alongside the scenario value as `aircraft_observed_2025`, with page references in `aircraft_source`.
 Notable differences: Portugal 21 observed / 27 scenario; China 1,583 / 1,900; Iran 218 / 330;
@@ -72,7 +75,16 @@ Israel 278 / 340. The plan's Israeli ship estimate also includes more vessels th
 frigate-plus-submarine definition supports. These scenario estimates must not be used as a
 real-world military inventory report.
 
+The plan-21 active-duty strengths are rounded model estimates for January 2026, not cited
+observations, and every entry says so in its `source`. They are the weakest provenance in the
+database and should be replaced with cited figures when a usable source is available. States with
+no armed forces are recorded as an explicit zero rather than a population-derived garrison: Costa
+Rica and Panama abolished theirs, Iceland never had one, and dependent territories are defended by
+another state. Military spending keeps its World Bank observation wherever there is one; curation
+only fills gaps.
+
 Missing fields use the explicit `military_fallbacks` policy in `stats_overrides.json`: active
 `max(200, round(population × 0.003))`, reserves `floor(active × 0.5)`, ships/aircraft zero.
 Missing spending is unknown, represented by zero. Every such row is flagged estimated and names
-its missing fields. A documented zero is preserved rather than replaced by a fallback.
+its missing fields. A documented zero is preserved rather than replaced by a fallback. No shipped
+row relies on the active or reserve fallback any more; the policy remains for actors added later.

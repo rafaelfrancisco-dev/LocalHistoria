@@ -1,0 +1,67 @@
+#pragma once
+#include "status/status_internal.h"
+#include <map>
+#include <set>
+namespace lh::detail {
+// Where an open conflict is fought this month.
+struct Front {
+    std::string id;
+    std::set<std::string> parties;
+    std::vector<std::string> regions;
+    int intensity;
+    bool fighting;
+};
+// One month of applyMonthlyStatus: each numbered step is a method over the shared month state.
+class MonthlyStatus {
+  public:
+    MonthlyStatus(const Resolution &base, const WorldDelta &delta, const Adjacency &adjacency);
+    Resolution run();
+
+  private:
+    void freezeForceInputs();
+    void accountDestroyed();
+    const Json::Value &ownerStatus(const Json::Value &t) const;
+    void inheritStatus();
+    // 1–3
+    void baselineTrend();
+    void modelEffects();
+    void occupationDrain();
+    // 4
+    void collectSeized();
+    double seizedShare(const std::string &region, double population);
+    void addFront(const std::string &id);
+    // 5
+    Int move(const std::string &from, const std::string &to, Int count);
+    Int kill(const std::string &region, Int count);
+    void warToll(const Front &f, std::map<std::string, Totals> &current);
+    Int partyLosses(const Front &f, const std::string &p, std::map<std::string, Totals> &current,
+                    Int affectedPopulation, double multiplier, const std::string &kind);
+    void displace(const Front &f, const std::string &region, double multiplier, Int &deaths,
+                  Int &displaced);
+    // 5b
+    void applyInventory(const std::string &a);
+    // 6–7
+    void returnDisplaced();
+    void driftStability();
+
+    const Resolution &base;
+    const WorldDelta &delta;
+    const Adjacency &adjacency;
+    Resolution r;
+    WorldState &w;
+    Json::Value &T;
+    // Reads go through const views so missing members are never inserted as nulls.
+    const Json::Value &cT, &cActors;
+    WorldState forceStart;
+    std::vector<std::string> regionIds;
+    std::map<std::string, Int> militaryLosses, aircraftLosses, shipLosses, actorDeaths;
+    std::set<std::string> mobilising;
+    std::map<std::string, double> effectGdp, effectStability;
+    std::set<std::string> seized;
+    std::map<std::string, std::pair<std::string, std::string>>
+        seizedBy; // region -> (new controller, previous controller)
+    std::vector<Front> fronts;
+    std::set<std::string> allAffected;
+    std::map<std::string, Totals> before;
+};
+} // namespace lh::detail

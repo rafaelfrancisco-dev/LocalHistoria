@@ -2,7 +2,7 @@
 #include "localhistoria/history.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
-#include "worker.h"
+#include "turn/worker.h"
 #include <algorithm>
 namespace lh {
 ReferencePreparer::ReferencePreparer(Store &store, Store &reference, std::mutex &mutex,

@@ -1,113 +1,253 @@
 {
- "note": "Estimates for actors that the World Bank snapshot omits or leaves incomplete. Every value here is an approximate estimate from public statistical offices, the IMF, the CIA World Factbook, the Bank of Korea and the Taiwan DGBAS as of 2024-2025. They are not authoritative. Fields left out keep the World Bank value. usd_rate_like copies another actor's exchange rate for a pegged currency.",
+ "note": "Estimates for actors that the World Bank snapshot omits or leaves incomplete. Every value here is an approximate estimate from public statistical offices, the IMF, the CIA World Factbook, the Bank of Korea and the Taiwan DGBAS as of 2024-2025. They are not authoritative. Fields left out keep the World Bank value. usd_rate_like copies another actor's exchange rate for a pegged currency. The military active-duty estimates that plan 19 kept here moved to military_2026.json in plan 21, so each actor has one military row; military_fallbacks below still documents the importer fallbacks.",
  "countries": {
-  "AI": {"population": 15900, "gdp_usd": 330000000, "gdp_growth": 3.0, "pop_growth": 0.8, "stability": 85, "source": "Eastern Caribbean Central Bank / Anguilla Statistics estimate"},
-  "AQ": {"population": 1000, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "source": "Approximate winter research station staff; no economy"},
-  "AX": {"population": 30500, "gdp_usd": 1600000000, "gdp_growth": 1.0, "pop_growth": 0.5, "stability": 90, "source": "Statistics and Research Åland estimate"},
-  "BL": {"population": 10600, "gdp_usd": 600000000, "gdp_growth": 1.5, "pop_growth": 0.3, "stability": 90, "source": "INSEE / IEDOM estimate"},
-  "CK": {"population": 15000, "gdp_usd": 400000000, "gdp_growth": 5.0, "pop_growth": 0.0, "stability": 85, "source": "Cook Islands Statistics Office estimate"},
-  "CW": {"stability": 70, "source": "Stability estimate; World Bank governance data unavailable"},
-  "EH": {"population": 600000, "gdp_usd": 900000000, "gdp_growth": 2.0, "pop_growth": 2.0, "stability": 30, "usd_rate_like": "MA", "source": "CIA World Factbook estimate; disputed territory"},
-  "FK": {"population": 3700, "gdp_usd": 350000000, "gdp_growth": 2.0, "pop_growth": 0.5, "stability": 90, "usd_rate_like": "GB", "source": "Falkland Islands Government estimate; FKP pegged to GBP"},
-  "FO": {"stability": 92, "source": "Stability estimate; World Bank governance data unavailable"},
-  "GG": {"population": 64000, "gdp_usd": 3900000000, "gdp_growth": 1.5, "pop_growth": 0.4, "stability": 90, "usd_rate_like": "GB", "source": "States of Guernsey estimate"},
-  "GI": {"gdp_usd": 3700000000, "gdp_growth": 2.5, "stability": 88, "usd_rate_like": "GB", "source": "HM Government of Gibraltar estimate; GIP pegged to GBP"},
-  "GS": {"population": 30, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "usd_rate_like": "GB", "source": "Research and government staff only"},
-  "HM": {"population": 0, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "usd_rate_like": "AU", "source": "Uninhabited"},
-  "IM": {"stability": 90, "source": "Stability estimate; World Bank governance data unavailable"},
-  "IO": {"population": 3000, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 80, "source": "Military and contractor personnel only; sovereignty transfer to Mauritius agreed 2025"},
-  "JE": {"population": 103000, "gdp_usd": 7000000000, "gdp_growth": 1.0, "pop_growth": 0.6, "stability": 90, "usd_rate_like": "GB", "source": "Statistics Jersey estimate"},
-  "KP": {"gdp_usd": 28000000000, "gdp_growth": 3.7, "usd_rate": 9000, "source": "Bank of Korea 2024 estimate of North Korean GDP; market exchange rate estimate"},
-  "MF": {"stability": 80, "source": "Stability estimate; World Bank governance data unavailable"},
-  "MP": {"stability": 75, "source": "Stability estimate; World Bank governance data unavailable"},
-  "MS": {"population": 4400, "gdp_usd": 80000000, "gdp_growth": 2.0, "pop_growth": -0.2, "stability": 85, "source": "Montserrat Statistics Department estimate"},
-  "NF": {"population": 2200, "gdp_usd": 100000000, "gdp_growth": 1.0, "pop_growth": 0.5, "stability": 90, "usd_rate_like": "AU", "source": "Australian Bureau of Statistics estimate"},
-  "NU": {"population": 1700, "gdp_usd": 30000000, "gdp_growth": 1.5, "pop_growth": -0.5, "stability": 88, "usd_rate_like": "NZ", "source": "Statistics Niue estimate"},
-  "PM": {"population": 5800, "gdp_usd": 260000000, "gdp_growth": 0.5, "pop_growth": -0.8, "stability": 90, "source": "INSEE / IEDOM estimate"},
-  "PN": {"population": 35, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 90, "usd_rate_like": "NZ", "source": "Pitcairn Islands Government estimate"},
-  "PS": {"usd_rate_like": "IL", "source": "Uses the Israeli new shekel rate"},
-  "SH": {"population": 5600, "gdp_usd": 60000000, "gdp_growth": 1.0, "pop_growth": -0.2, "stability": 88, "usd_rate_like": "GB", "source": "St Helena Government estimate; SHP pegged to GBP"},
-  "SX": {"stability": 72, "source": "Stability estimate; World Bank governance data unavailable"},
-  "TC": {"stability": 78, "source": "Stability estimate; World Bank governance data unavailable"},
-  "TF": {"population": 150, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "source": "Research staff only"},
-  "TW": {"population": 23400000, "gdp_usd": 850000000000, "gdp_growth": 3.0, "pop_growth": -0.1, "stability": 70, "usd_rate": 31.0, "source": "Taiwan DGBAS 2025 estimate"},
-  "UM": {"population": 300, "gdp_usd": 0, "gdp_growth": 0, "pop_growth": 0, "stability": 90, "source": "Military and research personnel only"},
-  "VA": {"population": 800, "gdp_usd": 20000000, "gdp_growth": 0, "pop_growth": 0, "stability": 95, "source": "Holy See estimate"},
-  "VG": {"gdp_usd": 1500000000, "gdp_growth": 2.0, "stability": 85, "source": "BVI Central Statistics Office estimate"},
-  "WF": {"population": 11200, "gdp_usd": 200000000, "gdp_growth": 0.5, "pop_growth": -1.0, "stability": 88, "source": "INSEE / IEOM estimate"}
- },
- "military": {
-  "US": {
-    "active": 1330000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "AI": {
+   "population": 15900,
+   "gdp_usd": 330000000,
+   "gdp_growth": 3.0,
+   "pop_growth": 0.8,
+   "stability": 85,
+   "source": "Eastern Caribbean Central Bank / Anguilla Statistics estimate"
   },
-  "CN": {
-    "active": 2035000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "AQ": {
+   "population": 1000,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 95,
+   "source": "Approximate winter research station staff; no economy"
   },
-  "IN": {
-    "active": 1455000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "AX": {
+   "population": 30500,
+   "gdp_usd": 1600000000,
+   "gdp_growth": 1.0,
+   "pop_growth": 0.5,
+   "stability": 90,
+   "source": "Statistics and Research Åland estimate"
   },
-  "RU": {
-    "active": 1320000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "BL": {
+   "population": 10600,
+   "gdp_usd": 600000000,
+   "gdp_growth": 1.5,
+   "pop_growth": 0.3,
+   "stability": 90,
+   "source": "INSEE / IEDOM estimate"
   },
-  "KR": {
-    "active": 500000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "CK": {
+   "population": 15000,
+   "gdp_usd": 400000000,
+   "gdp_growth": 5.0,
+   "pop_growth": 0.0,
+   "stability": 85,
+   "source": "Cook Islands Statistics Office estimate"
+  },
+  "CW": {
+   "stability": 70,
+   "source": "Stability estimate; World Bank governance data unavailable"
+  },
+  "EH": {
+   "population": 600000,
+   "gdp_usd": 900000000,
+   "gdp_growth": 2.0,
+   "pop_growth": 2.0,
+   "stability": 30,
+   "usd_rate_like": "MA",
+   "source": "CIA World Factbook estimate; disputed territory"
+  },
+  "FK": {
+   "population": 3700,
+   "gdp_usd": 350000000,
+   "gdp_growth": 2.0,
+   "pop_growth": 0.5,
+   "stability": 90,
+   "usd_rate_like": "GB",
+   "source": "Falkland Islands Government estimate; FKP pegged to GBP"
+  },
+  "FO": {
+   "stability": 92,
+   "source": "Stability estimate; World Bank governance data unavailable"
+  },
+  "GG": {
+   "population": 64000,
+   "gdp_usd": 3900000000,
+   "gdp_growth": 1.5,
+   "pop_growth": 0.4,
+   "stability": 90,
+   "usd_rate_like": "GB",
+   "source": "States of Guernsey estimate"
+  },
+  "GI": {
+   "gdp_usd": 3700000000,
+   "gdp_growth": 2.5,
+   "stability": 88,
+   "usd_rate_like": "GB",
+   "source": "HM Government of Gibraltar estimate; GIP pegged to GBP"
+  },
+  "GS": {
+   "population": 30,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 95,
+   "usd_rate_like": "GB",
+   "source": "Research and government staff only"
+  },
+  "HM": {
+   "population": 0,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 95,
+   "usd_rate_like": "AU",
+   "source": "Uninhabited"
+  },
+  "IM": {
+   "stability": 90,
+   "source": "Stability estimate; World Bank governance data unavailable"
+  },
+  "IO": {
+   "population": 3000,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 80,
+   "source": "Military and contractor personnel only; sovereignty transfer to Mauritius agreed 2025"
+  },
+  "JE": {
+   "population": 103000,
+   "gdp_usd": 7000000000,
+   "gdp_growth": 1.0,
+   "pop_growth": 0.6,
+   "stability": 90,
+   "usd_rate_like": "GB",
+   "source": "Statistics Jersey estimate"
   },
   "KP": {
-    "active": 1280000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+   "gdp_usd": 28000000000,
+   "gdp_growth": 3.7,
+   "usd_rate": 9000,
+   "source": "Bank of Korea 2024 estimate of North Korean GDP; market exchange rate estimate"
   },
-  "PK": {
-    "active": 660000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "MF": {
+   "stability": 80,
+   "source": "Stability estimate; World Bank governance data unavailable"
   },
-  "UA": {
-    "active": 900000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "MP": {
+   "stability": 75,
+   "source": "Stability estimate; World Bank governance data unavailable"
   },
-  "IR": {
-    "active": 610000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "MS": {
+   "population": 4400,
+   "gdp_usd": 80000000,
+   "gdp_growth": 2.0,
+   "pop_growth": -0.2,
+   "stability": 85,
+   "source": "Montserrat Statistics Department estimate"
   },
-  "IL": {
-    "active": 170000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "NF": {
+   "population": 2200,
+   "gdp_usd": 100000000,
+   "gdp_growth": 1.0,
+   "pop_growth": 0.5,
+   "stability": 90,
+   "usd_rate_like": "AU",
+   "source": "Australian Bureau of Statistics estimate"
   },
-  "ES": {
-    "active": 133000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "NU": {
+   "population": 1700,
+   "gdp_usd": 30000000,
+   "gdp_growth": 1.5,
+   "pop_growth": -0.5,
+   "stability": 88,
+   "usd_rate_like": "NZ",
+   "source": "Statistics Niue estimate"
   },
-  "PT": {
-    "active": 28000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "PM": {
+   "population": 5800,
+   "gdp_usd": 260000000,
+   "gdp_growth": 0.5,
+   "pop_growth": -0.8,
+   "stability": 90,
+   "source": "INSEE / IEDOM estimate"
   },
-  "MG": {
-    "active": 13500,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "PN": {
+   "population": 35,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 90,
+   "usd_rate_like": "NZ",
+   "source": "Pitcairn Islands Government estimate"
   },
-  "KM": {
-    "active": 1000,
-    "year": 2025,
-    "source": "Plan 19 rounded 2024-25 active-duty scenario estimate; replaces older World Bank active-plus-paramilitary series, which remains in country_stats.json."
+  "PS": {
+   "usd_rate_like": "IL",
+   "source": "Uses the Israeli new shekel rate"
+  },
+  "SH": {
+   "population": 5600,
+   "gdp_usd": 60000000,
+   "gdp_growth": 1.0,
+   "pop_growth": -0.2,
+   "stability": 88,
+   "usd_rate_like": "GB",
+   "source": "St Helena Government estimate; SHP pegged to GBP"
+  },
+  "SX": {
+   "stability": 72,
+   "source": "Stability estimate; World Bank governance data unavailable"
+  },
+  "TC": {
+   "stability": 78,
+   "source": "Stability estimate; World Bank governance data unavailable"
+  },
+  "TF": {
+   "population": 150,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 95,
+   "source": "Research staff only"
+  },
+  "TW": {
+   "population": 23400000,
+   "gdp_usd": 850000000000,
+   "gdp_growth": 3.0,
+   "pop_growth": -0.1,
+   "stability": 70,
+   "usd_rate": 31.0,
+   "source": "Taiwan DGBAS 2025 estimate"
+  },
+  "UM": {
+   "population": 300,
+   "gdp_usd": 0,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 90,
+   "source": "Military and research personnel only"
+  },
+  "VA": {
+   "population": 800,
+   "gdp_usd": 20000000,
+   "gdp_growth": 0,
+   "pop_growth": 0,
+   "stability": 95,
+   "source": "Holy See estimate"
+  },
+  "VG": {
+   "gdp_usd": 1500000000,
+   "gdp_growth": 2.0,
+   "stability": 85,
+   "source": "BVI Central Statistics Office estimate"
+  },
+  "WF": {
+   "population": 11200,
+   "gdp_usd": 200000000,
+   "gdp_growth": 0.5,
+   "pop_growth": -1.0,
+   "stability": 88,
+   "source": "INSEE / IEOM estimate"
   }
-},
+ },
  "military_fallbacks": {
   "active": "max(200, round(population * 0.003))",
   "reserve": "floor(active * 0.5)",
@@ -115,5 +255,5 @@
   "aircraft": 0,
   "spend_usd": 0,
   "source": "Missing military fields are estimates, not observed zeros. Missing spending means unknown, represented by zero."
-}
+ }
 }

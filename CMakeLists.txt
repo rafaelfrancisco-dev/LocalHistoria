@@ -6,8 +6,16 @@ find_package(SQLite3 REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_library(historia_core src/simulation.cpp src/store.cpp src/world.cpp src/politics.cpp src/status.cpp)
-target_include_directories(historia_core PUBLIC include)
+add_library(historia_core src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
+  src/world/delta.cpp src/world/delta_checks.cpp src/world/geometry.cpp src/world/schema.cpp
+  src/world/compiler/compiler.cpp src/world/compiler/helpers.cpp src/world/compiler/identity_ops.cpp
+  src/world/compiler/treaty_ops.cpp src/world/compiler/treaty_terms.cpp
+  src/world/compiler/force_ops.cpp src/world/compiler/territory_ops.cpp
+  src/world/compiler/events.cpp
+  src/status/helpers.cpp src/status/force.cpp src/status/seed.cpp src/status/national.cpp
+  src/status/agreements.cpp src/status/monthly/monthly_status.cpp src/status/monthly/fronts.cpp
+  src/status/monthly/casualties.cpp src/status/monthly/recovery.cpp)
+target_include_directories(historia_core PUBLIC include PRIVATE src)
 if(TARGET SQLite3::SQLite3)
   set(SQLITE_TARGET SQLite3::SQLite3)
 else()
@@ -17,23 +25,28 @@ target_link_libraries(historia_core PUBLIC JsonCpp::JsonCpp ${SQLITE_TARGET})
 if(NOT MSVC)
   target_compile_options(historia_core PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
 endif()
-add_library(historia_services src/providers.cpp src/history.cpp src/turn.cpp src/references.cpp
-  src/campaign_factory.cpp src/server.cpp)
+add_library(historia_services src/inference/transport.cpp src/inference/prompts.cpp src/inference/history.cpp src/turn/adjudication_input.cpp src/turn/plan.cpp
+  src/turn/run.cpp
+  src/inference/references.cpp src/server/campaign_factory.cpp src/server/routes.cpp
+  src/server/campaign_handlers.cpp src/server/world_handlers.cpp)
+target_include_directories(historia_services PRIVATE src)
 target_link_libraries(historia_services PUBLIC historia_core Drogon::Drogon)
 if(NOT MSVC)
   target_compile_options(historia_services PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
 endif()
 add_executable(localhistoria src/main.cpp)
+target_include_directories(localhistoria PRIVATE src)
 target_link_libraries(localhistoria PRIVATE historia_services)
 enable_testing()
-add_executable(core_tests tests/core_tests.cpp)
+add_executable(core_tests tests/core/main.cpp tests/core/history_tests.cpp)
 target_link_libraries(core_tests PRIVATE historia_services)
 target_compile_definitions(core_tests PRIVATE FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
 add_test(NAME core COMMAND core_tests)
 add_test(NAME data COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/data_test.py)
 add_executable(replay_verify tools/replay_verify.cpp)
 target_link_libraries(replay_verify PRIVATE historia_core)
-add_executable(world_tests tests/world_tests.cpp)
+add_executable(world_tests tests/world/main.cpp tests/world/deltas.cpp tests/world/operations.cpp
+  tests/world/movement.cpp tests/world/naming.cpp tests/world/treaties.cpp tests/world/events.cpp)
 target_link_libraries(world_tests PRIVATE historia_services)
 add_test(NAME world COMMAND world_tests)
 add_executable(context_tests tests/context_tests.cpp)
@@ -44,7 +57,7 @@ target_link_libraries(world_probe PRIVATE historia_services)
 add_executable(politics_tests tests/politics_tests.cpp)
 target_link_libraries(politics_tests PRIVATE historia_services)
 add_test(NAME politics COMMAND politics_tests)
-add_executable(status_tests tests/status_tests.cpp)
+add_executable(status_tests tests/status/main.cpp tests/status/real_world.cpp)
 target_link_libraries(status_tests PRIVATE historia_core)
 target_compile_definitions(status_tests PRIVATE SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME status COMMAND status_tests)

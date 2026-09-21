@@ -139,19 +139,33 @@ def military(codes, stats, world):
         c, o = curated.get(code, {}), overrides.get(code, {})
         personnel = snapshot['indicators'].get('MS.MIL.TOTL.P1', {}).get(code, {})
         spend = snapshot['indicators'].get('MS.MIL.XPND.CD', {}).get(code, {})
-        active = o.get('active', personnel.get('value'))
         missing = []
+        # Curated active-duty counts outrank MS.MIL.TOTL.P1, which counts active plus paramilitary
+        # forces and would report state police and gendarmeries as soldiers. See docs/DATA.md.
+        if 'active' in o:
+            active, active_year = o['active'], o.get('year', 0)
+        elif 'active' in c:
+            active, active_year = c['active'], c.get('active_year', c.get('year', 0))
+        else:
+            active, active_year = personnel.get('value'), personnel.get('year', 0)
         if active is None:
             active = max(200, int(stats[code]['population'] * 0.003 + 0.5)) if code in stats else 200
+            active_year = 0
             missing.append('active=0.3% population (minimum 200)')
-        s = {'active': int(active), 'spend_usd': int(spend.get('value', 0)),
-             'active_year': o.get('year', personnel.get('year', 0)), 'spend_year': spend.get('year', 0),
+        # Spending keeps its World Bank observation where there is one; curation only fills gaps.
+        if spend:
+            spend_usd, spend_year = spend.get('value', 0), spend.get('year', 0)
+        else:
+            spend_usd = c.get('spend_usd', 0)
+            spend_year = c.get('spend_year', c.get('year', 0)) if 'spend_usd' in c else 0
+        s = {'active': int(active), 'spend_usd': int(spend_usd),
+             'active_year': active_year, 'spend_year': spend_year,
              'year': c.get('year', personnel.get('year', 0)), 'estimated': int(bool(o) or bool(c.get('estimated'))),
              'source': 'World Bank MS.MIL.TOTL.P1/MS.MIL.XPND.CD (CC BY 4.0); military snapshot retrieved ' + snapshot.get('military_retrieved', snapshot['retrieved'])}
         for field, fallback in [('reserve', s['active'] // 2), ('ships', 0), ('aircraft', 0)]:
             s[field] = c.get(field, fallback)
             if field not in c: missing.append(field + '=fallback')
-        if not spend: missing.append('spend_usd=unknown (0)')
+        if not spend and 'spend_usd' not in c: missing.append('spend_usd=unknown (0)')
         if c.get('source'): s['source'] += '; ' + c['source']
         if o.get('source'): s['source'] += '; ' + o['source']
         if code in world['actors']:

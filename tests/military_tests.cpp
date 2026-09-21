@@ -132,7 +132,9 @@ int main() {
         seedMilitary(w, StatusSeed{});
         check(encode(w) == encoded, "Backfill idempotent");
         // Battle thresholds use exact fixtures, without GDP drift or diplomatic seed modifiers.
-        w = fixture(15000);
+        // GDP per head of 20,000 makes quality exactly 1.0, so the ratios below test the
+        // thresholds themselves rather than the rounding of a quality multiplier.
+        w = fixture(15000, 2e10);
         for (auto a : {"A", "D"}) {
             auto &m = w.actors[a]["status"]["military"];
             m["ships"] = m["aircraft"] = 0;
@@ -195,9 +197,13 @@ int main() {
         capacity("KM", "MG", 0);
         capacity("RU", "UA", 1, "Dnipropetrovsk Oblast");
         capacity("UA", "RU", 0, "Belgorod Oblast");
-        check(force::militaryLabel(real, "US") == "major power" &&
-                  force::militaryLabel(real, "CN") == "major power" &&
-                  force::militaryLabel(real, "IN") == "regional power" &&
+        // Plan 21 re-based these bands on active-duty strength. The top band is no longer
+        // unreachable, and the largest armies outrank smaller wealthy ones.
+        check(force::militaryLabel(real, "US") == "superpower" &&
+                  force::militaryLabel(real, "CN") == "superpower" &&
+                  force::militaryLabel(real, "IN") == "major power" &&
+                  force::militaryLabel(real, "KR") == "major power" &&
+                  force::militaryLabel(real, "BR") == "regional power" &&
                   force::militaryLabel(real, "KM") == "negligible",
               "Reference strength labels");
         auto month = applyMonthlyStatus({real, {}}, {}, realAdj);

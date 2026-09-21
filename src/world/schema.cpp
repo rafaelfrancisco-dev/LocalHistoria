@@ -1,0 +1,336 @@
+#include "localhistoria/politics.h"
+#include "localhistoria/status.h"
+#include "world/world_internal.h"
+#include <algorithm>
+namespace lh {
+using namespace detail;
+static void collectEventIds(const Json::Value &v, std::set<std::string> &ids) {
+    if (v.isObject()) {
+        if (v["related_history"].isArray())
+            for (auto &e : v["related_history"])
+                if (e["id"].isString())
+                    ids.insert(e["id"].asString());
+        for (auto &k : v.getMemberNames())
+            collectEventIds(v[k], ids);
+    } else if (v.isArray())
+        for (auto &x : v)
+            collectEventIds(x, ids);
+}
+std::string actionOpening(const std::string &text) {
+    size_t at = 0;
+    for (int words = 0; words < 6; ++words) {
+        at = text.find(' ', text.find_first_not_of(' ', at));
+        if (at == std::string::npos)
+            return text;
+    }
+    return text.substr(0, at) + "…";
+}
+static Json::Value enumeration(const std::set<std::string> &values) {
+    Json::Value j;
+    j["type"] = "string";
+    j["enum"] = Json::arrayValue;
+    for (auto &v : values)
+        j["enum"].append(v);
+    return j;
+}
+Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
+                            const std::vector<std::pair<std::string, std::string>> &actions) {
+    std::set<std::string> actors, regions, entities, movable, conflicts, commitments, causes;
+    if (facts["actors"].isObject())
+        for (auto &a : facts["actors"].getMemberNames())
+            if (w.hasActor(a))
+                actors.insert(a);
+    if (facts["territories"].isObject())
+        for (auto &id : facts["territories"].getMemberNames())
+            if (w.territories.isMember(id)) {
+                regions.insert(id);
+                for (auto k : {"owner", "controller"}) {
+                    auto a = w.territories[id][k].asString();
+                    if (w.hasActor(a))
+                        actors.insert(a);
+                }
+            }
+    if (facts["entities"].isObject())
+        for (auto &id : facts["entities"].getMemberNames())
+            if (w.entities.isMember(id)) {
+                entities.insert(id);
+                auto a = w.entities[id]["actor"].asString();
+                if (w.hasActor(a))
+                    actors.insert(a);
+                // Only finished armies and fleets move; cities and ports offered as move targets
+                // drew a small model away from occupy.
+                auto &e = w.entities[id];
+                if ((e["kind"] == "army" || e["kind"] == "fleet") && e["status"] == "active")
+                    movable.insert(id);
+            }
+    if (w.hasActor(w.player))
+        actors.insert(w.player);
+    for (auto &id : w.conflicts.getMemberNames())
+        if (isOpen(w.conflicts[id]))
+            conflicts.insert(id);
+    for (auto &id : w.commitments.getMemberNames())
+        if (isOpen(w.commitments[id]))
+            commitments.insert(id);
+    collectEventIds(facts, causes);
+    auto string = [](int max) {
+        Json::Value j;
+        j["type"] = "string";
+        j["minLength"] = 1;
+        j["maxLength"] = max;
+        return j;
+    };
+    Json::Value actorId;
+    actorId["type"] = "string";
+    actorId["pattern"] = "^[A-Za-z0-9_-]{1,40}$";
+    auto actor = enumeration(actors), region = enumeration(regions), entity = enumeration(entities);
+    // Each operation is defined once and referenced from every outcome: inlined, 13 outcomes made a
+    // 190 KB schema.
+    Json::Value ops(Json::arrayValue), defs(Json::objectValue);
+    auto ref = [](const std::string &name) {
+        Json::Value j;
+        j["$ref"] = "#/$defs/" + name;
+        return j;
+    };
+    defs["flag_design"] = flagDesignSchema();
+    auto op = [&](const char *name, Json::Value properties) {
+        Json::Value o;
+        o["type"] = "object";
+        o["additionalProperties"] = false;
+        o["required"] = Json::arrayValue;
+        o["required"].append("action");
+        for (auto &k : properties.getMemberNames())
+            o["required"].append(k);
+        properties["action"]["type"] = "string";
+        properties["action"]["enum"] = Json::arrayValue;
+        properties["action"]["enum"].append(name);
+        o["properties"] = properties;
+        defs[std::string("op_") + name] = o;
+        ops.append(ref(std::string("op_") + name));
+    };
+    Json::Value p;
+    auto parties = parse(R"({"type":"array","minItems":2,"maxItems":6})");
+    parties["items"] = actorId;
+    p = Json::objectValue;
+    p["actor_id"] = actorId;
+    p["name"] = string(120);
+    p["color"] = parse(R"({"type":"string","pattern":"^#[0-9a-fA-F]{6}$"})");
+    p["flag_design"] = ref("flag_design");
+    op("create_actor", p);
+    p = Json::objectValue;
+    p["actor"] = actor;
+    p["name"] = string(120);
+    p["reason"] = string(500);
+    p["change_type"] = parse(R"({"type":"string","enum":["rename","refounding","correction"]})");
+    p["flag_design"] = ref("flag_design");
+    op("change_identity", p);
+    if (!regions.empty()) {
+        p = Json::objectValue;
+        p["region"] = region;
+        p["agenda"] = string(500);
+        p["relations"] = parse(R"({"type":"string","enum":["neutral","cooperative","strained"]})");
+        p["demand"] = parse(R"({"type":"string","maxLength":500})");
+        op("regional_initiative", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        p["demand_id"] = string(100);
+        p["response"] = parse(R"({"type":"string","enum":["accepted","rejected"]})");
+        op("respond_regional", p);
+    }
+    // Kind leads name alphabetically, so the model decides what it is before naming it.
+    p = Json::objectValue;
+    p["actors"] = parties;
+    p["intensity"] = parse(R"({"type":"string","enum":["low","medium","high"]})");
+    p["kind"] =
+        parse(R"({"type":"string","enum":["war","border_conflict","insurgency","civil_war"]})");
+    p["name"] = string(120);
+    p["text"] = string(500);
+    op("open_conflict", p);
+    // Terms are what signing changes at once; months how long a treaty lasts (0 = open-ended).
+    Json::Value clauses(Json::arrayValue);
+    auto clause = [&](const char *name, Json::Value properties) {
+        Json::Value o;
+        o["type"] = "object";
+        o["additionalProperties"] = false;
+        o["required"] = Json::arrayValue;
+        o["required"].append("action");
+        for (auto &k : properties.getMemberNames())
+            o["required"].append(k);
+        properties["action"]["type"] = "string";
+        properties["action"]["enum"] = Json::arrayValue;
+        properties["action"]["enum"].append(name);
+        o["properties"] = properties;
+        clauses.append(o);
+    };
+    if (!conflicts.empty()) {
+        p = Json::objectValue;
+        p["conflict"] = enumeration(conflicts);
+        clause("end_conflict", p);
+    }
+    if (!regions.empty()) {
+        p = Json::objectValue;
+        p["region"] = region;
+        p["to"] = actorId;
+        clause("cede", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        p["by"] = actorId;
+        clause("occupy", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        clause("withdraw", p);
+    }
+    auto terms = parse(R"({"type":"array","maxItems":4})");
+    if (clauses.empty())
+        terms["maxItems"] = 0;
+    else
+        terms["items"]["anyOf"] = clauses;
+    auto months = parse(R"({"type":"integer","minimum":0,"maximum":120})");
+    p = Json::objectValue;
+    p["actors"] = parties;
+    p["kind"] = parse(R"({"type":"string","enum":["alliance","defence_pact","non_aggression_pact",)"
+                      R"("trade_agreement","ceasefire","peace_treaty","union","other"]})");
+    p["months"] = months;
+    p["name"] = string(120);
+    p["terms"] = terms;
+    p["text"] = string(500);
+    op("add_commitment", p);
+    if (!commitments.empty()) {
+        p = Json::objectValue;
+        p["commitment"] = enumeration(commitments);
+        p["months"] = months;
+        p["terms"] = terms;
+        p["text"] = string(500);
+        op("amend_commitment", p);
+    }
+    if (!regions.empty()) {
+        p = Json::objectValue;
+        p["kind"] =
+            parse(R"({"type":"string","enum":["city","port","base","army","fleet","event_site"]})");
+        p["name"] = string(120);
+        p["actor"] = actor;
+        p["region"] = region;
+        op("build", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        p["to"] = actorId;
+        op("transfer_territory", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        p["by"] = actorId;
+        op("occupy", p);
+        p = Json::objectValue;
+        p["region"] = region;
+        op("restore_control", p);
+    }
+    if (!entities.empty()) {
+        if (!regions.empty() && !movable.empty()) {
+            p = Json::objectValue;
+            p["entity"] = enumeration(movable);
+            p["region"] = region;
+            op("move_entity", p);
+        }
+        p = Json::objectValue;
+        p["entity"] = entity;
+        p["status"] = parse(R"({"type":"string","enum":["active","inactive","destroyed"]})");
+        op("set_entity_status", p);
+    }
+    if (!conflicts.empty()) {
+        p = Json::objectValue;
+        p["conflict"] = enumeration(conflicts);
+        op("resolve_conflict", p);
+    }
+    if (!conflicts.empty()) {
+        p = Json::objectValue;
+        p["conflict"] = enumeration(conflicts);
+        p["intensity"] = parse(R"({"type":"string","enum":["low","medium","high"]})");
+        op("set_conflict_intensity", p);
+    }
+    if (!commitments.empty()) {
+        p = Json::objectValue;
+        p["commitment"] = enumeration(commitments);
+        op("resolve_commitment", p);
+    }
+    Json::Value event;
+    event["type"] = "object";
+    event["additionalProperties"] = false;
+    // jsoncpp sorts keys and llama.cpp grammars keep that order: description precedes operations,
+    // action leads each operation.
+    for (auto k : {"actor", "blocked_by", "causes", "description", "operations"})
+        event["required"].append(k);
+    // Denials must cite a real commitment, so a small model cannot invent prerequisites; physical
+    // limits are checked by C++.
+    event["properties"]["blocked_by"] = enumeration(commitments);
+    event["properties"]["blocked_by"]["enum"].insert(0, "none");
+    event["properties"]["actor"] = actor;
+    event["properties"]["description"] = string(160);
+    event["properties"]["causes"] = parse(R"({"type":"array","maxItems":4})");
+    // Economic and stability consequences are qualitative; C++ turns them into bounded numbers.
+    // Optional: most events change nothing.
+    auto effect = parse(
+        R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
+    defs["effect"] =
+        parse(R"({"type":"object","additionalProperties":false,"required":["actor","economy",)"
+              R"("stability"]})");
+    defs["effect"]["properties"]["actor"] = actor;
+    defs["effect"]["properties"]["economy"] = effect;
+    defs["effect"]["properties"]["stability"] = effect;
+    event["properties"]["effects"] = parse(R"({"type":"array","maxItems":3})");
+    event["properties"]["effects"]["items"] = ref("effect");
+    if (causes.empty())
+        event["properties"]["causes"]["maxItems"] = 0;
+    else
+        event["properties"]["causes"]["items"] = enumeration(causes);
+    event["properties"]["operations"] = parse(R"({"type":"array","maxItems":5})");
+    event["properties"]["operations"]["items"]["anyOf"] = ops;
+    Json::Value schema;
+    schema["type"] = "object";
+    schema["additionalProperties"] = false;
+    schema["required"].append("events");
+    schema["required"].append("world_events");
+    // One outcome per action, in order, opening with that action's first words: without them a
+    // small model repeats one outcome for all of a nation's actions. The whole text kept it on
+    // track too, but cost dozens of generated tokens per event.
+    auto &outcomes = schema["properties"]["events"];
+    outcomes["type"] = "array";
+    outcomes["prefixItems"] = Json::arrayValue;
+    for (auto &[a, text] :
+         std::vector(actions.begin(), actions.begin() + std::min<size_t>(actions.size(), 37))) {
+        auto item = event;
+        item["required"].insert(0, "action");
+        item["properties"]["action"]["const"] = actionOpening(text);
+        item["properties"]["actor"] = Json::objectValue;
+        item["properties"]["actor"]["const"] = a;
+        // Only a commitment the actor is party to can hold it back; otherwise a small model cites
+        // any treaty it sees.
+        std::set<std::string> binding;
+        for (auto &id : commitments)
+            for (auto &party : w.commitments[id]["actors"])
+                if (party == a)
+                    binding.insert(id);
+        item["properties"]["blocked_by"] = enumeration(binding);
+        item["properties"]["blocked_by"]["enum"].insert(0, "none");
+        outcomes["prefixItems"].append(item);
+    }
+    outcomes["minItems"] = outcomes["maxItems"] = Json::UInt(outcomes["prefixItems"].size());
+    // World events are unplanned developments: narrative only, never decisions of the player's
+    // nation, so they cannot invent construction, treaties or conquests that nobody ordered.
+    auto development = event;
+    development["required"] = Json::arrayValue;
+    for (auto k : {"actor", "causes", "description", "effects"})
+        development["required"].append(k);
+    // A development is kept only when it changes something, so it must name at least one effect.
+    development["properties"]["effects"]["minItems"] = 1;
+    development["properties"].removeMember("operations");
+    development["properties"].removeMember("blocked_by");
+    std::set<std::string> others(actors);
+    others.erase(w.player);
+    if (others.empty())
+        others = actors;
+    development["properties"]["actor"] = enumeration(others);
+    schema["properties"]["world_events"]["type"] = "array";
+    schema["properties"]["world_events"]["maxItems"] = 2;
+    schema["properties"]["world_events"]["items"] = development;
+    schema["$defs"] = defs;
+    return schema;
+}
+} // namespace lh
