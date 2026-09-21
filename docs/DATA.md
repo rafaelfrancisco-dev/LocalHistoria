@@ -7,10 +7,11 @@ The imported database and normalized map are reproducible from project-owned inp
 | `data/source/countries.geojson` | Supplied by the user. Properties contain names and alpha-2/alpha-3 codes, without source revision or license. Exact upstream origin remains unverified. Geography resembles Natural Earth-derived data, but that resemblance does not establish provenance. |
 | `data/source/json-cities.json.gz` | Supplied by the user. Schema matches [dr5hn/countries-states-cities-database](https://github.com/dr5hn/countries-states-cities-database). Exact snapshot revision unknown. Upstream ODbL text retained in `licenses/cities-LICENSE`. |
 | `web/flags/*.svg` | Copied from the supplied flag-icons archive, only `flags/4x3`. MIT license retained verbatim. Exact supplied archive commit unknown. |
-| `data/source/country_stats.json` | World Bank Open Data API snapshot (population, GDP in current US$, real GDP growth, population growth, official exchange rate, and the Worldwide Governance Indicators political stability score, 0–100). Latest non-null value per indicator, with its year. CC BY 4.0; see `licenses/WorldBank-NOTICE.md`. Refresh explicitly with `python3 tools/import_stats.py --download`. |
+| `data/source/country_stats.json` | World Bank Open Data API snapshot (population, GDP in current US$, real GDP growth, population growth, official exchange rate, and the Worldwide Governance Indicators political stability score, 0–100). Latest non-null value per indicator, with its year. Rows are keyed by the API's own two-letter country id, falling back to the country name; `countryiso3code` is never trusted, because the API ships non-standard entities under another country's iso3 ("Taiwan, China" as `SYR`, "Netherlands Antilles" as `NLD`), which silently overwrote Syria and the Netherlands until plan 22. Rows with no id and an unrecognised name are entities the game does not model and are dropped. CC BY 4.0; see `licenses/WorldBank-NOTICE.md`. Refresh explicitly with `python3 tools/import_stats.py --download`. |
 | `data/source/currencies.json` | Hand-authored ISO 3166 → ISO 4217 map with display symbols, as of January 2026 (Bulgaria uses the euro). |
 | `data/source/stats_overrides.json` | Documented estimates, each with a source note, for the 33 actors the World Bank omits or leaves incomplete (e.g. Taiwan, North Korean GDP, small dependencies, uninhabited territories). They are flagged `estimated` in the game. |
 | `data/source/world_2026.json` | Curated wars, occupations and treaties in force on 1 January 2026, with front regions and three non-state parties (RSF, Myanmar's National Unity Government, AFC/M23). Simplified to whole ADM1 regions; a game starting point, not an authoritative record. |
+| `data/source/military_2026.json` | Curated January 2026 inventories: active, reserve, ships, aircraft and gap-filling spending. Ship and some reserve counts are Wikipedia-derived (CC BY-SA 4.0); aircraft totals are factual figures from FlightGlobal *World Air Forces 2025*; active-duty strengths are plan 21 model estimates carrying no upstream licence. Every row is flagged `estimated` and names its own basis. See `licenses/military-data.md`. |
 | `web/vendor/leaflet.js`, `.css` | Leaflet 1.9.4, downloaded from version-pinned unpkg URLs. BSD-2-Clause license retained. No tile provider is used. |
 | `web/vendor/topojson-client.min.js` | topojson-client 3.1.0, `dist/topojson-client.min.js` from the npm tarball. ISC license retained. |
 | `web/regions.topojson`, `web/world.geojson` (+ `.gz`) | Derived display geometry, written by `tools/display_geometry.py` from `data/world.sqlite` and `countries.geojson`. Simplified for the browser only; see [Geography](EVOLVING_WORLD.md#geography). Checksums `display_sha256` / `world_display_sha256` in `data/source/gbOpen/manifest.json`. |
@@ -23,11 +24,12 @@ The imported database and normalized map are reproducible from project-owned inp
 
 Confirm exact source provenance before redistributing the supplied geography or presenting the database as a verified upstream snapshot. This is not required for local play.
 
-`tools/import_stats.py` runs after the region import and builds three tables:
+`tools/import_stats.py` runs after the region import and builds four tables:
 
 - `country_stats`: one row per actor.
 - `region_stats`: population and GDP per region. The split weights each region 70% by its share of the country's verified city population and 30% equally, with residual slivers excluded. Largest-remainder rounding makes regions sum exactly to national totals. It is an estimate: the game has no subnational census.
 - `world_seed`: the 2026 world, with region names resolved to IDs. An unresolved name fails the import.
+- `military_stats`: one row per actor, plus the non-state parties. Observation years are kept separately from the curated scenario year.
 
 Exchange rates use the World Bank's latest official annual average: the euro-area rate for euro users, 1 for dollar users, a peer country's rate for shared currencies, and pegged currencies via `usd_rate_like`. Some rates are stale for high-inflation currencies.
 
