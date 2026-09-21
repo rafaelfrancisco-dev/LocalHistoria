@@ -22,9 +22,12 @@ that absorbs the misalignment between gbOpen ADM1 boundaries and the country out
 from different sources. Large inland seas count as coast, deliberately: Caspian and Great Lakes
 flotillas are real.
 
-The pass walks the coastline asking which regions it touches, rather than asking each of the 3,402
-regions for its distance to the whole coastline, and regions drop out once marked. That is the
-difference between 324 s and a few seconds; the naive form was too slow to sit in `make data`.
+Getting this fast took two attempts. Buffering each region and measuring its distance to the
+coastline worked but took 324 s. Inverting it — buffering each coastline ring instead — did not
+finish at all: one ring wraps Eurasia and Africa with millions of vertices, and buffering that is
+hopeless. What works is cutting the coastline into 200-vertex chunks so their bounding boxes stay
+tight, then asking each region `tree.query(g, predicate='dwithin', distance=TOL)`, which never
+buffers anything. **20 s**, and it marks the same 1,640 regions as the 324 s version.
 
 `regions` gained a `coastal` column, `tools/import_regions.py` runs the pass in its existing
 geometry chain, and `src/server/campaign_factory.cpp` loads it into each territory. Existing saves
@@ -61,6 +64,21 @@ exactly: their "Political Stability - Governance score" measures absence of orga
 against the state, on which a closed authoritarian regime scores well. The United States at 64.3
 is likewise upstream. Only Syria and the Netherlands were ever wrong.
 
+## Issue 3 — the same pitfall in `region_neighbors.py`
+
+Diagnosing the coastal hang exposed the same shape of problem in existing code. A full geometry
+rebuild took ~20 minutes, and `sample <pid>` put 100% of frames in `GEOSDistance_r`, from
+`tools/region_neighbors.py`: it buffered each of 3,402 polygons and ran an exact
+`g.distance(shapes[k])` against every candidate.
+
+`dwithin` means exactly `distance(a, b) <= GAP`, so the buffer-and-measure pair collapses into
+`tree.query(g, predicate='dwithin', distance=GAP)`, which prunes inside the tree and stops as soon
+as the answer is known. **1m53s instead of ~15 minutes, for a byte-identical adjacency set** —
+27,128 directed pairs, verified by set comparison against the previous table, not just by count.
+
+This is rarely felt because `make data` only re-runs `import_stats.py` unless a geometry input
+changes; adding the `coastal` column is what forced the full path.
+
 ## Verification
 
 - `tests/data_test.py` gained coastal assertions: fourteen landlocked countries have no coastal
@@ -68,7 +86,8 @@ is likewise upstream. Only Syria and the Netherlands were ever wrong.
 - Portugal's six interior districts, Japan's eight landlocked prefectures and Brazil's interior
   states all classify correctly, which is the check that the tolerance is not swallowing inland
   regions.
-- `make test` 8/8; `python3 tests/integration.py` passes.
+- `make test` 8/8; `python3 tests/integration.py` passes, 6 turns replaying identically, re-run
+  after the adjacency change because adjacency drives reach and assault.
 
 ## Note
 
