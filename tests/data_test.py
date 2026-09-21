@@ -31,6 +31,13 @@ for code,population,gdp,stability,currency,rate,estimated,source in stats.values
 assert 10_000_000<stats['PT'][1]<11_500_000 and stats['PT'][4]=='EUR' and stats['BG'][4]=='EUR' and stats['US'][5]==1
 mismatched=db.execute("SELECT c.code FROM country_stats c JOIN (SELECT r.affiliation code,SUM(s.population) p,SUM(s.gdp_usd) g FROM region_stats s JOIN regions r ON r.id=s.id GROUP BY r.affiliation) t ON t.code=c.code WHERE t.p!=c.population OR t.g!=c.gdp_usd").fetchall()
 assert not mismatched,mismatched
+# Coastal regions decide where warships may support a fight, so landlocked states must have none.
+sea=dict(db.execute("SELECT affiliation,SUM(coastal) FROM regions WHERE affiliation!='' GROUP BY affiliation"))
+land=dict(db.execute("SELECT affiliation,COUNT(*) FROM regions WHERE affiliation!='' GROUP BY affiliation"))
+for c in ('CH','AT','BO','NP','MN','HU','CZ','SK','BY','PY','ZW','ML','TD','AF'):assert sea[c]==0,(c,sea[c])
+for c in ('GB','NZ','CU','IS'):assert sea[c]==land[c],(c,sea[c],land[c])
+for c in ('PT','BR','JP'):assert 0<sea[c]<land[c],(c,sea[c],land[c])  # a real coast and a real interior
+assert 0.3<sum(sea.values())/sum(land.values())<0.65,sum(sea.values())/sum(land.values())
 seed=json.loads(db.execute('SELECT document FROM world_seed').fetchone()[0]);regions={r for r, in db.execute('SELECT id FROM regions')}
 assert {'Russo-Ukrainian War','Sudanese Civil War'}<={c['name'] for c in seed['conflicts']} and 'North Atlantic Treaty Organization' in {c['name'] for c in seed['commitments']}
 for c in seed['conflicts']:assert set(c['affected_regions'])<=regions and all(set(v)<=regions for v in c['occupied'].values())

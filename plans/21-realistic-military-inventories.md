@@ -87,9 +87,8 @@ unchanged by the re-tuning, because `assault()` compares a ratio and is scale-in
 - Syria (post-2024 reconstitution), Yemen, Libya and Afghanistan are genuinely uncertain.
 - Reserve definitions vary: Vietnam 5,000,000 and Taiwan 1,660,000 are large mobilisation pools
   rather than IISS-style trained reserves, and they make those actors strong in a long war.
-- `src/status/force.cpp` reads a `coastal` field on territories that nothing ever writes, so
-  `ships` contributes to `militaryLabel` but not to any assault at campaign start. Not addressed
-  here; it predates this plan.
-- `country_stats.stability` has implausible entries (Syria 81.6, North Korea 71.4, both above the
-  United States at 64.3), suggesting the name-matching fallback in `download()` mis-attaches some
-  World Bank rows. Out of scope; worth its own plan.
+- ~~`src/status/force.cpp` reads a `coastal` field on territories that nothing ever writes.~~
+  Fixed in plan 22.
+- ~~`country_stats.stability` has implausible entries (Syria 81.6, North Korea 71.4).~~ Fixed in
+  plan 22. Syria was genuinely corrupted, by a different cause than guessed here; North Korea's
+  71.4 turned out to be the World Bank's own published value.

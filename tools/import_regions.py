@@ -91,8 +91,8 @@ def main():
     # The full geometry lives only in SQLite; display_geometry derives the browser's copy and its checksums.
     (CACHE/'manifest.json').write_text(json.dumps(manifest,indent=2))
     db=sqlite3.connect(ROOT/'data/world.sqlite')
-    db.executescript('DROP TABLE IF EXISTS regions; CREATE TABLE regions(id TEXT PRIMARY KEY,name TEXT,affiliation TEXT,kind TEXT,geometry TEXT); DROP TABLE IF EXISTS region_cities; CREATE TABLE region_cities(id TEXT PRIMARY KEY,region TEXT,name TEXT,latitude REAL,longitude REAL,population INTEGER); CREATE INDEX region_city_view ON region_cities(latitude,longitude,population); DROP TABLE IF EXISTS neighbors; CREATE TABLE neighbors(a TEXT,b TEXT,PRIMARY KEY(a,b));')
-    db.executemany('INSERT INTO regions VALUES(?,?,?,?,?)',((f['id'],f['properties']['name'],f['properties']['initial_affiliation'],f['properties']['kind'],json.dumps(f['geometry'])) for f in features))
+    db.executescript('DROP TABLE IF EXISTS regions; CREATE TABLE regions(id TEXT PRIMARY KEY,name TEXT,affiliation TEXT,kind TEXT,geometry TEXT,coastal INTEGER NOT NULL DEFAULT 0); DROP TABLE IF EXISTS region_cities; CREATE TABLE region_cities(id TEXT PRIMARY KEY,region TEXT,name TEXT,latitude REAL,longitude REAL,population INTEGER); CREATE INDEX region_city_view ON region_cities(latitude,longitude,population); DROP TABLE IF EXISTS neighbors; CREATE TABLE neighbors(a TEXT,b TEXT,PRIMARY KEY(a,b));')
+    db.executemany('INSERT INTO regions(id,name,affiliation,kind,geometry) VALUES(?,?,?,?,?)',((f['id'],f['properties']['name'],f['properties']['initial_affiliation'],f['properties']['kind'],json.dumps(f['geometry'])) for f in features))
     from shapely.strtree import STRtree
     ids=list(geos); shapes=[geos[i] for i in ids];tree=STRtree(shapes)
     from shapely import prepare
@@ -108,7 +108,7 @@ def main():
             a,b=affiliations[ids[i]],affiliations[ids[k]]
             if a and b and a!=b and g.intersects(shapes[k]):db.execute('INSERT OR IGNORE INTO neighbors VALUES(?,?)',(a,b))
     db.commit();
-    import region_interiors, region_neighbors, display_geometry
+    import region_interiors, region_neighbors, region_coastal, display_geometry
     display_geometry.main()
     print(f'Imported {len(features)} regions and {seeded} located cities',flush=True)
 if __name__=='__main__':main()

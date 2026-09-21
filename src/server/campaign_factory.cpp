@@ -46,13 +46,15 @@ WorldState newCampaign(Store &reference, const StatusSeed &statusSeed, const std
     for (auto &n : reference.query("SELECT a,b FROM neighbors"))
         neighbors.emplace_back(n["a"].asString(), n["b"].asString());
     assignActorColors(w, neighbors);
-    for (auto &r : reference.query("SELECT id,name,affiliation,kind FROM regions")) {
+    for (auto &r : reference.query("SELECT id,name,affiliation,kind,coastal FROM regions")) {
         auto &t = w.territories[r["id"].asString()];
         t["name"] = r["name"];
         t["initial_affiliation"] = r["affiliation"];
         t["owner"] = r["affiliation"];
         t["controller"] = r["affiliation"];
         t["kind"] = r["kind"];
+        // force::committedForce reads this to decide whether warships can support a fight here.
+        t["coastal"] = r["coastal"].asInt() != 0;
     }
     for (auto &r : reference.query("SELECT * FROM region_interiors")) {
         auto &t = w.territories[r["id"].asString()];

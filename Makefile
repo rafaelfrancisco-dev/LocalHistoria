@@ -8,7 +8,7 @@ all: data
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
 	cmake --build build -j $(JOBS)
 data: data/world.sqlite web/regions.topojson data/.stats-imported
-data/world.sqlite: tools/import_data.py data/source/countries.geojson data/source/json-cities.json.gz
+data/world.sqlite: tools/import_data.py tools/import_regions.py tools/region_coastal.py data/source/countries.geojson data/source/json-cities.json.gz
 	$(GEO_PYTHON) -c "import shapely"
 	python3 tools/import_data.py
 	$(GEO_PYTHON) tools/import_regions.py

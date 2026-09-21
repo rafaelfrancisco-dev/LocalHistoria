@@ -554,8 +554,8 @@
 "year": 2024
 },
 "NL": {
-"value": 78.056023,
-"year": 2017
+"value": 73.2073612,
+"year": 2024
 },
 "NO": {
 "value": 81.3235982,
@@ -710,7 +710,7 @@
 "year": 2024
 },
 "SY": {
-"value": 81.5526095,
+"value": 25.4439405,
 "year": 2024
 },
 "SZ": {
@@ -7635,6 +7635,6 @@
 },
 "license": "CC BY 4.0",
 "military_retrieved": "2026-09-18",
-"retrieved": "2026-09-17",
+"retrieved": "2026-09-21",
 "source": "World Bank Open Data API (World Development Indicators; Worldwide Governance Indicators)"
 }

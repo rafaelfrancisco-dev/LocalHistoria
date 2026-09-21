@@ -8893,7 +8893,6 @@
       "residual_area": 8.222465999987034e-06
     }
   ],
-  "geometry_sha256": "289d050b5f41e6d68a95e231ae755a86c74e35c2d36f7ec9ea381ee59ea320c4",
   "final_overlap_reconciliation": [
     [
       "PS-residual",
@@ -8912,6 +8911,7 @@
     ]
   ],
   "coordinate_precision_degrees": 1e-08,
+  "geometry_sha256": "289d050b5f41e6d68a95e231ae755a86c74e35c2d36f7ec9ea381ee59ea320c4",
   "display_sha256": "b44ab0e4c71c86c0b7594c82c5ae0602cf09c6d375ac5820ecbe26d0aca29031",
   "world_display_sha256": "af1aa296783ee4980b6313fe65e84d7d7267bc325d77912b5b31ebe32ac56fdc",
   "display_tolerance_degrees": {

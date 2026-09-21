@@ -21,16 +21,24 @@ def fetch(path):
 
 def download():
     countries = fetch('/country?format=json&per_page=400')[1]
-    iso2 = {c['id']: c['iso2Code'] for c in countries}
     by_name = {c['name']: c['iso2Code'] for c in countries}
+    previous = json.loads((SOURCE / 'country_stats.json').read_text()) if (SOURCE / 'country_stats.json').exists() else {}
     snapshot = {'source': 'World Bank Open Data API (World Development Indicators; Worldwide Governance Indicators)',
                 'license': 'CC BY 4.0', 'retrieved': datetime.date.today().isoformat(), 'indicators': {}}
+    # The military snapshot is dated separately and is not produced here; keep it across refreshes.
+    if 'military_retrieved' in previous:
+        snapshot['military_retrieved'] = previous['military_retrieved']
     for indicator in INDICATORS:
         source = '&source=3' if indicator.startswith('GOV_WGI') else ''
         rows = fetch(f'/country/all/indicator/{indicator}?format=json&mrnev=1&per_page=400{source}')[1]
         values = {}
         for row in rows:
-            code = iso2.get(row['countryiso3code']) or by_name.get(row['country']['value'])
+            # Use the API's own two-letter id, falling back to the country name. countryiso3code
+            # is never trusted: the API ships non-standard entities carrying another country's
+            # iso3 -- "Taiwan, China" arrives as SYR and "Netherlands Antilles" as NLD -- and
+            # resolving those silently overwrote Syria and the Netherlands. A row with no id and
+            # an unrecognised name is an entity we do not model, so dropping it is correct.
+            code = row['country']['id'] or by_name.get(row['country']['value'])
             if code and row['value'] is not None:
                 values[code] = {'value': row['value'], 'year': int(row['date'])}
         snapshot['indicators'][indicator] = dict(sorted(values.items()))
