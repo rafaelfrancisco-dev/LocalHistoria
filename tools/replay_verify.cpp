@@ -37,8 +37,11 @@ int main(int argc, char **argv) {
                 delta = parseDelta(turn["reference"]["delta"]);
                 result = applyDelta(result, delta, input["geography"]);
             }
+            // Each turn replays under the rules it was played with: later status versions add
+            // monthly consequences that a month saved without them never had.
             if (turn["reference"].isMember("status_version"))
-                result = applyMonthlyStatus(result, delta, adjacency);
+                result = applyMonthlyStatus(result, delta, adjacency,
+                                            turn["reference"]["status_version"].asInt());
             if (encode(result.state) != encode(decode(turn["state"])) ||
                 encode(result.events) != turn["events"])
                 throw std::runtime_error("Replay mismatch at turn " +

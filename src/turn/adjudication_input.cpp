@@ -150,6 +150,34 @@ Json::Value adjudicationInput(const WorldState &w,
                 t["within_reach_of"].append(force::reachDescription(w, adjacency, a, id));
         input["facts"]["territories"][id] = t;
     }
+    // What each acting nation could actually take this month, read off the map rather than off the
+    // wording of its order. Nothing here depends on how an action is phrased.
+    for (auto &a : acting) {
+        if (!input["facts"]["actors"].isMember(a))
+            continue;
+        Json::Value regions(Json::arrayValue);
+        // Without an inventory there is no strength to weigh, and take() lets the occupation
+        // through on reach alone; the facts must say the same.
+        bool weighed =
+            static_cast<const Json::Value &>(w.actors)[a]["status"]["military"].isObject();
+        int most = 0;
+        for (auto &id : input["facts"]["territories"].getMemberNames()) {
+            auto controller = w.territories[id]["controller"].asString();
+            if (controller.empty())
+                controller = w.territories[id]["owner"].asString();
+            if (controller == a || !reaches(w, adjacency, a, id))
+                continue;
+            int capacity = weighed ? force::assaultCapacity(w, adjacency, a, controller, id) : 2;
+            if (capacity < 1)
+                continue;
+            regions.append(id);
+            most = std::max(most, capacity);
+        }
+        if (!regions.empty()) {
+            input["facts"]["actors"][a]["offensive"]["regions"] = regions;
+            input["facts"]["actors"][a]["offensive"]["can_take_this_month"] = most;
+        }
+    }
     for (auto &id : w.entities.getMemberNames()) {
         auto region = w.entities[id]["region"].asString();
         if (!relevant.contains(region))
@@ -184,8 +212,7 @@ Json::Value adjudicationInput(const WorldState &w,
             }
             Json::Value item;
             item["actor"] = a;
-            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")") +
-                             attackGuidance(a, action.text, input["facts"]["territories"]);
+            item["action"] = action.text + (targets.empty() ? "" : " (targets: " + targets + ")");
             input["intentions"].append(item);
         }
     }

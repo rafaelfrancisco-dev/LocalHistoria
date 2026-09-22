@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
         // Adjudication reasons only for actions about war, land or treaties, and only when the
         // context can hold the reasoning.
         for (int ctx : {8192, 32768})
-            for (std::string action : {"Wait", "Invade Spain"}) {
+            for (std::string action : {"Wait", "Invade Spain", "Drive straight to the capital"}) {
                 Json::Value seen;
                 LocalProvider judge(
                     "http://127.0.0.1:8084", .1, [&](auto, auto path, auto b, double) {
@@ -211,14 +211,16 @@ int main(int argc, char **argv) {
                 Json::Value input;
                 input["intentions"][0]["actor"] = "PT";
                 input["intentions"][0]["action"] = action;
+                if (action == "Drive straight to the capital")
+                    input["facts"]["actors"]["PT"]["offensive"]["regions"].append("border");
                 judge.adjudicate(w, input, {});
                 auto audit = judge.takeAudit();
-                bool thinks = ctx == 32768 && action == "Invade Spain";
+                bool thinks = ctx == 32768 && action != "Wait";
                 check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == thinks &&
                           seen["max_tokens"].asInt() == (thinks ? 1536 + 384 : 1536) &&
                           seen.isMember("thinking_budget_tokens") == thinks &&
                           audit[0]["context_limit"].asInt() == ctx,
-                      "Thinking budget follows context size and consequential actions");
+                      "Thinking budget follows context size, actions and state-derived options");
             }
         rejects([&] { LocalProvider bad("", 1); });
         rejects([&] { LocalProvider bad("not-a-url", 1); });

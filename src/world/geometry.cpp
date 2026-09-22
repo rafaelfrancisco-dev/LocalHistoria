@@ -90,33 +90,6 @@ bool ceremonial(const std::string &raw) {
             return false;
     return true;
 }
-std::string attackGuidance(const std::string &actor, const std::string &text,
-                           const Json::Value &territories) {
-    static const std::vector<std::string> stems{"invad",   "occup", "attack", "offensive",
-                                                "conquer", "seize", "annex",  "bombard"};
-    auto lowered = lowercase(text);
-    bool attack = false;
-    for (auto &stem : stems)
-        attack = attack || lowered.find(stem) != std::string::npos;
-    if (!attack)
-        return "";
-    if (territories.isObject())
-        for (auto &id : territories.getMemberNames()) {
-            auto &t = territories[id];
-            if (t["controller"] == actor)
-                continue;
-            for (auto &a : t["within_reach_of"])
-                if (a.isString() &&
-                    (a.asString() == actor || a.asString().rfind(actor + " (", 0) == 0) &&
-                    a.asString().find("too weak") == std::string::npos)
-                    return " [attack: use occupy on one or two regions whose within_reach_of "
-                           "lists " +
-                           actor +
-                           ", plus open_conflict unless already at war; never move_entity on "
-                           "cities]";
-        }
-    return " [no region within reach: describe preparations, no occupy]";
-}
 int constructionMonths(const std::string &kind) {
     static const std::map<std::string, int> months{{"army", 2}, {"fleet", 4}, {"base", 3},
                                                    {"port", 6}, {"city", 24}, {"event_site", 0}};

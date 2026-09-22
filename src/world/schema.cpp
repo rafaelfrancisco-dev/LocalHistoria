@@ -34,7 +34,8 @@ static Json::Value enumeration(const std::set<std::string> &values) {
     return j;
 }
 Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
-                            const std::vector<std::pair<std::string, std::string>> &actions) {
+                            const std::vector<std::pair<std::string, std::string>> &actions,
+                            const Adjacency &adjacency) {
     std::set<std::string> actors, regions, entities, movable, conflicts, commitments, causes;
     if (facts["actors"].isObject())
         for (auto &a : facts["actors"].getMemberNames())
@@ -92,7 +93,11 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         return j;
     };
     defs["flag_design"] = flagDesignSchema();
-    auto op = [&](const char *name, Json::Value properties) {
+    // Defines an operation and returns its reference. `action` differs from `name` where one
+    // operation has several narrowed forms, so each gets its own definition while the model still
+    // writes the single action the compiler dispatches on.
+    auto define = [&](const std::string &name, Json::Value properties,
+                      const std::string &action = "") {
         Json::Value o;
         o["type"] = "object";
         o["additionalProperties"] = false;
@@ -102,10 +107,14 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
             o["required"].append(k);
         properties["action"]["type"] = "string";
         properties["action"]["enum"] = Json::arrayValue;
-        properties["action"]["enum"].append(name);
+        properties["action"]["enum"].append(action.empty() ? name : action);
         o["properties"] = properties;
-        defs[std::string("op_") + name] = o;
-        ops.append(ref(std::string("op_") + name));
+        defs["op_" + name] = o;
+        return ref("op_" + name);
+    };
+    // Operations every actor may attempt, referenced from every outcome.
+    auto op = [&](const char *name, Json::Value properties) {
+        ops.append(define(name, properties));
     };
     Json::Value p;
     auto parties = parse(R"({"type":"array","minItems":2,"maxItems":6})");
@@ -203,21 +212,20 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         op("amend_commitment", p);
     }
     if (!regions.empty()) {
+        // An event site marks where something happened and needs no control, so it is the one
+        // build anyone may place anywhere. Everything else is narrowed per actor below.
         p = Json::objectValue;
-        p["kind"] =
-            parse(R"({"type":"string","enum":["city","port","base","army","fleet","event_site"]})");
+        p["kind"] = parse(R"({"type":"string","enum":["event_site"]})");
         p["name"] = string(120);
         p["actor"] = actor;
         p["region"] = region;
-        op("build", p);
+        ops.append(define("build_site", p, "build"));
         p = Json::objectValue;
         p["region"] = region;
+        // A preceding create_actor may introduce the recipient in this same response. The
+        // compiler resolves that ID/name and rejects any recipient that was never created.
         p["to"] = actorId;
         op("transfer_territory", p);
-        p = Json::objectValue;
-        p["region"] = region;
-        p["by"] = actorId;
-        op("occupy", p);
         p = Json::objectValue;
         p["region"] = region;
         op("restore_control", p);
@@ -282,6 +290,42 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         event["properties"]["causes"]["items"] = enumeration(causes);
     event["properties"]["operations"] = parse(R"({"type":"array","maxItems":5})");
     event["properties"]["operations"]["items"]["anyOf"] = ops;
+    // Building and taking ground are narrowed to what each actor can physically do: it builds only
+    // where it already governs, and occupies only what it can reach. A small model that means to
+    // invade but reaches for the wrong verb used to have its operation dropped and the war stall;
+    // now the grammar cannot express it. Nothing here reads the wording of the order.
+    std::map<std::string, Json::Value> byActor;
+    std::set<std::string> acting;
+    for (const auto &[a, text] : actions)
+        acting.insert(a);
+    for (const auto &a : acting) {
+        std::set<std::string> governs, within;
+        for (auto &id : regions) {
+            if (w.territories[id]["controller"] == a)
+                governs.insert(id);
+            else if (reaches(w, adjacency, a, id))
+                within.insert(id);
+        }
+        Json::Value own(Json::arrayValue);
+        if (!governs.empty()) {
+            p = Json::objectValue;
+            p["kind"] = parse(R"({"type":"string","enum":["city","port","base","army","fleet"]})");
+            p["name"] = string(120);
+            p["actor"] = Json::objectValue;
+            p["actor"]["const"] = a;
+            p["region"] = enumeration(governs);
+            own.append(define("build_" + a, p, "build"));
+        }
+        if (!within.empty()) {
+            p = Json::objectValue;
+            p["region"] = enumeration(within);
+            p["by"] = Json::objectValue;
+            p["by"]["const"] = a;
+            own.append(define("occupy_" + a, p, "occupy"));
+        }
+        if (!own.empty())
+            byActor[a] = own;
+    }
     Json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
@@ -309,6 +353,9 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
                     binding.insert(id);
         item["properties"]["blocked_by"] = enumeration(binding);
         item["properties"]["blocked_by"]["enum"].insert(0, "none");
+        if (byActor.contains(a))
+            for (auto &own : byActor.at(a))
+                item["properties"]["operations"]["items"]["anyOf"].append(own);
         outcomes["prefixItems"].append(item);
     }
     outcomes["minItems"] = outcomes["maxItems"] = Json::UInt(outcomes["prefixItems"].size());

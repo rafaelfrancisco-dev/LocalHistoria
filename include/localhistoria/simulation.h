@@ -29,6 +29,7 @@ struct Order {
 using TurnOrders = std::vector<Order>;
 struct ResolvedEvent {
     std::string actor, action, target, text;
+    std::string region{}; // Present for a front advance; target remains the conflict.
 };
 struct CountryContext {
     std::string actor;

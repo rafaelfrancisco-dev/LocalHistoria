@@ -398,7 +398,7 @@ async function load() {
       }
       for (const event of [...ordered, ...tolls]) {
         const line = document.createElement("p");
-        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : "") + event.text;
+        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : event.action === "front_advance" ? "Front · " : "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.failed || structured?.partial) line.prepend(structured.failed ? "Failed · " : "Partial · ");
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);

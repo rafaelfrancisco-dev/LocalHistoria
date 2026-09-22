@@ -25,6 +25,23 @@ constexpr double stabilityWar[] = {3, 8, 15}; // lowers the level stability drif
 constexpr double stabilityReversion = 0.08, occupiedStability = 25, contractionStability = 5;
 constexpr double maxStabilityStep = 10, maxEffectGdp = 1.5, maxEffectStability = 8;
 constexpr size_t maxAffected = 12;
+// A front moves on its own only where one side is decisively superior: assaultCapacity 2, which
+// is the same 1.5x threshold the compiler already uses to allow two seizures a month. A merely
+// contested front (capacity 1) costs lives and gains nothing, which is what most real wars do.
+// Pressure per month scales with how far past that threshold the ratio sits, and a region changes
+// hands when it reaches pressureTake.
+constexpr double pressureGain[] = {0.0, 0.25, 0.45}; // by declared intensity: low / medium / high
+constexpr double pressureFloor = 1.5;                // the capacity-2 threshold, in ratio terms
+constexpr double pressureRatioCap = 8.0;             // a walkover is still one front at a time
+constexpr double pressureTake = 1.0;                 // pressure spent per region taken
+constexpr double pressureDecay = 0.5; // share of a month's gain a stalled attacker loses
+// A front that has not moved for this long is a stalemate: its belligerents are told so, which is
+// what gives them a reason to talk. It never scales the toll down: a static front is not a quiet
+// one.
+constexpr int warLullMonths = 6;
+// Reservists count toward defence only: a mobilisation base for holding home ground, never an
+// expeditionary pool available next month.
+constexpr double reserveDefence = 0.05;
 } // namespace rate
 namespace detail {
 using Int = Json::Int64;
@@ -53,5 +70,9 @@ double jitter(const WorldState &w, const std::string &key);
 namespace force {
 double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::string &a,
                           const std::vector<std::string> &regions);
+// {attack, defend, capacity} for an assault on one region. assaultCapacity() returns only the
+// band; the monthly front model needs the ratio behind it.
+Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
+                    const std::string &d, const std::string &r);
 } // namespace force
 } // namespace lh

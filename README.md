@@ -68,6 +68,7 @@ The supplied map, compressed city dataset, all 4:3 flags, and Leaflet are projec
 A turn is one month, and the game keeps outcomes realistic:
 
 - Force reaches only regions bordering land you control, or near your active armies and fleets. Actual troops, aircraft, warships, wealth and defender advantages determine whether zero, one or two regions can be taken; the overall cap is two per month.
+- Open conventional wars advance autonomously only at decisive superiority; contested fronts hold. Reservists contribute to defence. After six months without gains, the parties see a stalemate and are prompted to consider terms; casualties continue until they ease the fighting or agree a ceasefire. Peace offered to you still needs your acceptance.
 - Conquest takes two steps: occupy a region first, then annex it in a later month.
 - Armies advance one region per month and fleets sail up to 1,500 km.
 - Construction takes months: armies 2, bases 3, fleets 4, ports 6, cities 24. Concurrent projects are limited by GDP; armies and fleets reserve available personnel and warships.

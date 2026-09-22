@@ -115,6 +115,11 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
             }
     auto share = defending ? (mobilised(w, a) ? 0.40 : 0.25) : (mobilised(w, a) ? 0.30 : 0.20);
     land += share * (noLand ? number(m, "active") : uncommittedPersonnel(w, a)) / count;
+    // Reservists hold ground they already live on; they are not an expeditionary pool, so they
+    // count only in defence. Without this a nation whose strength is mostly its reserve reads as
+    // defenceless.
+    if (defending)
+        land += rate::reserveDefence * number(m, "reserve") / count;
     double air = (defending ? 0.50 : 0.30) * number(m, "aircraft") * 200 / count;
     double sea = naval ? 0.30 * number(m, "ships") * 1500 : 0;
     double cp = quality(w, a) * (land + air + sea) * (defending ? 1.5 : 1);
@@ -162,11 +167,11 @@ std::string militaryLabel(const WorldState &w, const std::string &a) {
     const auto &m = inventory(w, a);
     auto cp = quality(w, a) *
               (number(m, "active") + number(m, "aircraft") * 200 + number(m, "ships") * 1500);
-    return cp < 20000      ? "negligible"
-           : cp < 150000   ? "minor"
-           : cp < 750000   ? "regional power"
-           : cp < 2000000  ? "major power"
-                           : "superpower";
+    return cp < 20000     ? "negligible"
+           : cp < 150000  ? "minor"
+           : cp < 750000  ? "regional power"
+           : cp < 2000000 ? "major power"
+                          : "superpower";
 }
 std::string reachDescription(const WorldState &w, const Adjacency &adj, const std::string &a,
                              const std::string &r) {

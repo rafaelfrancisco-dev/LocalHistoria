@@ -150,6 +150,8 @@ Json::Value encode(const std::vector<ResolvedEvent> &e) {
         x["action"] = v.action;
         x["target"] = v.target;
         x["text"] = v.text;
+        if (!v.region.empty())
+            x["region"] = v.region;
         j.append(x);
     }
     return j;

@@ -1,8 +1,10 @@
+#include "localhistoria/status.h"
 #include "world_tests.h"
 void WorldTests::treaties() {
     // Treaty terms take effect on signing; treaties expire, can be amended, and are broken by
     // acting against a partner.
     auto atPeace = resolve(namedWorld.state);
+    atPeace.state.conflicts["c1-1"]["static_months"] = 8;
     auto peaceJson =
         R"({"events":[{"description":"Old makes peace","actor":"old-state",)"
         R"("blocked_by":"none","background":false,"causes":[],)"
@@ -122,6 +124,13 @@ void WorldTests::treaties() {
               accepted2.state.commitments["k2-1"]["terms"][0]["action"] == "end_conflict" &&
               !accepted2.state.commitments["k2-1"].isMember("expires_turn"),
           "Accepted terms take effect");
+    check(offeredPeace.state.proposals["k2-1"]["status"] == "pending" &&
+              peaceOffer.events[0]["text"].asString().find("awaits") != std::string::npos,
+          "Peace from a stalled war awaits the player's answer");
+    auto quiet = applyMonthlyStatus(accepted2, {}, adjacency);
+    for (const auto &event : quiet.events)
+        check(event.action != "war_toll" || event.target != "c1-1",
+              "Accepted peace silences the stalled war's toll");
     auto treatySchema =
         operationSchema(treaty.state, encode(treaty.state), {{"old-state", "Renew"}});
     check(operation(treatySchema, "amend_commitment").isObject() &&

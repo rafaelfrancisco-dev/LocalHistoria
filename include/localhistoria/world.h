@@ -12,8 +12,11 @@ using Adjacency = std::map<std::string, std::set<std::string>>;
 // actions: (actor, text) pairs in the order the model sees them; the schema requires one outcome
 // per action. The first six words of an action, which open its adjudicated outcome.
 std::string actionOpening(const std::string &);
+// adjacency narrows build and occupy per acting actor: it can only build where it already governs
+// and only occupy what it can physically reach, so the grammar cannot express the wrong operation.
 Json::Value operationSchema(const WorldState &, const Json::Value &facts,
-                            const std::vector<std::pair<std::string, std::string>> &actions);
+                            const std::vector<std::pair<std::string, std::string>> &actions,
+                            const Adjacency &adjacency = {});
 // Physically impossible operations (reach, pacing, ownership) block only their event.
 // responses: the player's [{proposal, accept}] answers to last month's treaty offers, settled
 // first; unanswered offers lapse. priorEvents: IDs already in campaign history, so a background
@@ -48,9 +51,4 @@ bool consequential(const std::string &text);
 // declaration, a ceremony. An independent slot has one action a month, so one of these is a month
 // thrown away and is worth a single re-ask.
 bool ceremonial(const std::string &text);
-// For an attack order, a short hint appended to the intention so the model reaches for occupy
-// rather than moving a city. territories: the adjudication facts with each region's within_reach_of
-// list.
-std::string attackGuidance(const std::string &actor, const std::string &text,
-                           const Json::Value &territories);
 } // namespace lh

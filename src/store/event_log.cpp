@@ -141,6 +141,17 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                                    : d["background"].asBool()     ? "world"
                                    : x["actor"] == w.player       ? "player"
                                                                   : "nation";
+            } else if (action == "front_advance") {
+                // Unlike the monthly toll, ground changing hands is news: it belongs in the
+                // journal and on the map even though no one ordered it.
+                item["major"] = true;
+                item["category"] = "war";
+                item["id"] = item["id"].asString() + "-" + x["region"].asString();
+                item["conflicts"].append(target);
+                item["regions"].append(x["region"]);
+                if (w.conflicts.isMember(target)) {
+                    item["actors"] = w.conflicts[target]["actors"];
+                }
             } else if (action == "war_toll") {
                 // Fronts already show on the Wars & treaties map; the monthly toll is routine.
                 item["major"] = false;

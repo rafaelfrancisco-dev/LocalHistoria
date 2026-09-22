@@ -14,7 +14,8 @@ struct Front {
 // One month of applyMonthlyStatus: each numbered step is a method over the shared month state.
 class MonthlyStatus {
   public:
-    MonthlyStatus(const Resolution &base, const WorldDelta &delta, const Adjacency &adjacency);
+    MonthlyStatus(const Resolution &base, const WorldDelta &delta, const Adjacency &adjacency,
+                  int version);
     Resolution run();
 
   private:
@@ -29,6 +30,21 @@ class MonthlyStatus {
     // 4
     void collectSeized();
     double seizedShare(const std::string &region, double population);
+    // 4b
+    // Where an attacker would push next against one defender, and the odds it faces there.
+    struct Axis {
+        std::string region;
+        double ratio = 0;
+        int capacity = 0;
+    };
+    bool atPeace(const std::string &a, const std::string &b) const;
+    void advanceFronts();
+    void advanceConflict(const std::string &id);
+    Axis bestAxis(const std::string &attacker, const std::string &defender) const;
+    double accrue(const std::string &id, const std::string &attacker, const std::string &defender,
+                  int declared) const;
+    bool takeGround(const std::string &id, const std::string &attacker, const std::string &defender,
+                    double &held);
     void addFront(const std::string &id);
     // 5
     Int move(const std::string &from, const std::string &to, Int count);
@@ -47,6 +63,8 @@ class MonthlyStatus {
     const Resolution &base;
     const WorldDelta &delta;
     const Adjacency &adjacency;
+    // The status rules this month was played under; replay passes the turn's recorded value.
+    const int version;
     Resolution r;
     WorldState &w;
     Json::Value &T;

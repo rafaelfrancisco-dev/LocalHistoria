@@ -44,6 +44,7 @@ Military inventory:
 - `national_status[id].military` exposes those fields plus `uncommitted_personnel`, `uncommitted_ships` and `label`; `military_text` is the readable summary. Model context replaces the numeric `status.military` object with that summary. API clients continue to receive numbers.
 - Army entities carry integer `personnel`; fleets carry integer `ships`. Active and unfinished formations reserve inventory; inactive formations release it. `loss_accounted` on destroyed formations prevents repeat deductions.
 - Turns with `status_version: 2` use inventory-based combat and casualties. A legacy save receives a frozen `reference.military_seed` on its first upgraded turn; replay applies this without current reference data. Historical turns without inventories retain the old casualty calculation.
+- `status_version: 3` also recomputes conventional front momentum and stalemate months. An autonomous seizure emits `front_advance` with `actor`, conflict `target`, exact `region` and factual `text`; it appears in the journal changes and as a major map event. Replay uses each turn's recorded version.
 
 Wars and treaties:
 

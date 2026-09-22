@@ -25,8 +25,8 @@ There are no fixed action types or costs. National status (population, GDP, stab
 
 1. Reserves two independent national actions and one independent regional action — the regional slot going to a region with something at stake, a front, occupied land or an unanswered demand, before a quiet one — then picks up to four reactive AI nations: nations the player's actions name (matched on whole words) or target, open conflict and commitment parties, then one rotating neighbor. Each writes one free-text action of its own, without thinking; nations the player's actions name or that are in an open conflict with the player write up to two, since those are the months that matter. An independent slot whose answer is a ceremony — a town hall, a heritage or awareness declaration, a festival — is asked once more for something at stake, and the second answer stands whatever it is; a slot spent on a gesture is a decision call and an adjudicated outcome that change nothing.
 2. Runs `resolve`: advances the month and completes construction whose `completes_turn` has arrived, recording a factual completion event.
-3. Asks the model to adjudicate every action together and compiles its answer into a validated delta. It thinks only when at least one action concerns war, military moves, borders, territory, independence, sanctions or treaties (`consequential()` in `src/world.cpp`); a month of reforms, talks and trade is answered directly.
-4. Applies `applyMonthlyStatus`: demographic and economic trends, model effects, occupation, war fronts, casualties, displacement and stability.
+3. Asks the model to adjudicate every action together and compiles its answer into a validated delta. It uses a bounded reasoning pass when an action concerns war, military moves, borders, territory, independence, sanctions or treaties, or when state-derived offensive options are present for an acting nation. The latter covers wording such as “drive to the capital” without adding attack keywords; quiet months without either signal are answered directly.
+4. Applies `applyMonthlyStatus`: demographic and economic trends, model effects, occupation, autonomous front advances, war fronts, casualties, displacement and stability. Advances change control only and produce authoritative `front_advance` events before the toll.
 5. Commits state, delta, events and inference records in one transaction, then requests narration.
 
 Actor IDs are independent of country codes. A landless actor keeps playing.
@@ -58,8 +58,8 @@ The model does not write deltas directly. Asking a 4B model for exact `before`/`
 One turn is one month. The prompt tells the model to advance large goals by a step. C++ enforces physical limits it cannot talk its way around, judging everything against the start-of-month world:
 
 - **Reach.** Force (`occupy`, an owner retaking land, destroying another nation's entity) reaches a region only if it borders land the actor controls, or holds or borders one of its active armies or fleets. Residual sliver regions grant no reach.
-- **Strength.** Quality is `clamp(sqrt(GDP per capita / 20000), 0.6, 1.4)`. Local active armies plus 20% of uncommitted personnel (30% in an open war/civil war), 30% of combat aircraft × 200, and eligible naval support form attack strength. Defence uses 25%/40% uncommitted personnel and 50% aircraft divided across distinct enemies, a 1.5 advantage, and the same naval support. Naval support is 30% of warships × 1,500 where the region is coastal, a port/fleet/port-marked city exists, or the nation's fleet is nearby. Civil war multiplies defence by 0.6; stability below 25 by 0.8. An attacker in a shared conflict at least twelve months old gets ×0.6. Peaceful neighbours are not enemies.
-- **Tempo.** Attack/defence ratios of at least 1.5 allow two regions; at least 0.75 allows one; below 0.75 allows none. Limits apply per attacker/defender, alongside a global maximum of two regions per actor. Formations are subtracted from uncommitted pools, never counted twice.
+- **Strength.** Quality is `clamp(sqrt(GDP per capita / 20000), 0.6, 1.4)`. Local active armies plus 20% of uncommitted personnel (30% in an open war/civil war), 30% of combat aircraft × 200, and eligible naval support form attack strength. Defence uses 25%/40% uncommitted personnel, 5% of reserves and 50% aircraft divided across distinct enemies, a 1.5 advantage, and the same naval support. Naval support is 30% of warships × 1,500 where the region is coastal, a port/fleet/port-marked city exists, or the nation's fleet is nearby. Civil war multiplies defence by 0.6; stability below 25 by 0.8. An attacker in a shared conflict at least twelve months old gets ×0.6. Peaceful neighbours are not enemies.
+- **Tempo.** Attack/defence ratios of at least 1.5 allow two regions; at least 0.75 allows one; below 0.75 allows none. Limits apply per attacker/defender, alongside a global maximum of two regions per actor. Formations are subtracted from uncommitted pools, never counted twice. Open `war` and `border_conflict` fronts also accumulate deterministic pressure at capacity 2: declared medium/high intensity gives `0.25/0.45 × log2(clamp(ratio, 1.5, 8) / 1.5) × jitter` per month. One pressure point takes one reachable region; ordered and autonomous gains share the same ceiling. Capacity 0/1 bleeds pressure instead. Low intensity and open peace agreements prevent autonomous advances. Both sides need inventories. Civil wars and insurgencies remain model-adjudicated because inventory ratios alone do not represent defections or popular support.
 - **Capacity.** Concurrent construction is `max(1, floor(GDP / US$150 billion))`, excluding event sites. Armies reserve 10% of active personnel rounded to 1,000, clamped to 5,000–150,000 and available personnel; fleets reserve 25% of warships rounded to a whole ship, clamped to 1–30 and available ships. Unfinished formations also reserve inventory; inactive units release it. Destroyed units lose their allocation once. Reactivation requires available inventory.
 - **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month.
 - **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished.
@@ -121,7 +121,7 @@ Entities in those regions are listed too, except cities outside the regions acti
 
 A region comes with `within_reach_of` when an acting nation can project force there, listing those nations.
 
-An action that reads as an attack (invade, occupy, attack, offensive, conquer, seize, annex, bombard) gets a short hint appended to its text: use `occupy` on one or two regions whose `within_reach_of` lists the actor, plus `open_conflict` unless already at war, and never `move_entity` on cities. When no listed foreign region is within reach, the hint says to describe preparations instead. The general example sits far from the action in a long prompt; the hint puts it next to the action the model is adjudicating. For a short order such as "Invade Spain." the six-word outcome opener includes the start of the hint, so the model restates it before answering. `move_entity` only offers the active armies and fleets among the listed entities, and is absent from the schema when there are none.
+Invasion handling never tests the player's vocabulary. Each action's schema permits ordinary `build` only in regions its actor already controls, and `occupy` only in reachable foreign regions with `by` pinned to that actor. Event sites remain a separate build variant allowed anywhere listed. State-derived `offensive` facts list takeable regions and the monthly ceiling; `within_reach_of` supplies strength assessments. The compiler still enforces strength, treaties and the shared two-region ceiling. `move_entity` only offers active armies and fleets and is absent when there are none.
 
 Validation checks collection/ID references, preconditions, duplicate writes, locations (including polygon holes), construction schedules, fixed geography, new actor land allocation and event associations. Destruction is represented by status, not deletion. Conflicts and commitments use actor IDs, text, and open/resolved status.
 
@@ -155,13 +155,13 @@ Relevant regions show their population. The adjudication prompt asks the model t
 1. **Trend.** Region population and GDP grow by the owner's annual rates ÷ 12 (clamped to ±5% and ±10% a year).
 2. **Model effects.** Economy: −1.0 / −0.3 / 0 / +0.2 / +0.5% GDP. Stability: −6 / −2 / 0 / +1 / +3. Per-actor totals are capped at ±1.5% and ±8, and a quarter of the stability effect shifts the baseline.
 3. **Occupation.** Occupied regions lose 2% of output a month, down to 40% of their value when occupation began. Seeded occupations start at that floor.
-4. **Fronts.** Each open conflict's affected regions, capped at 12, are:
+4. **Fronts.** Before drawing fronts, conventional wars advance from frozen force inputs where decisive superiority has accumulated enough pressure. Only control changes, and the defender can retake land if the balance reverses. Each open conflict's affected regions, capped at 12, are:
    - regions whose control changed between its parties this month;
    - regions of the parties where a party's entity was destroyed;
    - seeded theatre regions still held by a party;
    - regions controlled by a party that border a region controlled by another party.
 
-   Effective intensity is `none` under an open ceasefire or peace treaty between two parties, `high` when control changed or an entity was destroyed this month, `low` when there is no front, and otherwise the declared intensity. A conflict started less than 3 months ago stays at most `medium` until control changes or an entity is destroyed.
+   Effective intensity is `none` under an open ceasefire or peace treaty between two parties, `high` when control changed or an entity was destroyed this month, `low` when there is no front, and otherwise the declared intensity. A conflict started less than 3 months ago stays at most `medium` until control changes or an entity is destroyed. `static_months` counts months without territorial gains; after six, the parties see a stalemate and are encouraged to negotiate. A static front does not automatically cool: casualties continue at the declared intensity until a party scales it down or a ceasefire takes effect.
 5. **Toll**, per month by intensity low / medium / high, scaled by kind (war and civil war 1.0, border conflict 0.4, insurgency 0.3):
 
    | | low | medium | high |
@@ -185,7 +185,9 @@ Relevant regions show their population. The adjudication prompt asks the model t
 
 A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
 
-Limitations: conflicts have parties, not sides, so co-belligerents listed in one war count as opposing each other. Military inventories include explicitly labelled estimates and mixed source years. Regional splits are estimates.
+Status version 3 records autonomous advances and stalemates. Replay passes each turn's recorded version, so existing version-2 campaigns keep their original monthly consequences.
+
+Limitations: conflicts have parties, not sides. Autonomous advances skip pairs joined by an open alliance, defence pact, union, non-aggression pact, ceasefire or peace treaty; other multi-party relationships remain approximate. Military inventories include explicitly labelled estimates and mixed source years. Regional splits are estimates.
 
 ## Historical preparation and context
 
@@ -206,6 +208,18 @@ Every inference reads the context size from `/props` (at least 8,192 tokens, cac
 
 ## Measured model results
 
+**Plan 24 follow-up (2026-09-22).** Qwen3.5-4B, one 32,768-token slot. The three invasion-wording
+cases use synthetic Portuguese superiority (800,000 active, 500 aircraft) to isolate comprehension;
+`weak_raid` and `overreach` keep the real force inventories and both leave Spain unoccupied in 3/3
+runs. Final invasion/finish/capital adjudications took 17.1–23.8 seconds with 6,954–6,988-byte schemas.
+Capital-push initially failed 0/3 without reasoning; extra prompt instruction alone also failed. Enabling
+the existing bounded reasoning pass when the acting nation has state-derived offensive options produced
+3/3. A separate secession check passed, preserving creation and land transfer in one response.
+These are map-outcome checks, not a guarantee of good prose: some descriptions contradict their accepted
+operations or contain truncated/mixed-language text. Reports are local ignored `logs/plan24-final-*`
+and `logs/plan24-v3-capital_push-*`; they are not shipped as reference data.
+
+
 Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1024 --ctx-checkpoints 8`) on a 16 GB Apple silicon MacBook Pro. Adjudication used thinking with a bounded budget; AI actions and narration did not. Measured 2026-09-17.
 
 `build/world_probe out.json` runs nine isolated free-text scenarios on a four-region map. Each checks the outcome, not just validity. Prompts are about 1,460–1,590 tokens and each adjudication takes 3–26 s (measured 2026-09-18). Sampling (temperature 0.6) makes results vary between runs. Over the final three runs:
@@ -219,7 +233,9 @@ Model: Qwen3.5-4B Q4_K_M via `llama serve` (32,768-token context, `--cache-ram 1
 | reform: "Launch a national education reform." | recorded event, no map change | 3/3 |
 | overreach: "Conquer all of Spain this month." | Spain's interior untouched, nothing annexed | 3/3 |
 | capital: "Build a new city in North to serve as the future capital." | city under construction in North | 3/3 (2/3 on 2026-09-17, once narrated only) |
-| invasion: "Invade Spain." | East controlled by Portugal, still owned by Spain, one open war | 2/3 (once the model narrated the invasion as repelled and tried to build armies in East, which the game dropped) |
+| invasion: "Invade Spain." (plan 24 synthetic superior force) | East controlled by Portugal, still owned by Spain; interior untouched | 3/3 |
+| finish_invasion: "Finish the invasion of Spain to avoid the war stalling." | Same bounded occupation | 3/3 |
+| capital_push: "Drive straight through to Spain's capital to topple the regime." | Reachable East occupied; distant interior untouched | 3/3 |
 | treaty_consent (Spain): "Sign a defence pact with Portugal." | no pact; one proposal awaiting Portugal (the player), whose own actions do not mention Spain | not re-run since authority checks (earlier expectation, a pact, matched 3/3) |
 
 The first design iterations failed in informative ways:
@@ -247,10 +263,10 @@ End-to-end campaign (disposable save, Portugal on real ADM1 regions; one AI nati
 
 Turn output diet (measured 2026-09-18, `tools/living_world_probe.py --months 2`, Portugal with no player orders, so each month adjudicates four intentions: two independent national, one regional and one reactive neighbor). Before: 159 s and 212 s to commit, with adjudication generating about 2,650 tokens (950 reasoning) for a 13-intention month. After reactive nations dropped to one or two actions, `significance` left the schema, descriptions shrank to 160 characters and reasoning became conditional: 94.6 s and 87.5 s to commit; adjudication generated 1,218 and 1,294 tokens including reasoning (both months reasoned, since "trade accord" and "data sovereignty" match the consequential stems), prompts of 4,327 and 4,581 tokens, 37–40 s of generation; each decision generated 48–215 tokens. Both months replayed identically.
 
-Earlier runs showed the model's typical mistakes. It sometimes picks the wrong operation for an action (e.g. `build` in an enemy region for an invasion) or a mismatched reason. In those cases the game blocks the event, and the journal says why.
+Earlier runs showed the model's typical mistakes. Historically it sometimes chose `build` in enemy land for an invasion. The per-actor schema now excludes that operation; a mismatched reason or a legal but unhelpful outcome remains possible. In those cases the game blocks the event, and the journal says why.
 
 ## Validation boundaries
- Structural validity is separate from whether a model outcome sensibly follows a player's action. There is no combat strength model: reach and tempo limit what force can do, but whether an attack succeeds is the model's judgment. A small model may misunderstand an action or narrate background events of little consequence. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
+ Structural validity is separate from whether a model outcome sensibly follows a player's action. The deterministic force model limits ordered attacks and advances overwhelmingly superior conventional fronts autonomously; the model still judges the outcome of an individual order within those limits. A small model may misunderstand an action or narrate background events of little consequence. Campaign history retrieval retains 20 relevant historical events plus current commitments; it is not an unlimited-history prompt.
 
 See [living political world](../README.md#a-living-political-world) and [architecture](ARCHITECTURE.md#independent-politics-and-identity-persistence) for regional authorization, identity operations, deterministic flags and compatibility. The model timing results above predate the three additional independent monthly actions.
 
@@ -262,4 +278,4 @@ Strength labels use quality × (active + aircraft × 200 + ships × 1,500): belo
 
 Legacy formation defaults are 10,000 personnel / 3 ships. Military backfill preserves current GDP, population, wars and inventories, and proportionally reduces overallocated legacy formations to the available national inventory. Old destroyed units are treated as already accounted for. New actors receive estimated inventories rather than cloning a parent's forces. Frozen military seed references and the historical no-inventory casualty branch preserve replay.
 
-The written formulas govern the examples: India at roughly 165,000 versus 154,000 is **limited**, not superior; the seeded long-war Russian attack at Dnipropetrovsk is roughly 439,000 versus 434,000, allowing one region. Adding field armies also decreases the uncommitted pool.
+The pinned plan-24 fixture gives India roughly 198,000 against 209,000 (**limited**) and the long-war Russian attack roughly 380,000 against 484,000 (one region if ordered, no autonomous advance). Adding field armies also decreases the uncommitted pool.

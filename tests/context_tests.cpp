@@ -202,7 +202,7 @@ int main() {
                   R"("status":"active"})");
         e.conflicts["war-1"] = parse(
             R"({"name":"Rhine War","kind":"war","actors":["FR","DE"],"status":"open","text":"War",)"
-            R"("affected_regions":["r-FR","r-DE"]})");
+            R"("static_months":7,"affected_regions":["r-FR","r-DE"]})");
         std::map<std::string, CountryContext> contexts;
         std::map<std::string, TurnOrders> intentions;
         intentions["PT"] = {{"Invade Spain across the border", {}},
@@ -225,6 +225,10 @@ int main() {
         }
         auto adjudication = adjudicationInput(e, contexts, intentions, {{"r-PT", {"r-ES"}}});
         auto &facts = adjudication["facts"];
+        check(facts["actors"]["FR"]["conflicts"]["war-1"]["months_without_gains"] == 7 &&
+                  facts["actors"]["FR"]["conflicts"]["war-1"]["front"].asString().find(
+                      "stalemate") != std::string::npos,
+              "Stalemate and its duration reach the adjudicator through national facts");
         check(adjudication["intentions"].size() == 13 && dump(adjudication).size() < 30000,
               "Adjudication input stays small: " + std::to_string(dump(adjudication).size()));
         check(adjudication["reference_only"].getMemberNames() ==
@@ -248,6 +252,15 @@ int main() {
                   facts["territories"].isMember("r-held") &&
                   !facts["territories"]["r-held"].isMember("within_reach_of"),
               "Reach listed only when someone reaches");
+        // What a nation could take is read off the map, never off the wording of its order, and
+        // no intention carries an appended hint any more.
+        check(facts["actors"]["PT"]["offensive"]["regions"] == parse(R"(["r-ES"])") &&
+                  facts["actors"]["PT"]["offensive"]["can_take_this_month"].asInt() >= 1 &&
+                  !facts["actors"]["ES"].isMember("offensive"),
+              "Offensive options come from the map");
+        check(dump(adjudication["intentions"]).find("[attack:") == std::string::npos &&
+                  dump(adjudication["intentions"]).find("within reach") == std::string::npos,
+              "Intentions carry no appended attack hint");
 
         // Well inside the context, requests skip the template and tokenizer, and /props is fetched
         // once a minute.

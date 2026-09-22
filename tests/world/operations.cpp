@@ -80,17 +80,37 @@ void WorldTests::operations() {
                         "move_entity")
                   .isNull(),
           "No move_entity without a finished unit");
-    auto reachFacts =
-        parse(R"({"west":{"controller":"old-state","within_reach_of":["old-state"]},)"
-              R"("march":{"controller":"neighbor","within_reach_of":["old-state"]}})");
-    check(attackGuidance("old-state", "Invade Neighbor.", reachFacts).find("use occupy") !=
-                  std::string::npos &&
-              attackGuidance("old-state", "Build a port", reachFacts).empty(),
-          "Attack orders get an occupy hint");
-    reachFacts["march"]["within_reach_of"] = Json::arrayValue;
-    check(attackGuidance("old-state", "Invade Neighbor.", reachFacts)
-                  .find("no region within reach") != std::string::npos,
-          "No hint to occupy when nothing is reachable");
+    // Taking ground is bounded by the grammar, not by the wording of the order: an actor may only
+    // build where it governs and only occupy what it can reach, whatever it wrote.
+    Adjacency border{{"west", {"march"}}, {"march", {"west"}}};
+    auto reach = operationSchema(opsBase.state, facts, {{"old-state", "Do something"}}, border);
+    auto own = [&](const char *action, const char *a) {
+        for (auto &o : reach["properties"]["events"]["prefixItems"][0]["properties"]["operations"]
+                            ["items"]["anyOf"]) {
+            auto at = o["$ref"].asString();
+            auto &d = reach["$defs"][at.substr(8)];
+            if (d["properties"]["action"]["enum"][0] == action &&
+                (at == std::string("#/$defs/op_") + action + "_" + a))
+                return d;
+        }
+        return Json::Value();
+    };
+    check(own("build", "old-state")["properties"]["region"]["enum"] ==
+                  parse(R"(["east","west"])") &&
+              own("build", "old-state")["properties"]["kind"]["enum"].size() == 5,
+          "An actor builds only where it governs, and event sites are a separate operation");
+    check(own("occupy", "old-state")["properties"]["region"]["enum"] == parse(R"(["march"])") &&
+              own("occupy", "old-state")["properties"]["by"]["const"] == "old-state",
+          "An actor occupies only what it can reach, on its own behalf");
+    check(own("occupy", "neighbor").isNull() && own("build", "neighbor").isNull(),
+          "An actor's operations never appear in another's outcome");
+    check(reach["$defs"]["op_build_site"]["properties"]["region"]["enum"].size() ==
+                  facts["territories"].size() &&
+              operation(reach, "transfer_territory")["properties"]["to"].isMember("pattern"),
+          "Event sites remain placeable anywhere and a newly created state can receive land");
+    check(operationSchema(opsBase.state, facts, {{"old-state", "Do something"}})["$defs"].isMember(
+              "op_occupy_old-state") == false,
+          "Nothing is occupiable without adjacency to reach it");
     auto &developments = schema["properties"]["world_events"];
     check(developments["maxItems"].asInt() == 2 &&
               !developments["items"]["properties"].isMember("operations") &&

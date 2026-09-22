@@ -55,7 +55,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
 class Server:
  def __init__(self,folder,endpoint=None,timeout=.25,extra={}):
   self.p=port();self.base=f'http://127.0.0.1:{self.p}';self.config=folder/'config.json';self.save=folder/'save.sqlite';self.log=open(folder/'server.log','a')
-  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'reference_network':False,**extra}))
+  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'turn_budget_seconds':15,'reference_network':False,**extra}))
   self.endpoint=endpoint
  def start(self):
   args=[str(ROOT/'build/localhistoria'),str(self.config)]
@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    month=s.get('campaign')['journal'][0];assert month['narration_fallback'] in (1,'1',True) and 'fictional administration' not in month['narration'],month['narration']
    current=s.get('campaign')['state'];offers=[k for k,p in current['proposals'].items() if p['status']=='pending'];assert len(offers)==1 and offers[0] not in current['commitments'],current['proposals']
    s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True}]),409)
-   j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);assert s.poll(j['id'])['status']=='complete'
+   j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);accepted_job=s.poll(j['id']);assert accepted_job['status']=='complete',accepted_job
    current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord' and current['commitments'][offers[0]]['expires_turn']==current['turn']+6,current['commitments']
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77

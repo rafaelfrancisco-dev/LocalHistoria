@@ -22,8 +22,17 @@ void campaign(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb)
     j["journal"] = s.store.journal();
     if (!j["state"].isNull()) {
         auto w = decode(j["state"]);
-        for (auto &month : j["journal"])
+        for (auto &month : j["journal"]) {
             month["changes"] = changeSummaries(s.store.monthChanges(month["turn"].asInt()), w);
+            for (const auto &event : month["events"])
+                if (event["action"] == "front_advance") {
+                    Json::Value change;
+                    change["kind"] = "territory";
+                    change["id"] = event["region"];
+                    change["summary"] = event["text"];
+                    month["changes"].append(change);
+                }
+        }
     }
     j["active_jobs"] = s.store.query("SELECT id,status FROM jobs WHERE status='running'");
     j["llama_endpoint"] = s.provider.endpointValue();

@@ -52,8 +52,12 @@ bool validConflictKind(const std::string &);
 bool validCommitmentKind(const std::string &);
 bool validIntensity(const std::string &);
 bool validEffect(const std::string &);
+// 3 added autonomous front movement and stalemate tracking; turns recorded at 2 keep neither.
+constexpr int statusVersion = 3, frontMomentumVersion = 3;
 // Deterministic monthly consequences after the accepted delta: growth, war fronts, casualties,
-// displacement, GDP and stability. Replay runs it again, so it needs no inference.
-Resolution applyMonthlyStatus(const Resolution &, const WorldDelta &, const Adjacency &);
-constexpr int statusVersion = 2;
+// displacement, GDP and stability. Replay runs it again, so it needs no inference. `version` is the
+// turn's recorded status_version: a live month uses the current rules, while replay passes what the
+// turn was actually played with, so rules added later never rewrite a month saved without them.
+Resolution applyMonthlyStatus(const Resolution &, const WorldDelta &, const Adjacency &,
+                              int version = statusVersion);
 } // namespace lh

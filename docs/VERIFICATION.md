@@ -61,3 +61,34 @@ Not covered: full assistive-technology audit, other browser engines, large multi
 ## Environment note
 
 Installing Drogon triggered a Homebrew automatic-update conflict in the existing `gromgit/fuse` tap. That task-started rebase was aborted and its original `main` branch and two local commits restored; its worktree was clean afterward. Drogon remained installed. No tap changes are part of this project.
+
+
+## War momentum and invasion handling (plan 24, 2026-09-22)
+
+The resumed implementation passes all eight CTest suites and the full HTTP/Chromium integration suite,
+including replay, save/restart, treaty acceptance and explicit deadline/cancellation checks. The test
+server now has a 15-second whole-turn budget independent of its 250ms transport timeout; the dedicated
+three-second deadline test is unchanged. Desktop browser output was inspected; no new accessibility
+coverage is claimed.
+
+Deterministic checks cover overwhelming advances, contested fronts remaining fixed for 24 months,
+retaking occupied land, low intensity and ceasefires, shared ordered/autonomous seizure limits,
+missing inventories, displacement, unique map-event locations, stalled-war facts, pending peace and
+accepted peace silencing the toll. The real seed (including coastal regions) keeps every controller
+unchanged in every month of a passive year. A separate six-month Brazil–Paraguay fixture produces at
+least two autonomous advances while preserving Paraguayan ownership. Reservists contribute 5% to
+defence; RU→UA and IN→PK retain capacity 1, while ES→PT becomes 1.
+
+The existing six-turn Brazil campaign was read only, exported, and replayed identically using each
+turn's recorded status version 2. Version 3 gates new front movement and stalemate tracking. The
+campaign file is not used by any running probe.
+
+Final local-model tests: `invasion`, `finish_invasion`, `capital_push`, `weak_raid`, `overreach` each
+match the expected map outcome 3/3; secession passes a separate smoke check. Successful invasion
+fixtures deliberately use synthetic superiority, while weak-force cases retain real inventories.
+The capital-push failure was a reasoning-budget vocabulary dependency; state-derived offensive
+options now enable the existing bounded reasoning pass. Per-actor grammar definitions are emitted
+only for actors with actions, and transfer recipients retain validated ID syntax so newly created
+states can receive land. Details and prose-quality limits are in EVOLVING_WORLD.md.
+
+Live twelve-month Brazil campaign evidence will be recorded here after completion.

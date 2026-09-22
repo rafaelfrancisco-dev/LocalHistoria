@@ -30,7 +30,10 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         "Each action must be achievable "
         "within a month or be a realistic step toward a longer goal, and fit the nation's status: "
         "its population, economy (GDP in real currency), stability and wars limit what it can "
-        "afford and attempt. recent_events already happened: do not repeat them; "
+        "afford and attempt. A war that has cost heavily and taken no ground for months is a "
+        "reason to seek terms - a ceasefire, a peace treaty, a withdrawal or outside mediation - "
+        "not only to escalate or to protest; propose terms the nation could actually live with. "
+        "recent_events already happened: do not repeat them; "
         "follow up, change course or respond to new developments. Refer to nations and regions by "
         "name.";
     auto ask = [&](const std::string &extra) {
@@ -106,7 +109,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     std::vector<std::pair<std::string, std::string>> actions;
     for (auto &i : input["intentions"])
         actions.emplace_back(i["actor"].asString(), i["action"].asString());
-    auto schema = operationSchema(w, input["facts"], actions);
+    auto schema = operationSchema(w, input["facts"], actions, adjacency);
     for (Json::ArrayIndex n = 0; n < input["intentions"].size(); ++n)
         if (input["intentions"][n]["regional_actor"].isString()) {
             auto &item = schema["properties"]["events"]["prefixItems"][n];
@@ -158,7 +161,8 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "high). "
         "set_conflict_intensity lets a party escalate (a major offensive) or scale down (a lull, "
         "withdrawal) an existing war; a ceasefire or peace treaty is add_commitment with that "
-        "kind, and resolve_conflict only when the war has actually ended. "
+        "kind, and resolve_conflict only when the war has actually ended. A conflict whose front "
+        "reads as a stalemate is a plausible reason for a party to open talks or accept terms. "
         "Only a party can open, escalate, end or sign; a treaty needs every party's own action "
         "this month to mention the partner; nations only build for themselves. "
         "Treaties: months is how long one lasts (0 = open-ended); terms are what signing changes "
@@ -181,12 +185,20 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "explanation). Use conservative campaign-grounded symbolism, never invented historical "
         "claims. "
         "Operations: build (starts constructing a city, port, base, army or fleet in a region the "
-        "actor controls, which takes months to finish; or marks an event_site where a notable "
-        "incident happened, such as a disaster, summit, protest or battle, which appears at once "
-        "and fades after three months unless later events involve it), "
-        "within_reach_of gives each nation's real strength here; a nation marked too weak cannot "
-        "occupy: describe a failed, aborted or symbolic action. Losses are computed by the game; "
-        "do not state numbers. "
+        "actor already controls, which takes months to finish; or marks an event_site where a "
+        "notable incident happened, such as a disaster, summit, protest or battle, which appears "
+        "at once and fades after three months unless later events involve it). "
+        "To take ground use occupy, never build: a nation cannot build in land it does not hold. "
+        "Each nation's offensive lists the regions it could take this month and how many; "
+        "when an order aims beyond those regions, resolve its feasible first step by occupying "
+        "a listed region, leaving the distant destination and regime change for later months. "
+        "A superior force ordered forward should gain reachable ground unless the supplied "
+        "facts give a specific obstacle; do not invent stronger defenders or failed logistics. "
+        "within_reach_of gives its real strength in each, and a nation marked too weak cannot "
+        "occupy: describe a failed, aborted or symbolic action. Where one side is decisively "
+        "stronger the front also moves on its own, so an outcome may describe fighting with no "
+        "operation at all; set_conflict_intensity is how a party presses or eases that tempo. "
+        "Losses are computed by the game; do not state numbers. "
         "occupy (military control of a bordering region, owner unchanged), restore_control, "
         "transfer_territory (the owner cedes a region, or an occupier annexes a region it held "
         "before this month), "
@@ -203,12 +215,13 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "its regions within reach + open_conflict unless already at war. "
         "Grant R independence as NAME (by its owner) -> create_actor + transfer_territory to it. "
         "Sign an alliance with X -> add_commitment. Reform education -> no operations.";
-    // Reasoning is worth its generation time only for actions that can change wars, land or
-    // treaties; a month of reforms, talks and trade is answered directly. Generation is the slowest
-    // part of a month, so keep it tight.
+    // Reachable offensive options also deserve reasoning, regardless of the order's vocabulary.
+    // Otherwise "drive to the capital" bypasses the thinking used for "invade" and the small
+    // model ignores the same strength facts. Keep the existing bounded budget.
     unsigned weighed = 0;
     for (auto &[actor, text] : actions)
-        weighed += consequential(text);
+        weighed +=
+            consequential(text) || !input["facts"]["actors"][actor]["offensive"]["regions"].empty();
     unsigned budget = weighed ? std::clamp<unsigned>(256 + 128 * weighed, 384, 768) : 0;
     Json::Value response;
     try {

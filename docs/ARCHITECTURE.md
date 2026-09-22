@@ -22,7 +22,7 @@ Chronicles replace the raw history excerpt for nations. Before a month's decisio
 
 ## Extension points
 
-- Deeper warfare: army strength, supply or casualties can extend the entity model and the reach rules in `compileOperations`; keep them start-of-month and deterministic so replay stays exact.
+- Deeper warfare: inventories, casualties and autonomous conventional front advances are implemented. Supply lines and explicit sides in multi-party conflicts remain; keep additions deterministic from frozen inputs and version monthly rules so replay stays exact.
 - Historical scenarios: add versioned scenario datasets and explicit January-2026 source cutoffs; do not relabel current fictional stats as history.
 - Enhanced models: implement the provider interfaces and retain strict local validation and hard failure on any invalid or missing result.
 - Reaction caching: key by provider/version, scenario, actor, full relevant state and frozen reference revision; cache actions, not mutations.

@@ -4,9 +4,9 @@
 namespace lh {
 namespace detail {
 MonthlyStatus::MonthlyStatus(const Resolution &base, const WorldDelta &delta,
-                             const Adjacency &adjacency)
-    : base(base), delta(delta), adjacency(adjacency), r(base), w(r.state), T(w.territories),
-      cT(w.territories), cActors(w.actors) {}
+                             const Adjacency &adjacency, int version)
+    : base(base), delta(delta), adjacency(adjacency), version(version), r(base), w(r.state),
+      T(w.territories), cT(w.territories), cActors(w.actors) {}
 Resolution MonthlyStatus::run() {
     freezeForceInputs();
     accountDestroyed();
@@ -25,6 +25,9 @@ Resolution MonthlyStatus::run() {
 
     // 4. War fronts: where each open conflict is actually fought this month.
     collectSeized();
+    // 4b. Ground the balance of forces takes on its own, before the fronts are drawn: a momentum
+    // seizure has to count as fighting and displace people exactly like an ordered one.
+    advanceFronts();
     for (auto &id : w.conflicts.getMemberNames())
         addFront(id);
 
@@ -169,7 +172,7 @@ void MonthlyStatus::occupationDrain() {
 }
 } // namespace detail
 Resolution applyMonthlyStatus(const Resolution &base, const WorldDelta &delta,
-                              const Adjacency &adjacency) {
-    return detail::MonthlyStatus(base, delta, adjacency).run();
+                              const Adjacency &adjacency, int version) {
+    return detail::MonthlyStatus(base, delta, adjacency, version).run();
 }
 } // namespace lh

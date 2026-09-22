@@ -1,5 +1,6 @@
 #include "localhistoria/providers.h"
 #include "localhistoria/status.h"
+#include "localhistoria/turn.h"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -27,6 +28,8 @@ int main(int argc, char **argv) {
         {"weak_raid", {"PT", "Send the army to occupy Galicia."}},
         {"capital", {"PT", "Build a new city in North to serve as the future capital."}},
         {"invasion", {"PT", "Invade Spain."}},
+        {"finish_invasion", {"PT", "Finish the invasion of Spain to avoid the war stalling."}},
+        {"capital_push", {"PT", "Drive straight through to Spain's capital to topple the regime."}},
         {"treaty_consent", {"ES", "Sign a defence pact with Portugal."}}};
     for (auto &[name, intention] : scenarios) {
         if (argc == 3 && name != argv[2])
@@ -61,6 +64,14 @@ int main(int argc, char **argv) {
                         Json::Int64(a == std::string("PT") ? 32100000000LL : 38600000000LL);
                 }
         }
+        const bool strongInvasion =
+            name == "invasion" || name == "finish_invasion" || name == "capital_push";
+        // Synthetic superiority isolates order comprehension from the real Portuguese force's
+        // inability to invade Spain. weak_raid retains the real inventories as a negative control.
+        if (strongInvasion) {
+            w.actors["PT"]["status"]["military"]["active"] = 800000;
+            w.actors["PT"]["status"]["military"]["aircraft"] = 500;
+        }
         if (name == "weak_raid")
             w.territories["region-east"]["name"] = "Galicia";
         Json::Value geo;
@@ -78,31 +89,11 @@ int main(int argc, char **argv) {
                 R"("text":"Treaty signed in turn 1 forbids construction of military bases in )"
                 R"(West until turn 120."}})");
         auto base = resolve(w);
-        Json::Value input;
-        input["facts"]["turn"] = base.state.turn;
-        for (auto a : {"PT", "ES"}) {
-            auto facts = context(base.state, a, {}, {}).facts;
-            facts.removeMember("territories");
-            input["facts"]["actors"][a] = facts;
-        }
-        for (auto &id : base.state.territories.getMemberNames()) {
-            auto t = base.state.territories[id];
-            for (auto k : {"longitude", "latitude", "initial_affiliation"})
-                t.removeMember(k);
-            t["within_reach_of"] = Json::arrayValue;
-            for (auto a : {"PT", "ES"})
-                if (reaches(base.state, adjacency, a, id))
-                    t["within_reach_of"].append(
-                        force::reachDescription(base.state, adjacency, a, id));
-            input["facts"]["territories"][id] = t;
-        }
-        input["facts"]["entities"] = Json::objectValue;
-        input["reference_only"]["available"] = false;
-        Json::Value item;
-        item["actor"] = intention.first;
-        item["action"] = intention.second + attackGuidance(intention.first, intention.second,
-                                                           input["facts"]["territories"]);
-        input["intentions"].append(item);
+        std::map<std::string, CountryContext> contexts;
+        for (auto a : {"PT", "ES"})
+            contexts[a] = context(base.state, a, {}, {});
+        auto input = adjudicationInput(base.state, contexts,
+                                       {{intention.first, {{intention.second, {}}}}}, adjacency);
         Json::Value row;
         row["scenario"] = name;
         auto started = std::chrono::steady_clock::now();
@@ -136,10 +127,14 @@ int main(int argc, char **argv) {
             }
             if (name == "reform")
                 expected = delta.changes.empty() && !delta.events.empty();
-            if (name == "overreach" || name == "weak_raid" || name == "invasion")
+            if (name == "overreach" || name == "weak_raid")
                 expected = s.territories["region-interior"]["controller"] == "ES" &&
                            s.territories["region-east"]["controller"] == "ES" &&
                            !delta.events.empty();
+            if (strongInvasion)
+                expected = s.territories["region-east"]["controller"] == "PT" &&
+                           s.territories["region-east"]["owner"] == "ES" &&
+                           s.territories["region-interior"]["controller"] == "ES";
             if (name == "capital")
                 expected = has("city", "region-north", "under_construction");
 
@@ -158,6 +153,7 @@ int main(int argc, char **argv) {
         auto records = provider.takeAudit();
         for (auto &r : records) {
             r.removeMember("chat_template");
+            r["schema_bytes"] = Json::UInt64(dump(r["schema"]).size());
             r.removeMember("schema");
         }
         row["inference"] = records;

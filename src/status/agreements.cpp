@@ -68,6 +68,14 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
         d["intensity"] = v.get("intensity", "unknown");
         d["casualties"] = integer(v, "casualties");
         d["displaced"] = integer(v, "displaced");
+        // How long the front has been frozen. A war that costs this much and takes nothing is the
+        // case where suing for terms beats fighting on, and nothing else in the facts says so.
+        if (v.isMember("static_months")) {
+            d["months_without_gains"] = integer(v, "static_months");
+            if (integer(v, "static_months") >= rate::warLullMonths && isOpen(v))
+                d["front"] = "stalemate: neither side has taken ground in " +
+                             std::to_string(integer(v, "static_months")) + " months";
+        }
         d["affected_regions"] = Json::arrayValue;
         for (auto &r : v["affected_regions"])
             d["affected_regions"].append(w.territories[r.asString()]["name"]);
