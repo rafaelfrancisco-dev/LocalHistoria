@@ -52,8 +52,14 @@ constexpr double reserveDefence = 0.05;
 // and Yemen 18.9; an absolute threshold would therefore set the Sahel, Yemen and Somalia alight in
 // the first year of every campaign while leaving closed states untouchable. A country that is
 // chronically low but steady is at its equilibrium, and this leaves it there.
-constexpr double unrestDrop = 8;       // points below seeded stability before anything accrues
-constexpr double unrestStressCap = 30; // a fall past this adds no further pressure
+constexpr double unrestDrop = 8; // points below seeded stability before anything accrues
+// A fall past this adds no further pressure. It is 22 rather than a rounder 30 because stability
+// reverts toward its target by stabilityReversion a month and so never arrives: measured over two
+// campaign years, a medium-intensity war produces a fall of 6.9 and never reaches unrestDrop at
+// all, a high-intensity one 13.0, and a high-intensity war with a fifth of the population under
+// occupation 21.6. A cap above that last figure puts the top of the scale beyond anything the
+// month step can deliver, which leaves the whole chain unreachable outside a synthetic test.
+constexpr double unrestStressCap = 22;
 // Grievance units at which a region is as aggrieved as it can usefully be. Soured relations alone
 // are 1.0, which tops out below the revolt threshold however far the nation falls: it takes
 // grievance the capital has refused to answer as well. Reaching it needs strained relations plus
@@ -62,7 +68,12 @@ constexpr double unrestGrievanceCap = 2;
 // Unrest drifts toward what the situation justifies, the way stability drifts toward its target.
 // A regime that vents grievance closes the gap slowly and forgets quickly; a repressive one does
 // the reverse, which is why its revolts arrive later and larger.
-constexpr double unrestRise = 0.10, unrestFall = 0.20, ventRise = 0.8;
+//
+// unrestRise is 0.16 rather than a tenth because the target it chases is itself slow to open: a
+// nation needs about six months of its worst sustainable war before it clears unrestDrop at all,
+// so a tenth of a gap per month left two years of high-intensity war, a quarter of the population
+// occupied and a province with two demands ignored throughout short of even being reported.
+constexpr double unrestRise = 0.16, unrestFall = 0.20, ventRise = 0.8;
 constexpr double maxUnrestStep = 10;
 // Grievance weights. Occupation by a foreign power is the strongest separatist signal there is; a
 // front in a war the region's own controller is fighting is deliberately absent, because invaded

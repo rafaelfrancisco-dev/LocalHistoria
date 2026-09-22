@@ -183,29 +183,70 @@ Measured, not estimated:
 | | before | after | added |
 |---|---|---|---|
 | Adjudication schema (5 actors, 20 regions, 8 actions) | 13,958 B | 14,284 B | **+326 B** |
-| Prompt instruction text across `decide`, `adjudicate` and the operations reference | — | — | **+672 B** |
+| Prompt instruction text across `decide`, `adjudicate` and the operations reference | 10,636 B | 11,005 B | **+369 B** |
 
 Against the plan-24 baseline of a 99–194 KB schema and a 6,047–12,420 token adjudication prompt,
 that is well under 1% of the schema and roughly 1–3% of the prompt, before the per-actor facts,
 which gain `government`, `government_id` and `government_since` (about 60 B an actor) plus `unrest`
 only where a nation actually has some.
 
-## Still open
+Measured live on Qwen3.5-4B over five played months: the largest adjudication was **10,579 prompt
+tokens** and **12,677 total**, against a 32,768 context, and llama.cpp reported `truncated = 0` on
+every request of the campaign. Months took 140–180 s, inside the 159 s / 212 s plan-24 baseline. The
+context size does not need raising, which matters because the Windows target is a 6 GB RTX 3060 the
+model only just fits on.
 
-**Not yet run against the real model.** Everything above is deterministic-engine verification plus
-the mock-model integration suite; no month has been played through `llama serve` with Qwen3.5-4B.
-Two things that only a real campaign can answer:
+## Calibration against a played campaign
 
-1. Whether the adjudicator uses `government` sensibly — refusing an election in an absolute monarchy,
-   reaching for repression rather than a legislature in a junta — or ignores the field.
-2. How long a *realistically* played campaign takes to produce a first rebellion. The synthetic tests
-   hold a nation at a forced 20–30 point stability deficit, which is the fast path; the seeded world
-   at rest produces nothing in two years. The interesting middle — a nation sliding organically
-   because of the player's wars — is untested, and `unrestRise`, `revoltMonths` and `revoltThreshold`
-   are the three constants most likely to need moving after a real campaign.
+Five months were played as **Myanmar** (military junta, seeded stability 30.2, already in a civil
+war) with deliberately ruinous orders. Three things came out of it, two of them faults.
 
-Run `./build/world_probe out.json` with the model up, and play a nation with a live regional dispute,
-before treating the timings as settled.
+**1. The adjudication prompt additions broke the 4B.** With the text as first committed, months 2
+and 3 both came back with the previous month's event texts copied verbatim and the actual orders
+ignored. It was not truncation — `truncated = 0` throughout. Replaying the identical save and orders
+against the pre-plan-25 prompt adjudicated them correctly, which isolated the cause to the three
+sentences this plan added to the `adjudicate` instruction block. Trimmed to one sentence, and the
+sentence about answering regional unrest dropped entirely (unrest is engine-owned, so the model
+could not act on it anyway), two further months adjudicated every order correctly and distinctly.
+The lesson is the one `docs/MODELS.md` already states and this plan underestimated: on a 4B,
+instruction text is not free, and adding to the adjudication block costs accuracy, not just tokens.
+
+**2. `unrestStressCap` was set above anything the month step can produce.** Stability reverts toward
+`baseline − war` by `stabilityReversion` (8%) a month and so never arrives. Over two campaign years
+that means a medium-intensity war produces a fall of 6.9 — it never reaches `unrestDrop` at all —
+a high-intensity one 13.0, and a high-intensity war with a quarter of the population occupied 21.6.
+With the cap at 30, two years of high-intensity war produced a maximum unrest target of 23/100,
+below the 35 an unrest event is even reported at: the entire chain was unreachable outside a
+synthetic test that forces the deficit directly. The cap is now **22**.
+
+**3. `unrestRise` was too slow for a target that opens slowly.** Even with the cap corrected, the
+worst sustainable war reached only 29.3/100 after 24 months, still short of being reported, because
+a nation needs about six months of it before clearing `unrestDrop` at all and unrest then chased the
+remainder at a tenth of the gap a month. It is now **0.16**.
+
+`revoltMonths` and `revoltThreshold`, the other two constants the plan flagged, were left alone: the
+binding constraint was the height of the target, not the time spent above a line or the line itself.
+
+After both changes the played campaign behaves: by month 5 Myanmar had fallen 30.2 → 19.6, past the
+gate, with Saigang at 0.8 and Kachin at 0.1 and climbing. `tests/status/unrest.cpp` gained a
+reachability case that drives stability down only through `driftStability` — no forced deficit — and
+asserts an aggrieved province reaches the reporting line, so a future change that puts the top of
+the scale out of reach again fails the suite.
+
+The idle seeded world was re-checked at every step. Its most restive region moved from 11 to 23 of
+100 (RSF-occupied West Kordofan, in a live high-intensity war in which Sudan's own stability falls
+31.3 → 18.5). That is the mechanic reading a real war correctly, and it still surfaces nothing: no
+unrest event, no rebel, no breakaway, no government change, and `unrest_months == 0` everywhere. The
+idle-world assertion was rewritten to say what is actually required — a peak below the 35 reporting
+line, plus Yemen, Mali, Syria, Somalia and Afghanistan at exactly zero — rather than a bare
+threshold that happened to hold.
+
+**Still open.** A first rebellion was not reached in five months and, on this evidence, needs one to
+two campaign years of sustained misrule plus a region whose relations actually sour to `strained`;
+grievance stayed low in the played campaign because the regional slot kept Saigang at `neutral`.
+Whether the regional initiative sours relations often enough for the chain to complete in a normal
+campaign is the remaining unknown, and it is a plan-23 question about how demands and relations
+evolve rather than an unrest-calibration one.
 
 ## Notes
 

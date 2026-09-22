@@ -238,6 +238,30 @@ void unrestTests() {
               "Unrest is deterministic");
     }
 
+    // Reachability. Every other case here forces the deficit outright, which is the fast path and
+    // says nothing about whether play can get there. This one touches stability only through
+    // driftStability: a high-intensity war plus a quarter of the population under occupation, which
+    // is about the worst a nation can sustain. Measured against the real seeded world, a medium war
+    // never reaches unrestDrop at all and a high one tops out near a 13-point fall, so if
+    // unrestStressCap sits above what this produces the whole chain is unreachable outside a test.
+    {
+        auto failing = world("military_junta");
+        failing.state.conflicts["c0-1"] =
+            parse(R"({"name":"Border War","kind":"war","actors":["AA","BB"],"status":"open",)"
+                  R"("text":"War","started_turn":0,"set_intensity":"high","intensity":"high",)"
+                  R"("affected_regions":["a3"],"theatre":["a3"],"casualties":0,"displaced":0})");
+        failing.state.territories["a3"]["controller"] = "BB";
+        aggrieve(failing.state, "a2");
+        auto worn = months(failing, 24, false);
+        double fell = 60 - worn.state.actors["AA"]["status"]["stability"].asDouble();
+        check(fell > 8, // rate::unrestDrop, which the tests cannot include
+              "Two years of the worst sustainable war carries a nation past the unrest gate: " +
+                  std::to_string(fell));
+        check(unrestOf(worn, "a2") >= 35,
+              "An aggrieved province reaches the reporting line without a forced deficit: " +
+                  std::to_string(unrestOf(worn, "a2")));
+    }
+
     // The political system itself: every value classifies, and the labels are readable.
     check(governments().size() == 12 && validGovernment("military_junta") &&
               !validGovernment("democracy") &&

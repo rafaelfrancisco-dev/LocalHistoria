@@ -122,8 +122,22 @@ void realWorldTests() {
         }
     std::cout << "Most restive region after two idle years: " << (worst.empty() ? "none" : worst)
               << " at " << peak << "/100\n";
-    check(peak < 20, "Nothing approaches unrest in an idle real world: " + worst + " at " +
+    // Below rate::unrestNotice, which is 35 and is the line an unrest event is reported at. The
+    // requirement is not that a world at war is numb -- occupied Kordofan and occupied Ukraine are
+    // genuinely restive, and reading so is the mechanic working -- but that an idle campaign
+    // surfaces nothing and acts on nothing, which the checks below pin down exactly.
+    check(peak < 35, "Nothing approaches unrest in an idle real world: " + worst + " at " +
                          std::to_string(peak));
+    // The calibration the whole design turns on: a country that is chronically fragile but steady
+    // is at its equilibrium and stays there. These five sit between 18.9 and 28.2 on the seeded
+    // scale -- below Sudan, below Myanmar -- and an absolute threshold would have set every one of
+    // them alight in the first year. None of them has fallen, so none of them stirs at all.
+    for (const auto *code : {"YE", "ML", "SY", "SO", "AF"})
+        for (const auto &id : idle.state.territories.getMemberNames())
+            if (idle.state.territories[id]["controller"] == code)
+                check(idle.state.territories[id]["unrest"].asDouble() == 0,
+                      std::string("A chronically fragile but steady country stays quiet: ") + code +
+                          " " + id);
     for (const auto &id : idle.state.territories.getMemberNames())
         check(idle.state.territories[id]["unrest_months"].asInt() == 0,
               "No region spends a month past the revolt line: " + id);
