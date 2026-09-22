@@ -103,6 +103,12 @@ main {
   grid-template-columns: 210px minmax(320px, 1fr) 350px;
   min-height: 78vh;
 }
+/* The centre column stacks map, status and journal; the journal takes the rest
+   of the column so it runs to the bottom of the page instead of sub-scrolling. */
+.workspace {
+  display: flex;
+  flex-direction: column;
+}
 aside,
 .panel {
   padding: 20px;
@@ -249,9 +255,8 @@ button.primary {
   to { opacity: 1; }
 }
 .journal {
+  flex: 1 1 auto;
   padding: 8px 24px 24px;
-  max-height: 40vh;
-  overflow: auto;
 }
 .entry {
   border-bottom: 1px solid var(--line);
@@ -703,7 +708,6 @@ footer {
   }
   .journal {
     order: 6;
-    max-height: none;
   }
   #map {
     height: 42vh;
