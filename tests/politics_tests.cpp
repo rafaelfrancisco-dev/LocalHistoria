@@ -84,6 +84,37 @@ int main() {
                 check(scheduleInitiatives(v, {}, home)[2]["actor"] == "PT",
                       "Regional slot prefers the player's regions");
             }
+            // A front outranks a quiet region of a closer governor, and keeps the slot through the
+            // cooldown that would rotate an equally quiet region away.
+            auto war = v;
+            war.conflicts["c1"]["status"] = "open";
+            war.conflicts["c1"]["actors"].append("ES");
+            war.conflicts["c1"]["actors"].append("FR");
+            war.conflicts["c1"]["affected_regions"].append("s");
+            for (int n = 0; n < 50; ++n) {
+                war.campaignId = std::to_string(n);
+                check(scheduleInitiatives(war, {}, home)[2]["region"] == "s",
+                      "A front takes the regional slot over a quiet home region");
+            }
+            war.activity["s"] = 0;
+            check(scheduleInitiatives(war, {}, home)[2]["region"] == "s",
+                  "Stake outranks the regional cooldown");
+            // An unanswered demand is a lesser stake, but still beats a quiet sibling.
+            auto pressed = v;
+            pressed.regionalPolitics["s"]["demands"][0]["status"] = "pending";
+            for (int n = 0; n < 50; ++n) {
+                pressed.campaignId = std::to_string(n);
+                check(scheduleInitiatives(pressed, {}, home)[2]["region"] == "s",
+                      "A pending demand takes the regional slot");
+            }
+            // Occupied land is a front by another name.
+            auto held = v;
+            held.territories["s"]["controller"] = "FR";
+            for (int n = 0; n < 50; ++n) {
+                held.campaignId = std::to_string(n);
+                check(scheduleInitiatives(held, {}, home)[2]["region"] == "s",
+                      "Occupied land takes the regional slot");
+            }
         }
         auto slots = scheduleInitiatives(w, {"ES"});
         check(slots == scheduleInitiatives(w, {"ES"}) && slots.size() == 3,
@@ -137,6 +168,28 @@ int main() {
                   r.state.activity["r"] == w.turn,
               "Regional pending demand and attribution");
         check(!r.state.actors.isMember("r"), "Regions are not sovereign actors");
+        check(delta.events[0]["effects"].isNull() || delta.events[0]["effects"].empty() ||
+                  delta.events[0]["effects"][0]["actor"] == "PT",
+              "A regional initiative that files a demand may carry effects");
+        // A ceremony that files no demand and leaves relations as they were changed nothing; the
+        // model still likes to attach a national economic decline to it.
+        auto ceremony =
+            event("PT",
+                  parse(R"([{"action":"regional_initiative","region":"r",)"
+                        R"("agenda":"Celebrate local heritage","relations":"neutral"}])"),
+                  "r");
+        ceremony["events"][0]["effects"] =
+            parse(R"([{"actor":"PT","economy":"decline","stability":"none"}])");
+        check(!compileOperations(w, ceremony, {}).events[0].isMember("effects"),
+              "An inert regional initiative cannot move a national economy");
+        auto pressing = ceremony;
+        pressing["events"][0]["operations"][0]["demand"] = "Hand over the mining royalties";
+        check(compileOperations(w, pressing, {}).events[0]["effects"].size() == 1,
+              "A regional initiative with a demand keeps its effects");
+        auto souring = ceremony;
+        souring["events"][0]["operations"][0]["relations"] = "strained";
+        check(compileOperations(w, souring, {}).events[0]["effects"].size() == 1,
+              "A regional initiative that sours relations keeps its effects");
         auto illegal = event(
             "PT",
             parse(R"([{"action":"create_actor","actor_id":"free","name":"Free","color":"#123456"},)"

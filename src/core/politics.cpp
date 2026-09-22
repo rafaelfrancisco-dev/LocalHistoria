@@ -38,6 +38,37 @@ uint64_t stableHash(const std::string &s) {
     h *= 0x94d049bb133111ebULL;
     return h ^ (h >> 31);
 }
+// What a region has at stake this month. A slot spent on a quiet district is a decision call and an
+// adjudicated outcome that change nothing, so fronts, occupied land and unanswered demands come
+// first. Only what is happening inside the region counts: who governs it is the governor ranking's
+// business, and counting it twice would undo the country balance there. Derived from the state
+// alone, so the ranking stays deterministic.
+static int regionStake(const WorldState &w, const std::string &r) {
+    const auto &t = w.territories[r];
+    int stake = 0;
+    auto raise = [&](int n) { stake = std::max(stake, n); };
+    if (t[key::owner] != t[key::controller])
+        raise(3);
+    for (const auto &cid : w.conflicts.getMemberNames()) {
+        const auto &c = w.conflicts[cid];
+        if (!isOpen(c))
+            continue;
+        for (const auto &front : c["affected_regions"])
+            if (front == r)
+                raise(3);
+    }
+    if (w.regionalPolitics.isMember(r)) {
+        const auto &p = w.regionalPolitics[r];
+        for (const auto &d : p["demands"])
+            if (d[key::status] == "pending")
+                raise(2);
+        if (p["relations"] == "strained")
+            raise(2);
+        if (!p["supporting_events"].empty())
+            raise(1);
+    }
+    return stake;
+}
 Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string> &reactive,
                                 const std::map<std::string, int> &closeness,
                                 const std::set<std::string> &powers) {
@@ -64,12 +95,16 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
     for (auto &a : w.actors.getMemberNames())
         if (a != w.player)
             nations.push_back(a);
+    std::map<std::string, int> stakes, bestStake;
     for (auto &r : w.territories.getMemberNames()) {
         auto &t = w.territories[r];
         auto a = t["controller"].asString();
         // Residual geometry has no politics; a single-territory country's politics are national.
-        if (t["kind"] != "residual" && t["kind"] != "single" && w.hasActor(a))
+        if (t["kind"] != "residual" && t["kind"] != "single" && w.hasActor(a)) {
             regions[a].push_back(r);
+            stakes[r] = regionStake(w, r);
+            bestStake[a] = std::max(bestStake[a], stakes[r]);
+        }
     }
     rank(nations, "national", tier);
     // The first slot is the player's neighbourhood; the second the world stage, a great power,
@@ -95,18 +130,36 @@ Json::Value scheduleInitiatives(const WorldState &w, const std::set<std::string>
     };
     for (size_t i = 0; i < std::min<size_t>(2, nations.size()); ++i)
         add(nations[i], "");
-    // Choose authority before region: large countries receive no extra tickets. Only the player and
-    // close partners are preferred; great powers get no regional advantage.
+    // Choose authority before region: large countries receive no extra tickets. A governor is
+    // preferred for the stake of its weightiest region, then for being the player or a close
+    // partner; great powers get no regional advantage.
     std::vector<std::string> governors;
     for (auto &[a, rs] : regions)
         governors.push_back(a);
-    rank(governors, "governor", [&](auto &id) { return tier(id) >= 2 ? tier(id) : 0; });
-    auto none = [](auto &) { return 0; };
+    auto stake = [&](const std::map<std::string, int> &m, const std::string &id) {
+        auto it = m.find(id);
+        return it == m.end() ? 0 : it->second;
+    };
+    // Stake leads, closeness breaks its ties: a war front anywhere is worth more than a quiet
+    // province of the player's, and the player's regions still win when nothing is at stake.
+    rank(governors, "governor",
+         [&](auto &id) { return stake(bestStake, id) * 4 + (tier(id) >= 2 ? tier(id) : 0); });
+    // Among a governor's regions, stake outranks the cooldown: a live front's month keeps changing,
+    // so returning to it is the point. Equal stakes still rotate on `recent`.
+    auto rankRegions = [&](std::vector<std::string> &v, const std::string &scope) {
+        std::sort(v.begin(), v.end(), [&](auto &a, auto &b) {
+            auto score = [&](auto &id) {
+                return std::make_tuple(-stake(stakes, id), recent(id),
+                                       stableHash(seed + scope + id), id);
+            };
+            return score(a) < score(b);
+        });
+    };
     for (size_t round = 0; slots.size() < 3 && !governors.empty(); ++round) {
         bool found = false;
         for (auto &a : governors) {
             auto rs = regions[a];
-            rank(rs, "region" + std::to_string(round), none);
+            rankRegions(rs, "region" + std::to_string(round));
             for (auto &r : rs)
                 if (selectedRegions.insert(r).second) {
                     add(a, r);
@@ -232,7 +285,7 @@ Json::Value regionalState(const WorldState &w, const std::string &r) {
     if (w.regionalPolitics.isMember(r))
         return w.regionalPolitics[r];
     Json::Value p;
-    p["agenda"] = "Local civic wellbeing and representation";
+    p["agenda"] = "No standing agenda recorded";
     p["demands"] = Json::arrayValue;
     p["relations"] = "neutral";
     p["supporting_events"] = Json::arrayValue;

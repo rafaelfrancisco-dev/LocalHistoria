@@ -138,6 +138,29 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
             c.facts["governing_authority"].removeMember("identity_revisions");
             c.facts["governing_authority"]["status"] = nationalStatus(w, a);
             c.facts["politics"] = regionalState(w, r);
+            // The governing nation's status already lists its wars; what a district council
+            // additionally knows is whether the war has reached its own ground. Without this a
+            // region has nothing at stake to act on and writes a ceremony.
+            Json::Value situation;
+            situation["occupied"] =
+                w.territories[r][key::owner] != w.territories[r][key::controller];
+            situation["on_front"] = false;
+            for (auto &cid : w.conflicts.getMemberNames()) {
+                auto &conflict = w.conflicts[cid];
+                if (!isOpen(conflict))
+                    continue;
+                for (auto &front : conflict["affected_regions"])
+                    if (front == r) {
+                        situation["on_front"] = true;
+                        situation["war"] = displayName(w, "conflict", cid);
+                    }
+            }
+            const auto &politics = c.facts["politics"];
+            for (const auto &d : politics["demands"])
+                if (d[key::status] == "pending")
+                    situation["unanswered_demands"] =
+                        situation.get("unanswered_demands", 0).asInt() + 1;
+            c.facts["region_situation"] = situation;
             c.facts["related_history"] = Json::arrayValue;
             for (auto &row :
                  store.query("SELECT document FROM events WHERE id IN (SELECT event FROM "

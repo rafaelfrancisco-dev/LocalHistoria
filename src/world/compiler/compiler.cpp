@@ -115,10 +115,12 @@ void OperationCompiler::compileEvent(const Json::Value &e, bool trusted) {
     s.trusted = trusted;
     s.ev = e["actor"].asString();
     require(w.hasActor(s.ev), "Unknown event actor");
-    // Background developments exist only for what changes something; those without an effect are
-    // noise.
+    // Background developments exist only for what changes something; those without an effect, and
+    // those repeating one already recorded, are noise. The instruction asks the model not to
+    // re-report history; a small model does it anyway.
     if (e["background"].asBool() &&
-        (effectWeight(e.get("effects", Json::nullValue)) == 0 || ++background > 3))
+        (effectWeight(e.get("effects", Json::nullValue)) == 0 || ++background > 3 ||
+         priorSlugs.contains(slug(e["description"].asString(), 32))))
         return;
     s.regional = e.get("regional_actor", "").asString();
     require(s.regional.empty() || (w.territories.isMember(s.regional) &&
@@ -287,7 +289,8 @@ void OperationCompiler::breachTreaties(EventScope &s, OpScope &op) {
 } // namespace lh::detail
 namespace lh {
 WorldDelta compileOperations(const WorldState &w, const Json::Value &response,
-                             const Adjacency &adjacency, const Json::Value &responses) {
-    return detail::OperationCompiler(w, adjacency).compile(response, responses);
+                             const Adjacency &adjacency, const Json::Value &responses,
+                             const std::set<std::string> &priorEvents) {
+    return detail::OperationCompiler(w, adjacency, priorEvents).compile(response, responses);
 }
 } // namespace lh

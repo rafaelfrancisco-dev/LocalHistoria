@@ -39,6 +39,7 @@ Recommended order (dependencies in parentheses):
 | 20 | release-build-and-docs (last) | build + docs | S | |
 | 21 | realistic-military-inventories (after 19) | data + simulation | M | done 2026-09-21 |
 | 22 | coastal-regions-and-stability-mapping (after 21) | data + simulation | S | done 2026-09-21 |
+| 23 | meaningful-initiative-slots (after 17, 18) | simulation | M | done 2026-09-22 |
 
 Baseline numbers to beat (real save, India, Qwen3.5-4B, M1 Pro): month 1 159 s, month 2 212 s;
 adjudication 100 s / 123 s with 6,047 / 12,420 prompt tokens and ~2,650 generated tokens; schema 99 / 194 KB.

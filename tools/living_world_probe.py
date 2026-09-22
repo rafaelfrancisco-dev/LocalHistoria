@@ -5,6 +5,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser()
 p.add_argument('output', type=pathlib.Path)
 p.add_argument('--months', type=int, default=3)
+p.add_argument('--country', default='PT')
 a = p.parse_args()
 if not 1 <= a.months <= 6: p.error('months must be 1..6')
 with socket.socket() as sock:
@@ -23,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-live-') as temp:
             for _ in range(100):
                 try: api('campaign'); break
                 except OSError: time.sleep(.1)
-            state = api('campaign', {'country':'PT'})['state']
+            state = api('campaign', {'country':a.country})['state']
             for month in range(a.months):
                 started = time.monotonic()
                 job = api('turns', dict(campaign_id=state['campaign_id'], expected_turn=state['turn'], idempotency_key=f'live-month-{month}', orders=[]))

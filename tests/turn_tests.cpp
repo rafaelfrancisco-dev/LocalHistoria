@@ -37,6 +37,12 @@ static Json::Value model(const std::string &, const std::string &path, const Jso
         result["text"] = "A quiet month of fictional administration.";
     else if (input.isMember("campaign_events"))
         result["summary"] = "Fixture chronicle";
+    else if (body["messages"][0]["content"].asString().find("symbolic gesture") !=
+             std::string::npos)
+        // The re-ask an independent slot gets when its first answer was a ceremony.
+        result["actions"].append(parse(R"({"text":"Demand a share of the mining royalties"})"));
+    else if (input["facts"]["initiative_type"] == "independent_regional")
+        result["actions"].append(parse(R"({"text":"Convene a town hall on local heritage"})"));
     else
         result["actions"].append(parse(R"({"text":"Discuss a civic initiative"})"));
     Json::Value response;
@@ -79,6 +85,13 @@ int main() {
             plan = runner.plan(decode(store.campaign()), orders);
         }
         check(plan.actors == std::set<std::string>{"ES"}, "Spain, named by the player, reacts");
+        bool situated = false;
+        for (auto &c : plan.independentContexts)
+            if (c.facts["initiative_type"] == "independent_regional")
+                situated = c.facts["region_situation"].isObject() &&
+                           c.facts["region_situation"]["on_front"].isBool() &&
+                           c.facts["region_situation"]["occupied"].isBool();
+        check(situated, "A regional slot is told what its own ground is living through");
         runner.run(plan, id);
         // Queued reference fetches take the mutex; stop them first.
         references.finish();
@@ -91,6 +104,11 @@ int main() {
             kinds.insert(parse(row["record"].asString())["kind"].asString());
         for (auto kind : {"chronicle", "decide", "adjudicate", "narrate"})
             check(kinds.contains(kind), std::string("Inference recorded: ") + kind);
+        // The ceremonial town hall was re-asked once and the substantive answer took the slot.
+        auto recorded = dump(store.query("SELECT intentions FROM turns WHERE turn=1")[0]);
+        check(recorded.find("mining royalties") != std::string::npos &&
+                  recorded.find("town hall") == std::string::npos,
+              "A ceremonial independent decision is re-asked once");
         std::cout << "Turn tests passed\n";
         return 0;
     } catch (const std::exception &e) {

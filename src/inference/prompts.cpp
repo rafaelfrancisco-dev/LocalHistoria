@@ -12,14 +12,19 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
               R"("properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})");
     int count = c.facts.get("action_count", 3).asInt();
     schema["properties"]["actions"]["maxItems"] = count;
-    if (c.facts.get("initiative_type", "reactive") != "reactive")
+    bool independent = c.facts.get("initiative_type", "reactive") != "reactive";
+    if (independent)
         schema["properties"]["actions"]["minItems"] = count;
-    auto j = completion(
-        input, schema,
+    static const std::string instruction =
         "You represent the actor specified by initiative_type in this fictional monthly sandbox. "
         "Obey action_count. For independent_regional you represent only regional_identity, not its "
-        "governing nation: propose civic initiatives, negotiations or autonomy demands; never "
-        "national military orders, treaties or armed rebellion. For independent initiatives act "
+        "governing nation: act on what is actually contested between the region and its capital or "
+        "its neighbours, and on what region_situation shows it is living through - revenue and "
+        "resources, autonomy, borders, displaced people, garrisons, war spillover, or a demand the "
+        "capital has left unanswered; never national military orders, treaties or armed rebellion. "
+        "An independent initiative must be something that changes this actor's position, its "
+        "relations or its territory, never a ceremony, festival, heritage or cultural declaration, "
+        "awareness campaign, town hall or symbolic announcement. For independent initiatives act "
         "from your own agenda, geography and history. Write concise actions (one sentence each) "
         "it plausibly takes this month, given its facts, commitments, conflicts and recent events. "
         "Each action must be achievable "
@@ -27,16 +32,28 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         "its population, economy (GDP in real currency), stability and wars limit what it can "
         "afford and attempt. recent_events already happened: do not repeat them; "
         "follow up, change course or respond to new developments. Refer to nations and regions by "
-        "name.",
-        0, 0.7, "decide", c.actor);
-    if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} ||
-        !j["actions"].isArray())
-        throw ValidationError("Invalid decision shape");
-    auto o = parseOrders(j["actions"]);
-    validate(w, c.actor, o);
-    if (o.size() > size_t(count) ||
-        (c.facts.get("initiative_type", "reactive") != "reactive" && o.size() != size_t(count)))
-        throw ValidationError("Decision action count mismatch");
+        "name.";
+    auto ask = [&](const std::string &extra) {
+        auto j = completion(input, schema, instruction + extra, 0, 0.7, "decide", c.actor);
+        if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} ||
+            !j["actions"].isArray())
+            throw ValidationError("Invalid decision shape");
+        auto o = parseOrders(j["actions"]);
+        validate(w, c.actor, o);
+        if (o.size() > size_t(count) || (independent && o.size() != size_t(count)))
+            throw ValidationError("Decision action count mismatch");
+        return o;
+    };
+    auto o = ask("");
+    // An independent slot has one action a month; a ceremony spends it on nothing. Re-ask once,
+    // then take whatever comes back: a worse month is not a broken one.
+    if (independent && !o.empty() &&
+        std::all_of(o.begin(), o.end(), [](const Order &x) { return ceremonial(x.text); }))
+        try {
+            o = ask(" The previous answer was a symbolic gesture. Write instead what this actor "
+                    "does about something at stake for it this month.");
+        } catch (const ValidationError &) {
+        }
     return {o, "Local model"};
 }
 std::string LocalProvider::chronicle(const Json::Value &input, const std::string &actor) {
@@ -222,6 +239,13 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
                 event[k] = intent[k];
         }
     }
-    return compileOperations(w, response, adjacency, responses);
+    // The history the model was shown this month: anything it re-reports as a new background
+    // development is the past, not a development.
+    std::set<std::string> priorEvents;
+    for (const auto &a : input["facts"]["actors"].getMemberNames())
+        for (const auto &past : input["facts"]["actors"][a]["related_history"])
+            if (past["id"].isString())
+                priorEvents.insert(past["id"].asString());
+    return compileOperations(w, response, adjacency, responses, priorEvents);
 }
 } // namespace lh

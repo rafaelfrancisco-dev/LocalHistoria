@@ -68,6 +68,28 @@ bool consequential(const std::string &raw) {
             return true;
     return false;
 }
+bool ceremonial(const std::string &raw) {
+    static const std::vector<std::string> gestures{
+        "town hall",    "heritage",       "ceremon",         "festival", "commemorat", "awareness",
+        "celebrat",     "symbolic",       "monument",        "mural",    "anniversar", "beautif",
+        "public forum", "public hearing", "civic wellbeing", "outreach", "signage",    "proclaim",
+        "commute",      "transit",        "tourism",         "recycl",   "clean-up"};
+    // A gesture that also names something at stake is a real action wearing a civic hat.
+    static const std::vector<std::string> substance{
+        "budget",   "revenue", "tax",     "levy",   "demand",  "refugee",   "displac",
+        "garrison", "evacuat", "blockad", "strike", "protest", "election",  "quota",
+        "tariff",   "mining",  "oil",     "water",  "port",    "ultimatum", "conscript"};
+    auto text = lowercase(raw);
+    bool gesture = false;
+    for (auto &stem : gestures)
+        gesture = gesture || text.find(stem) != std::string::npos;
+    if (!gesture || consequential(raw))
+        return false;
+    for (auto &stem : substance)
+        if (text.find(stem) != std::string::npos)
+            return false;
+    return true;
+}
 std::string attackGuidance(const std::string &actor, const std::string &text,
                            const Json::Value &territories) {
     static const std::vector<std::string> stems{"invad",   "occup", "attack", "offensive",

@@ -28,6 +28,27 @@ int main(int argc, char **argv) {
                   !isPermanentId("a b") && !isPermanentId("a/b"),
               "Permanent IDs");
         check(lowercase("São PAULO") == "são paulo", "Lowercase leaves non-ASCII bytes alone");
+        // The six regional initiatives a real Brazil campaign spent its slots on.
+        for (auto text :
+             {"Marowijne council convenes a town hall to draft a local heritage resolution "
+              "celebrating indigenous and Sranan Tongo culture.",
+              "Bolivar holds a public town hall in San Cristobal to solicit local grievances "
+              "regarding infrastructure and resource allocation.",
+              "The Cojedes Regional Council convenes a public hearing to propose a local tourism "
+              "initiative aimed at boosting regional employment.",
+              "Lavalleja launches a localized 'Green Commute' initiative to incentivize public "
+              "transit use.",
+              "The council proclaims a month of cultural celebration.",
+              "The province unveils a monument commemorating its founding."})
+            check(ceremonial(text), "Ceremonial initiatives are recognised");
+        for (auto text :
+             {"The Santander Council convenes a public forum to address displacement concerns "
+              "and proposes a civic wellbeing plan.",
+              "Paraguay presents a unified regional ultimatum to Bolivia and Argentina demanding "
+              "the immediate withdrawal of Brazilian forces from AMAMBAY.",
+              "Corrientes provincial authorities draft a regional taxation autonomy proposal.",
+              "The district demands a larger share of mining revenue from the capital."})
+            check(!ceremonial(text), "A gesture naming something at stake is a real action");
         {
             auto war = parse(R"({"status":"open","actors":["PT","ES"]})"),
                  over = parse(R"({"status":"resolved","actors":["PT"]})");

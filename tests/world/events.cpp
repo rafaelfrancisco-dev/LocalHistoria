@@ -192,4 +192,25 @@ void WorldTests::events() {
         check(logged[0]["partial"] == true && !logged[0].isMember("failed"),
               "The event log exposes partial");
     }
+    {
+        // A background development that re-reports one already in history is the past, not a
+        // development. Only background events are dropped: an intention's outcome stays 1:1.
+        const char *repeat =
+            R"({"events":[],"world_events":[{"actor":"neighbor","causes":[],)"
+            R"("description":"A localized humanitarian crisis emerges in West",)"
+            R"("effects":[{"actor":"neighbor","economy":"decline","stability":"none"}]}]})";
+        auto fresh = compileOperations(opsBase.state, parse(repeat), adjacency);
+        check(fresh.events.size() == 1, "A new background development is kept");
+        auto known = std::set<std::string>{fresh.events[0]["id"].asString()};
+        check(compileOperations(opsBase.state, parse(repeat), adjacency, Json::arrayValue, known)
+                  .events.empty(),
+              "A background development repeating history is dropped");
+        auto owned =
+            parse(R"({"events":[{"actor":"old-state","blocked_by":"none","background":false,)"
+                  R"("causes":[],"operations":[],"description":)"
+                  R"("A localized humanitarian crisis emerges in West"}]})");
+        check(compileOperations(opsBase.state, owned, adjacency, Json::arrayValue, known)
+                      .events.size() == 1,
+              "An intention's own outcome is never dropped as a repeat");
+    }
 }

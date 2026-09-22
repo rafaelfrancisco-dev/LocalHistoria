@@ -108,7 +108,18 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
         return std::find_if(effects.begin(), effects.end(),
                             [&](const Effect &f) { return f.actor == a; });
     };
-    if (s.e["effects"].isArray())
+    // A regional initiative that filed no demand and left relations as they were changed nothing;
+    // the model still likes to attach a national economic decline to it. A town hall about heritage
+    // does not move a country's economy.
+    bool inert = !s.regional.empty();
+    if (inert)
+        for (const auto &o : s.e["operations"]) {
+            if (!o["demand"].asString().empty() ||
+                (o["relations"].isString() &&
+                 o["relations"] != regionalState(w, s.regional)["relations"]))
+                inert = false;
+        }
+    if (!inert && s.e["effects"].isArray())
         for (auto &x : s.e["effects"]) {
             if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
                 !x["economy"].isString() || !x["stability"].isString())

@@ -9,8 +9,16 @@ namespace lh::detail {
 // Turns the model's operations into a validated delta against the start-of-month world.
 class OperationCompiler {
   public:
-    OperationCompiler(const WorldState &w, const Adjacency &adjacency)
-        : w(w), adjacency(adjacency) {}
+    OperationCompiler(const WorldState &w, const Adjacency &adjacency,
+                      const std::set<std::string> &priorEvents = {})
+        : w(w), adjacency(adjacency) {
+        // Event IDs end in a slug of their description, so a slug is an exact text-duplicate test.
+        for (const auto &id : priorEvents) {
+            auto dash = id.find('-');
+            if (dash != std::string::npos)
+                priorSlugs.insert(id.substr(dash + 1));
+        }
+    }
     WorldDelta compile(const Json::Value &response, const Json::Value &responses);
 
   private:
@@ -140,6 +148,9 @@ class OperationCompiler {
     // nation. A treaty needs it from every party.
     std::map<std::string, std::set<std::string>> consenting;
     std::set<std::string> eventIds;
+    // Description slugs of events already in campaign history: a background development that
+    // repeats one is the model re-reporting the past, not a new development.
+    std::set<std::string> priorSlugs;
     int created = 0, newActors = 0, background = 0;
     Json::Value events{Json::arrayValue};
     std::vector<Json::ArrayIndex> declared;
