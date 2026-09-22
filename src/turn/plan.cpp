@@ -160,6 +160,10 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
                 if (d[key::status] == "pending")
                     situation["unanswered_demands"] =
                         situation.get("unanswered_demands", 0).asInt() + 1;
+            // How restive its own people are, in the words the journal uses, so a regional voice
+            // can speak to the discontent the engine is already tracking underneath it.
+            if (w.territories[r]["unrest"].asDouble() >= 35)
+                situation["unrest"] = unrestDescription(w.territories[r]["unrest"].asDouble());
             c.facts["region_situation"] = situation;
             c.facts["related_history"] = Json::arrayValue;
             for (auto &row :

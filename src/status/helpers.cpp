@@ -35,6 +35,14 @@ std::string scaled(double v) {
     return b;
 }
 std::string people(Int n) { return n >= 1000000 ? scaled(double(n)) : grouped(n); }
+// The bands the journal, the inspector and the map legend all name unrest by.
+std::string unrestLabel(double u) {
+    return u < rate::unrestNotice      ? "calm"
+           : u < 55                    ? "restive"
+           : u < rate::revoltThreshold ? "unrest"
+           : u < rate::revoltGround    ? "in revolt"
+                                       : "in open rebellion";
+}
 std::string stabilityLabel(double s) {
     return s < 20   ? "collapsing"
            : s < 35 ? "unstable"
@@ -78,6 +86,11 @@ std::map<std::string, Totals> totals(const WorldState &w) {
             o.occupied++;
             out[controller].occupying++;
         }
+        auto &c = out[controller];
+        if (number(t, "unrest") > c.unrest) {
+            c.unrest = number(t, "unrest");
+            c.unrestRegion = t["name"].asString();
+        }
     }
     return out;
 }
@@ -119,6 +132,19 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
                           return std::string(t);
                       }() +
                       " a year)");
+        auto government = status.get("government", "").asString();
+        s["government_id"] = government;
+        s["government"] = governmentLabel(government);
+        if (integer(status, "government_since") > 0)
+            s["government_since"] = integer(status, "government_since");
+        // Only when something is actually stirring: a calm country says nothing about unrest, to
+        // the player or to the model.
+        if (t.unrest >= rate::unrestNotice) {
+            snprintf(b, sizeof b, "%.0f", t.unrest);
+            s["unrest"] = unrestLabel(t.unrest) + " in " + t.unrestRegion + " (" + b + "/100)";
+            s["unrest_score"] = round1(t.unrest);
+            s["unrest_region"] = t.unrestRegion;
+        }
         s["currency"] = status["currency"];
         s["estimated"] = status.get("estimated", false).asBool();
     } else

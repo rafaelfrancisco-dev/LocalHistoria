@@ -49,6 +49,10 @@ static int regionStake(const WorldState &w, const std::string &r) {
     auto raise = [&](int n) { stake = std::max(stake, n); };
     if (t[key::owner] != t[key::controller])
         raise(3);
+    // A region the engine has marked as restive outranks a quiet one: whatever is boiling is
+    // exactly what the month's one regional voice should be spent on.
+    if (t["unrest"].isNumeric() && t["unrest"].asDouble() >= 35)
+        raise(t["unrest"].asDouble() >= 55 ? 3 : 2);
     for (const auto &cid : w.conflicts.getMemberNames()) {
         const auto &c = w.conflicts[cid];
         if (!isOpen(c))

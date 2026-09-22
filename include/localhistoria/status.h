@@ -1,5 +1,6 @@
 #pragma once
 #include "world.h"
+#include <vector>
 namespace lh {
 // Reference inputs frozen into a campaign: national statistics keyed by actor code, regional
 // population/GDP shares keyed by territory ID, and the January 2026 wars and treaties.
@@ -15,6 +16,9 @@ StatusSeed decodeSeed(const Json::Value &);
 void seedStatus(WorldState &, const StatusSeed &, bool worldEvents);
 bool hasMilitary(const WorldState &);
 void seedMilitary(WorldState &, const StatusSeed &);
+// A save made before political systems existed has actors with a status but no government.
+bool hasGovernment(const WorldState &);
+void seedGovernment(WorldState &, const StatusSeed &);
 namespace force {
 double quality(const WorldState &, const std::string &);
 Json::Value committedForce(const WorldState &, const Adjacency &, const std::string &,
@@ -52,8 +56,27 @@ bool validConflictKind(const std::string &);
 bool validCommitmentKind(const std::string &);
 bool validIntensity(const std::string &);
 bool validEffect(const std::string &);
+bool validGovernment(const std::string &);
+// Every political system the game models, in the order the UI and the schema list them.
+const std::vector<std::string> &governments();
+// "Semi-presidential republic" for "semi_presidential_republic"; empty for an unknown system.
+std::string governmentLabel(const std::string &system);
+// How a political system handles discontent. `vent` is how much grievance a legitimate channel
+// discharges: it slows unrest and speeds its decay. `repression` holds the lid on longer and
+// stores the pressure, so the revolt that eventually comes is proportionally larger. A regime
+// that answers dissent with force has no protest rung to stop at.
+struct Regime {
+    double vent = 0.5, repression = 0.3;
+    bool armedFirst = false, inhabited = true;
+};
+const Regime &regime(const std::string &system);
+// The band a region's unrest falls in: "calm", "restive", "unrest", "in revolt",
+// "in open rebellion". The journal, the inspector, the map legend and the regional prompt all
+// name it the same way.
+std::string unrestDescription(double unrest);
 // 3 added autonomous front movement and stalemate tracking; turns recorded at 2 keep neither.
-constexpr int statusVersion = 3, frontMomentumVersion = 3;
+// 4 added regional unrest and the rebellion, secession and regime-collapse chain it feeds.
+constexpr int statusVersion = 4, frontMomentumVersion = 3, unrestVersion = 4;
 // Deterministic monthly consequences after the accepted delta: growth, war fronts, casualties,
 // displacement, GDP and stability. Replay runs it again, so it needs no inference. `version` is the
 // turn's recorded status_version: a live month uses the current rules, while replay passes what the

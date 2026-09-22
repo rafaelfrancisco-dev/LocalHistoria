@@ -413,7 +413,8 @@ int main() {
         // Both gates: a month recorded before this rule, and a world without inventories.
         auto old = war(400000);
         old.state.turn++;
-        check(applyMonthlyStatus(old, {}, adj, statusVersion - 1)
+        // Name the gate this asserts: statusVersion has moved on past it since.
+        check(applyMonthlyStatus(old, {}, adj, frontMomentumVersion - 1)
                       .state.territories["D"]["controller"] == "D",
               "Turns recorded under earlier rules keep their front");
         auto bare = war(400000);

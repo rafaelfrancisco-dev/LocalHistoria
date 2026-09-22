@@ -59,6 +59,22 @@ class MonthlyStatus {
     // 6–7
     void returnDisplaced();
     void driftStability();
+    // 4c and 8: unrest and what it eventually does. Ground moves with the conventional advances so
+    // the toll, displacement and front drawing treat a rebel seizure exactly like any other; the
+    // rest runs last, because it reads the stability this month finished with.
+    void advanceRebellions();
+    void unrestStep();
+    double nationalStress(const std::string &actor) const;
+    double regionalGrievance(const std::string &region) const;
+    void accrueUnrest();
+    void formRebellions();
+    void raiseRebellion(const std::string &region);
+    void declareSecessions();
+    void regimeCollapse();
+    // Rebel actors created by earlier months, as {rebel actor -> conflict ID}.
+    std::map<std::string, std::string> rebellions() const;
+    bool newStateThisMonth() const;
+    int campaignYear() const;
 
     const Resolution &base;
     const WorldDelta &delta;
@@ -81,5 +97,8 @@ class MonthlyStatus {
     std::vector<Front> fronts;
     std::set<std::string> allAffected;
     std::map<std::string, Totals> before;
+    // Pacing, shared by the model's operations and this step: one rebellion and one new state a
+    // month, campaign-wide.
+    bool rebelledThisMonth = false, secededThisMonth = false;
 };
 } // namespace lh::detail

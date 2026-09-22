@@ -22,6 +22,7 @@ Chronicles replace the raw history excerpt for nations. Before a month's decisio
 
 ## Extension points
 
+- Domestic politics: political systems, regional unrest, engine-raised rebellions, breakaway states and regime collapse are implemented in `src/status/monthly/unrest.cpp` and `rebellion.cpp`, with the per-system table in `src/status/regimes.cpp`. Sides within a rebellion, negotiated autonomy short of independence and rebel-to-rebel conflict remain; keep additions deterministic and version-gated on `unrestVersion` so replay stays exact.
 - Deeper warfare: inventories, casualties and autonomous conventional front advances are implemented. Supply lines and explicit sides in multi-party conflicts remain; keep additions deterministic from frozen inputs and version monthly rules so replay stays exact.
 - Historical scenarios: add versioned scenario datasets and explicit January-2026 source cutoffs; do not relabel current fictional stats as history.
 - Enhanced models: implement the provider interfaces and retain strict local validation and hard failure on any invalid or missing result.

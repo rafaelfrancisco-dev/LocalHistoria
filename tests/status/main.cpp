@@ -255,6 +255,7 @@ int main() {
               "No phantom actors or statuses");
 
         realWorldTests();
+        unrestTests();
         std::cout
             << "National status, consequences, naming, effects and the January 2026 world passed\n";
         return 0;

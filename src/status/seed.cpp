@@ -10,6 +10,30 @@ bool hasMilitary(const WorldState &w) {
             return false;
     return !w.actors.empty();
 }
+bool hasGovernment(const WorldState &w) {
+    for (const auto &a : w.actors)
+        if (a["status"].isObject() && !a["status"]["government"].isString())
+            return false;
+    return !w.actors.empty();
+}
+// Backfills political systems, and the frozen January stability the unrest gate reads, into a save
+// written before either existed. A campaign actor the reference database does not know -- a state
+// founded during play -- is transitional, the same thing a new state gets at birth.
+void seedGovernment(WorldState &w, const StatusSeed &seed) {
+    for (const auto &a : w.actors.getMemberNames()) {
+        auto &s = w.actors[a]["status"];
+        if (!s.isObject())
+            continue;
+        if (!s["government"].isString()) {
+            auto government = seed.countries[a].get("government", "").asString();
+            s["government"] =
+                validGovernment(government) ? government : std::string("transitional_government");
+            s["government_since"] = integer(seed.countries[a], "government_since");
+        }
+        if (!s["seeded_stability"].isNumeric())
+            s["seeded_stability"] = round1(number(s, "stability", 50));
+    }
+}
 void seedMilitary(WorldState &w, const StatusSeed &seed) {
     auto t = totals(w);
     for (const auto &a : w.actors.getMemberNames()) {
@@ -89,6 +113,12 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
         Json::Value s;
         s["stability"] = round1(number(c, "stability", 50));
         s["baseline_stability"] = s["stability"];
+        // The January level, frozen. baseline_stability cannot serve as the reference the unrest
+        // gate measures a fall against, because it ratchets with every model effect.
+        s["seeded_stability"] = s["stability"];
+        auto government = c.get("government", "").asString();
+        s["government"] = validGovernment(government) ? government : "transitional_government";
+        s["government_since"] = integer(c, "government_since");
         s["gdp_growth"] = std::round(number(c, "gdp_growth") * 100) / 100;
         s["pop_growth"] = std::round(number(c, "pop_growth") * 100) / 100;
         s["currency"] = c.get("currency", "USD");
@@ -119,8 +149,11 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
         w.actors[a]["color"] = v["color"];
         if (seed.countries.isMember(base)) {
             auto s = statusFrom(seed.countries[base]);
-            s["stability"] = s["baseline_stability"] = 25.0;
+            s["stability"] = s["baseline_stability"] = s["seeded_stability"] = 25.0;
             s["gdp_growth"] = s["pop_growth"] = 0.0;
+            // An armed movement is not governed by the constitution it is fighting.
+            s["government"] = "transitional_government";
+            s["government_since"] = Int(0);
             w.actors[a]["status"] = s;
         }
     }

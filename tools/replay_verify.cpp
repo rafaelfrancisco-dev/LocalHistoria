@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
                 seedStatus(world, decodeSeed(turn["reference"]["status_seed"]), false);
             if (turn["reference"].isMember("military_seed"))
                 seedMilitary(world, decodeSeed(turn["reference"]["military_seed"]));
+            if (turn["reference"].isMember("government_seed"))
+                seedGovernment(world, decodeSeed(turn["reference"]["government_seed"]));
             auto result = resolve(world);
             WorldDelta delta;
             if (turn["reference"].isMember("delta")) {

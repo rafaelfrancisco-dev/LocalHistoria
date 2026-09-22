@@ -20,3 +20,5 @@ inline WorldDelta events(const char *json) {
 }
 // The real January 2026 world from the reference database, and chronicle scheduling.
 void realWorldTests();
+// Regional unrest, and the rebellion, secession and regime-collapse chain it feeds.
+void unrestTests();

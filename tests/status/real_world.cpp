@@ -61,6 +61,19 @@ void realWorldTests() {
     auto ua = nationalStatus(world, "UA");
     check(ua["occupied_regions"].asInt() == 3 && ua["wars"][0]["name"] == "Russo-Ukrainian War",
           "Ukraine: " + dump(ua));
+    // Every political system classifies, and the seeded values are the real ones.
+    check(nationalStatus(world, "PT")["government"] == "Semi-presidential republic" &&
+              nationalStatus(world, "KP")["government"] == "One-party state" &&
+              nationalStatus(world, "SA")["government"] == "Absolute monarchy" &&
+              world.actors["rapid-support-forces"]["status"]["government"] ==
+                  "transitional_government",
+          "Political systems are seeded, including for non-state actors");
+    for (const auto &a : world.actors.getMemberNames())
+        check(validGovernment(world.actors[a]["status"]["government"].asString()),
+              "Every actor has a political system: " + a);
+
+    auto actorCount = world.actors.size();
+    auto conflictCount = world.conflicts.size();
     auto year = Resolution{world, {}};
     Json::Int64 killed = 0;
     for (int m = 0; m < 12; ++m) {
@@ -83,6 +96,48 @@ void realWorldTests() {
           "Russo-Ukrainian War toll");
     check(ruWar["displaced"].asInt64() > 100000 && ruWar["displaced"].asInt64() < 5000000,
           "Russo-Ukrainian War displacement");
+    // Unrest must be earned. The World Bank score this world is seeded from is a percentile rank
+    // of the absence of violence, not of regime fragility -- North Korea reads 71.4 and Yemen 18.9
+    // -- so an absolute threshold would set the Sahel, Yemen and Somalia alight before the player
+    // had done anything. Nothing here has fallen from the stability it started with, and no region
+    // carries a grievance this campaign produced, so two idle years change nothing internally.
+    auto idle = year;
+    for (int m = 0; m < 12; ++m) {
+        idle.state.turn++;
+        idle = applyMonthlyStatus(idle, {}, realAdjacency);
+    }
+    check(idle.state.actors.size() == actorCount, "No breakaway state forms in an idle real world");
+    check(idle.state.conflicts.size() == conflictCount,
+          "No new conflict opens in an idle real world");
+    // The one thing that does stir is occupied Ukraine: Russia's own stability slides while it
+    // fights, which opens the gate a crack for the land it holds. That is the mechanic working --
+    // an occupier bogged down in a long war is exactly who an occupied population turns on -- and
+    // it stays far below the level anything is reported or acted on at.
+    std::string worst;
+    double peak = 0;
+    for (const auto &id : idle.state.territories.getMemberNames())
+        if (idle.state.territories[id]["unrest"].asDouble() > peak) {
+            peak = idle.state.territories[id]["unrest"].asDouble();
+            worst = idle.state.territories[id]["name"].asString();
+        }
+    std::cout << "Most restive region after two idle years: " << (worst.empty() ? "none" : worst)
+              << " at " << peak << "/100\n";
+    check(peak < 20, "Nothing approaches unrest in an idle real world: " + worst + " at " +
+                         std::to_string(peak));
+    for (const auto &id : idle.state.territories.getMemberNames())
+        check(idle.state.territories[id]["unrest_months"].asInt() == 0,
+              "No region spends a month past the revolt line: " + id);
+    for (const auto &a : idle.state.actors.getMemberNames())
+        check(idle.state.actors[a]["status"]["government"] ==
+                  world.actors[a]["status"]["government"],
+              "No government falls in an idle real world: " + a);
+    for (const auto &e : idle.events)
+        check(e.action != "revolt" && e.action != "secession" && e.action != "regime_change" &&
+                  e.action != "unrest",
+              "An idle real world reports nothing domestic: " + e.text);
+    // And the war calibration plan 19 tuned is untouched by any of it.
+    check(idle.state.conflicts["c0-1"]["intensity"] == "high", "The seeded wars run as before");
+
     // Chronicles: missing, a year old, or source-less once the source exists.
     auto chronicle = parse(R"({"summary":"Old","through_turn":2,"with_source":true})");
     check(chronicleDue(Json::Value(), 3, false) && chronicleDue(Json::objectValue, 3, true),

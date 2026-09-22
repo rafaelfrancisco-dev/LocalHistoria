@@ -2,6 +2,7 @@
  "data/source/countries.geojson": "45f41865adec4f86602c2cd05c0e29cd8b437614bf2f5b5a863d12463202cae4",
  "data/source/country_stats.json": "630ed665bf094ef49eaf10675e470cbb1e6254b38b32487fa02a4188a9d5a784",
  "data/source/currencies.json": "9c9208ec4d3915abcda356b20760e2ef4a8d03bf60930f6b176d20d7d39b5c4c",
+ "data/source/governments_2026.json": "87e127d4003f4e607d4a52b283314f30816a87ff2be7c0af94047f9140756dfd",
  "data/source/json-cities.json.gz": "311575e7b90512b15cc1ba6c9e897b3e8f3905a9c6e09db344a7dc1cac1ba2f5",
  "data/source/military_2026.json": "46209f66e55afb29ef21bf5923b07110b178c173dbb5368f9ff0d5a6ed8f83d8",
  "data/source/stats_overrides.json": "9b7a89e5cbd8ee8c8c4cbd4d47691c1449e9fc287223e87f37a942710cd2bf45",

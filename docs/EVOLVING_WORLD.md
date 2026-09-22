@@ -139,6 +139,19 @@ Narration runs after commit and cannot mutate state; failed narration leaves the
 
 `src/status.cpp` holds all rates as named constants. Everything here is deterministic: jitter of ±30% comes from a stable hash of campaign, month and region, so replay recomputes it exactly after applying recorded deltas.
 
+**Political systems.** Every actor carries a `government`, one of twelve values seeded from
+`data/source/governments_2026.json`: `parliamentary_republic`, `presidential_republic`,
+`semi_presidential_republic`, `constitutional_monarchy`, `absolute_monarchy`, `theocracy`,
+`one_party_state`, `dominant_party_state`, `military_junta`, `transitional_government`,
+`dependent_territory` and `uninhabited_territory`, plus `government_since`, the year that order
+began (0 when it is long-standing or not well established). Seeded non-state actors are
+transitional, as is any state founded during a campaign. `src/status/regimes.cpp` gives each system
+a `vent` (how much grievance legitimate channels discharge) and a `repression` (how much dissent is
+suppressed rather than resolved). These modulate **unrest only**, never `driftStability`: the seeded
+stability figures are real observations, and a regime-dependent baseline would pull all 239 nations
+away from their January values in the first month. Only a `change_identity` with
+`change_type: refounding`, or the engine's own collapse rule, changes a nation's system.
+
 **Seeding.** `seedStatus` gives each actor its `country_stats` row and each region its `region_stats` share. New campaigns also receive the January 2026 wars, occupations and treaties. A save from before national status is seeded (without the 2026 world) at its next month, and that turn freezes the inputs in `reference.status_seed` for replay.
 
 **Grounding.** `context()` adds a compact `status` to every decision, adjudication and narration input:
@@ -182,6 +195,18 @@ Relevant regions show their population. The adjudication prompt asks the model t
    - Once a region is calm and back under its owner, 3% of its displaced return each month.
    - Population is conserved except for deaths.
 6. **Stability** moves 8% of the way toward a target each month, by at most 10 points. The target is the baseline, minus 3 / 8 / 15 for the most intense war, minus 25 × the occupied share of population, minus 5 when GDP fell over 1% that month. Deaths above 0.01% of population cost another point.
+7. **Unrest**, per region, on the same 0–100 scale, charged against whoever controls it. It drifts toward what the situation justifies, `100 × stress × grievance / 2`, closing `10% × (1 − 0.8 × vent)` of the gap when rising and `20% × (1 + vent)` when falling, at most 10 points a month.
+   - `stress` is 0 unless the controlling nation has fallen at least 8 points below `seeded_stability`, the January figure frozen at seeding; it then rises to 1 at a 30-point fall. `baseline_stability` cannot serve as that reference because it ratchets with every model effect.
+   - `grievance` is 0 unless the region has one the campaign produced, and then sums: 1.6 for occupation by another power (plus 0.8 where over 2% of its people are displaced), 1.0 for `strained` relations with the capital, 0.5 per pending demand reaching full weight after six months, and −1.5 for `cooperative` relations. **Being a front in a war its own controller is fighting is deliberately not a grievance**: invaded populations rally and only occupied ones resist, and war already costs national stability at step 6.
+   - The gate is what keeps the seeded world still. `stability` is the World Bank's *political stability and absence of violence* percentile rank — North Korea reads 71.4, Yemen 18.9 — so it measures repression as much as fragility. An absolute threshold would set the Sahel, Yemen and Somalia alight in the first year of every campaign. Two idle years of the real January 2026 world produce no revolt anywhere and peak at 11/100, in RSF-held West Kordofan.
+   - Regions report at 35 (`restive`), 55 (`unrest`), 70 (`in revolt`) and 80 (`in open rebellion`). A band change is a `domestic` journal event, and unrest at or above 35 raises a region's stake for the month's regional initiative slot.
+8. **Rebellion, secession and collapse**, all bounded to one of each a month campaign-wide.
+   - A region held for 4 consecutive months at or above `70 + 25 × repression`, and not already inside an open conflict, raises rebels: a new actor with a flag, a transitional government and an army that **defects out of the state's**, 25% of the personnel committed there scaled by unrest and by `1 + repression`, plus 0.2% of the population, between 1,500 and 150,000. It opens an `insurgency`, or a `civil_war` where the defectors are at least a quarter of the army, named by `realisticName` as usual. The state loses 6 stability.
+   - Rebel ground moves on its own rule, not on a force ratio: `advanceConflict` still refuses to advance insurgency and civil-war fronts, because measured conventionally an army always walks into its own insurgency. A rebellion takes one region a month that borders what it holds, is at 80 unrest or more, and is garrisoned by fewer than 0.004 troops per resident. It runs in step 4c with the conventional advances, so the toll, displacement and front drawing treat it identically. Control only, never ownership.
+   - Ground held for 6 consecutive months, with no ceasefire or peace treaty, becomes a state: ownership transfers, the movement takes a state name and a new identity revision, and the parent loses 8 stability.
+   - A nation below 15 stability and party to an open civil war for 6 consecutive months becomes a `transitional_government`.
+
+Status version 4 adds all of this. Turns recorded at 3 or below gain no unrest at all, so existing campaigns replay unchanged.
 
 A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
 

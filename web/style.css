@@ -136,6 +136,15 @@ aside {
   letter-spacing: 1px;
   margin-left: 6px;
 }
+/* The political system sits under the name, so a long one never pushes the row wider. */
+.country .government {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .country img {
   width: 23px;
   height: 17px;

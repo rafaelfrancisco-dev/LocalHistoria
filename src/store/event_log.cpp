@@ -162,6 +162,19 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                     if (w.conflicts[target]["affected_regions"].isArray())
                         item["regions"] = w.conflicts[target]["affected_regions"];
                 }
+            } else if (action == "unrest" || action == "revolt" || action == "secession" ||
+                       action == "regime_change") {
+                // What a country's own people do to it. A revolt, a secession and a government
+                // falling are news; a province growing restive is a running note.
+                item["category"] = "domestic";
+                item["major"] = action != "unrest";
+                if (!x["region"].asString().empty())
+                    item["regions"].append(x["region"]);
+                if (w.conflicts.isMember(target)) {
+                    item["conflicts"].append(target);
+                    item["actors"] = w.conflicts[target]["actors"];
+                } else if (w.hasActor(target) && target != x["actor"].asString())
+                    item["actors"].append(target);
             } else if (action == "completion") {
                 item["category"] = "construction";
                 // A finished city is years of work; units, bases and ports are routine.

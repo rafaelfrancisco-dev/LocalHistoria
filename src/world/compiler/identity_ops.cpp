@@ -72,6 +72,22 @@ void OperationCompiler::opChangeIdentity(EventScope &s, OpScope &op) {
     }
     if (type == "rename" && identityCorrection(newName, v["name"].asString()))
         type = "correction";
+    // A constitutional refounding is the one thing the model may write into an actor's status,
+    // and only into this field. A spelling fix is not a revolution.
+    auto government = op.o.get("government", "none").asString();
+    // Read through a const view: the non-const operator[] would insert a null status on an actor
+    // that has none yet, and that null would then be saved.
+    auto current = static_cast<const Json::Value &>(v)["status"]["government"].asString();
+    if (government != "none" && government != current) {
+        if (type != "refounding")
+            throw Infeasible("only a refounding changes a nation's political system");
+        if (!validGovernment(government))
+            throw Infeasible("unknown political system " + government);
+        if (!static_cast<const Json::Value &>(v)["status"].isObject())
+            throw Infeasible("an actor without national status has no political system");
+        v["status"]["government"] = government;
+        v["status"]["government_since"] = 2026 + int(w.turn / 12);
+    }
     if (pending.contains("actor", a))
         throw Infeasible("only one identity change per actor per month");
     if (type == "correction") {

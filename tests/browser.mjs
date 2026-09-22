@@ -58,6 +58,9 @@ try {
   // National status in real currency, the Wars & treaties menu and its map mode.
   await page.waitForFunction(() => document.querySelector("#stats").innerText.includes("€"));
   assert.match(await page.locator("#stats").innerText(), /GDP[\s\S]*US\$[\s\S]*population[\s\S]*stability/i);
+  // The political system, next to stability, and in the country list.
+  assert.match(await page.locator("#stats").innerText(), /Semi-presidential republic[\s\S]*government · since 1976/i);
+  assert.match(await page.getByRole("button", { name: "Portugal", exact: true }).innerText(), /Portugal[\s\S]*Semi-presidential republic/);
   assert.match(await page.locator("#stats").innerText(), /28,000[\s\S]*Active troops[\s\S]*uncommitted[\s\S]*210,000[\s\S]*Reserve[\s\S]*Warships[\s\S]*Combat aircraft/);
   await page.evaluate(() => { const e = Object.values(state.entities).find(e => e.kind === "army" && e.actor === "UA"); map.setView([e.latitude, e.longitude], 7); });
   await page.waitForFunction(() => entityLayers.getLayers().some(l => l.getPopup()?.getContent()?.textContent.includes("90,000 troops")));
@@ -78,6 +81,13 @@ try {
   assert.match(await page.locator(".map-legend").innerText(), /Russo-Ukrainian War[\s\S]*War front/);
   assert.equal(await page.evaluate(() => { let fill; layers.eachLayer((l) => { if (l.feature.properties.name === "Donetsk Oblast") fill = l.options.fillColor; }); return fill; }), "#f28c38");
   await page.locator(".map-legend button").click();
+  // Stability & unrest: a calm region takes its controller's stability band, and the legend names
+  // both scales.
+  await page.getByRole("button", { name: "Stability & unrest" }).click();
+  await page.waitForFunction(() => mapMode === "unrest");
+  assert.match(await page.locator(".map-legend").innerText(), /Region in open rebellion[\s\S]*Nation collapsing/);
+  // Occupied Donetsk is calm enough to show its controller's band, which is Russia's.
+  assert.equal(await page.evaluate(() => { let fill; layers.eachLayer((l) => { if (l.feature.properties.name === "Donetsk Oblast") fill = l.options.fillColor; }); return fill; }), "#6d8f76");
   await page.getByRole("button", { name: "Political" }).click();
   await page.waitForFunction(() => mapMode === "political" && document.querySelector(".map-legend").hidden);
   // Display geometry is small enough to keep the page light and restyles fast (Chromium reports heap size).

@@ -42,6 +42,54 @@ constexpr int warLullMonths = 6;
 // Reservists count toward defence only: a mobilisation base for holding home ground, never an
 // expeditionary pool available next month.
 constexpr double reserveDefence = 0.05;
+
+// Unrest, on the same 0-100 scale as stability but per region and charged against whoever
+// controls it.
+//
+// Nothing accrues unless BOTH a nation has fallen from the stability it started the campaign with
+// AND the region has a grievance the campaign produced. The World Bank score the game seeds is
+// "political stability and absence of violence", a percentile rank on which North Korea reads 71.4
+// and Yemen 18.9; an absolute threshold would therefore set the Sahel, Yemen and Somalia alight in
+// the first year of every campaign while leaving closed states untouchable. A country that is
+// chronically low but steady is at its equilibrium, and this leaves it there.
+constexpr double unrestDrop = 8;       // points below seeded stability before anything accrues
+constexpr double unrestStressCap = 30; // a fall past this adds no further pressure
+// Grievance units at which a region is as aggrieved as it can usefully be. Soured relations alone
+// are 1.0, which tops out below the revolt threshold however far the nation falls: it takes
+// grievance the capital has refused to answer as well. Reaching it needs strained relations plus
+// two demands left pending for half a year, or occupation.
+constexpr double unrestGrievanceCap = 2;
+// Unrest drifts toward what the situation justifies, the way stability drifts toward its target.
+// A regime that vents grievance closes the gap slowly and forgets quickly; a repressive one does
+// the reverse, which is why its revolts arrive later and larger.
+constexpr double unrestRise = 0.10, unrestFall = 0.20, ventRise = 0.8;
+constexpr double maxUnrestStep = 10;
+// Grievance weights. Occupation by a foreign power is the strongest separatist signal there is; a
+// front in a war the region's own controller is fighting is deliberately absent, because invaded
+// populations rally and only occupied ones resist.
+constexpr double grievanceOccupied = 1.6, grievanceStrained = 1.0, grievanceDemand = 0.5,
+                 grievanceCooperative = -1.5;
+// Devastation compounds occupation rather than standing alone: almost all displacement is war
+// damage, and counting it by itself would turn every front region against its own defender.
+constexpr double grievanceDisplaced = 0.8;
+constexpr double demandAgeMonths = 6;            // a demand reaches its full weight after this long
+constexpr double displacedGrievanceShare = 0.02; // displaced share of a region that counts
+constexpr double unrestNotice = 35;              // the journal starts reporting a region here
+// A revolt needs sustained unrest, and a repressive state holds the lid on for longer.
+constexpr double revoltThreshold = 70, repressionHold = 25;
+constexpr int revoltMonths = 4;
+// A rebellion takes ground where the population is with it and the state cannot garrison, never on
+// an inventory ratio: measured conventionally an army always walks into its own insurgency.
+constexpr double revoltGround = 80, garrisonPerResident = 0.004;
+constexpr double defectionShare = 0.25;      // of the state's personnel committed in the region
+constexpr double militiaPerResident = 0.002; // volunteers a fully unresting region raises
+constexpr int minimumRebels = 1500, maximumRebels = 150000;
+constexpr double civilWarShare = 0.25; // rebels this large relative to the army make it a civil war
+constexpr double revoltShock = 6, secessionShock = 8; // stability the state loses on the day
+constexpr int secessionMonths = 6; // months a rebellion must hold ground before it is a state
+// A state that cannot put down a civil war stops being the state it was.
+constexpr double collapseFloor = 15;
+constexpr int collapseMonths = 6;
 } // namespace rate
 namespace detail {
 using Int = Json::Int64;
@@ -58,7 +106,12 @@ std::map<std::string, Int> distribute(Int amount, const std::map<std::string, do
 struct Totals {
     Int population = 0, gdp = 0, displaced = 0;
     int occupied = 0, occupying = 0;
+    // The most restive region this actor controls, charged to whoever holds it rather than to
+    // whoever owns it: an occupier inherits the resentment along with the ground.
+    double unrest = 0;
+    std::string unrestRegion;
 };
+std::string unrestLabel(double u);
 std::map<std::string, Totals> totals(const WorldState &w);
 Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals &t);
 std::string names(const WorldState &w, const std::vector<std::string> &parties);

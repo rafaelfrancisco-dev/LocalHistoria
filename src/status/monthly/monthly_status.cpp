@@ -28,6 +28,9 @@ Resolution MonthlyStatus::run() {
     // 4b. Ground the balance of forces takes on its own, before the fronts are drawn: a momentum
     // seizure has to count as fighting and displace people exactly like an ordered one.
     advanceFronts();
+    // 4c. Rebel ground, on the same tick as conventional momentum so the toll, the displacement and
+    // the front drawing treat a seizure by insurgents exactly like any other.
+    advanceRebellions();
     for (auto &id : w.conflicts.getMemberNames())
         addFront(id);
 
@@ -47,6 +50,10 @@ Resolution MonthlyStatus::run() {
     // 7. Stability drifts toward what the nation's situation supports; model effects leave a
     // lasting trace.
     driftStability();
+
+    // 8. Unrest, and what sustained unrest eventually does: revolt, secession, collapse. Last,
+    // because it reads the stability this month finished with.
+    unrestStep();
     return r;
 }
 // Freeze force inputs before any operations, growth, deaths or mobilisation this month.
@@ -105,6 +112,11 @@ void MonthlyStatus::inheritStatus() {
             continue;
         auto s = cActors[parent]["status"];
         s["stability"] = s["baseline_stability"] = std::min(number(s, "stability", 50), 45.0);
+        s["seeded_stability"] = s["stability"];
+        // A state born out of a secession is not a copy of the constitution it just repudiated.
+        s["government"] = "transitional_government";
+        s["government_since"] = 2026 + int(std::floor(w.turn / 12.0));
+        s.removeMember("collapse_months");
         s.removeMember("last_gdp_change");
         s.removeMember("last_population_change");
         // A new actor cannot copy its parent's entire military inventory.

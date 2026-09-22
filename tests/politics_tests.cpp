@@ -107,6 +107,14 @@ int main() {
                 check(scheduleInitiatives(pressed, {}, home)[2]["region"] == "s",
                       "A pending demand takes the regional slot");
             }
+            // A restive region is where the month's one regional voice belongs.
+            auto restive = v;
+            restive.territories["s"]["unrest"] = 58.0;
+            for (int n = 0; n < 50; ++n) {
+                restive.campaignId = std::to_string(n);
+                check(scheduleInitiatives(restive, {}, home)[2]["region"] == "s",
+                      "A restive region takes the regional slot");
+            }
             // Occupied land is a front by another name.
             auto held = v;
             held.territories["s"]["controller"] = "FR";
@@ -271,6 +279,42 @@ int main() {
                   refounding.state.actors["PT"]["identity_revisions"][1]["svg"] !=
                       refounding.state.actors["PT"]["identity_revisions"][2]["svg"],
               "Refounding distinct flag");
+        // A refounding is the one thing the model may write into a nation's status, and only
+        // there: everything else about it still has to survive the delta unchanged.
+        auto governed = refounded;
+        governed.actors["PT"]["status"] =
+            parse(R"({"government":"parliamentary_republic","government_since":1976,)"
+                  R"("stability":70.0,"baseline_stability":70.0})");
+        auto regime = rename;
+        regime[0]["name"] = "Federal Atlantic Union";
+        regime[0]["government"] = "military_junta";
+        auto seizedPower =
+            applyDelta({governed, {}}, compileOperations(governed, event("PT", regime), {}), {});
+        check(seizedPower.state.actors["PT"]["status"]["government"] == "military_junta" &&
+                  seizedPower.state.actors["PT"]["status"]["government_since"].asInt() == 2026 &&
+                  seizedPower.state.actors["PT"]["status"]["stability"].asDouble() == 70.0,
+              "A refounding sets the political system and nothing else in status");
+        auto spelling = regime;
+        spelling[0]["change_type"] = "correction";
+        spelling[0]["name"] = "Atlantic republic";
+        bool refused = false;
+        try {
+            compileOperations(governed, event("PT", spelling), {});
+        } catch (...) {
+            refused = true;
+        }
+        auto corrections = compileOperations(governed, event("PT", spelling), {});
+        check(refused || corrections.events[0]["failed"].asBool() ||
+                  applyDelta({governed, {}}, corrections, {})
+                          .state.actors["PT"]["status"]["government"] == "parliamentary_republic",
+              "A spelling correction is not a revolution");
+        auto invented = regime;
+        invented[0]["government"] = "democracy";
+        auto nonsense = compileOperations(governed, event("PT", invented), {});
+        check(applyDelta({governed, {}}, nonsense, {}).state.actors["PT"]["status"]["government"] ==
+                  "parliamentary_republic",
+              "An unknown political system is refused");
+
         auto quiet = applyDelta(
             {refounded, {}},
             compileOperations(refounded, event("PT", Json::Value(Json::arrayValue)), {}), {});

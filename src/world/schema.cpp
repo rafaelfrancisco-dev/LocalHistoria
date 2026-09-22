@@ -130,6 +130,15 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     p["name"] = string(120);
     p["reason"] = string(500);
     p["change_type"] = parse(R"({"type":"string","enum":["rename","refounding","correction"]})");
+    // define() makes every property required, so a regime change is carried by an explicit
+    // "none" the way blocked_by is. Only a refounding may name a system; the compiler checks
+    // that again.
+    p["government"] = Json::objectValue;
+    p["government"]["type"] = "string";
+    p["government"]["enum"] = Json::arrayValue;
+    p["government"]["enum"].append("none");
+    for (const auto &g : governments())
+        p["government"]["enum"].append(g);
     p["flag_design"] = ref("flag_design");
     op("change_identity", p);
     if (!regions.empty()) {

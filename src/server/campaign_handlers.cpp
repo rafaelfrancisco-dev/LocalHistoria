@@ -24,14 +24,19 @@ void campaign(Server &s, const HttpRequestPtr &req, Json::Value b, const CB &cb)
         auto w = decode(j["state"]);
         for (auto &month : j["journal"]) {
             month["changes"] = changeSummaries(s.store.monthChanges(month["turn"].asInt()), w);
-            for (const auto &event : month["events"])
-                if (event["action"] == "front_advance") {
-                    Json::Value change;
-                    change["kind"] = "territory";
-                    change["id"] = event["region"];
-                    change["summary"] = event["text"];
-                    month["changes"].append(change);
-                }
+            // Engine consequences never pass through a delta, so they are not in monthChanges;
+            // the structural ones still belong in "What changed".
+            for (const auto &event : month["events"]) {
+                auto action = event["action"].asString();
+                if (action != "front_advance" && action != "revolt" && action != "secession" &&
+                    action != "regime_change")
+                    continue;
+                Json::Value change;
+                change["kind"] = action == "front_advance" ? "territory" : "actor";
+                change["id"] = action == "front_advance" ? event["region"] : event["actor"];
+                change["summary"] = event["text"];
+                month["changes"].append(change);
+            }
         }
     }
     j["active_jobs"] = s.store.query("SELECT id,status FROM jobs WHERE status='running'");
@@ -104,6 +109,12 @@ void countries(Server &s, const HttpRequestPtr &, Json::Value, const CB &cb) {
             // Landless actors without a flag of their own are listed only when searched for.
             c["has_flag"] =
                 isCountryCode(a) && std::filesystem::exists("web/flags/" + lowercase(a) + ".svg");
+            // The campaign's current system, so a nation refounded during play lists what it is
+            // now rather than what it was in January.
+            auto government =
+                static_cast<const Json::Value &>(w.actors)[a]["status"]["government"].asString();
+            if (validGovernment(government))
+                c["government"] = governmentLabel(government);
             if (neighbors.contains(a))
                 c["neighbor"] = true;
             rows.append(c);
@@ -155,11 +166,14 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     // Saves from before national status gain it at this month; replay re-seeds from the
     // frozen inputs.
     bool militaryBackfill = !hasMilitary(w);
+    bool governmentBackfill = !hasGovernment(w);
     bool backfill = !hasStatus(w);
     if (backfill)
         seedStatus(w, s.statusSeed, false);
     if (militaryBackfill)
         seedMilitary(w, s.statusSeed);
+    if (governmentBackfill)
+        seedGovernment(w, s.statusSeed);
     auto orders = parseOrders(b["orders"]);
     auto payload = dump(b);
     auto existing =
@@ -197,6 +211,8 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
         refs["status_seed"] = encode(s.statusSeed);
     if (militaryBackfill)
         refs["military_seed"] = encode(s.statusSeed);
+    if (governmentBackfill)
+        refs["government_seed"] = encode(s.statusSeed);
     s.references.prepare(w);
     try {
         s.worker.add([&s, plan, id] { s.turns.run(plan, id); });

@@ -105,6 +105,12 @@ function countryButton(c) {
   img.alt = "";
   flag(img, c.code);
   b.append(img, document.createTextNode(c.name));
+  if (c.government) {
+    const system = document.createElement("small");
+    system.className = "government";
+    system.textContent = c.government;
+    b.append(system);
+  }
   if (state?.player === c.code) {
     const you = document.createElement("small");
     you.className = "you";
@@ -120,6 +126,26 @@ function countryButton(c) {
     await select(c.code, true);
   });
   $("countries").append(b);
+}
+// Stability & unrest map mode. The bands mirror unrestDescription() and stabilityLabel() in C++;
+// a region carries its own unrest, and everything calm falls back to its owner's stability.
+const UNREST_BANDS = [[80, "in open rebellion", "#8c1d18"], [70, "in revolt", "#bb3b23"], [55, "unrest", "#d9762b"], [35, "restive", "#d8a83a"]];
+const STABILITY_BANDS = [[85, "highly stable", "#2f7d5f"], [70, "very stable", "#4d8f6a"], [50, "stable", "#6d8f76"], [35, "fragile", "#8a8560"], [20, "unstable", "#8a6a4a"], [0, "collapsing", "#7d4a44"]];
+const unrestBand = (u) => UNREST_BANDS.find(([floor]) => u >= floor)?.[1] || "calm";
+function unrestStyle(f) {
+  const p = f.properties, owner = p.owner ?? p.code, controller = p.controller || owner;
+  const unrest = state?.territories?.[p.id]?.unrest || 0;
+  const band = UNREST_BANDS.find(([floor]) => unrest >= floor);
+  const stability = state?.actors?.[controller]?.status?.stability;
+  const fillColor = band ? band[2] : typeof stability === "number" ? STABILITY_BANDS.find(([floor]) => stability >= floor)[2] : "#39464d";
+  const occupied = p.controller && owner && p.controller !== owner;
+  return {
+    color: occupied ? state?.actors?.[p.controller]?.color || "#fff" : "#3d4e55",
+    weight: occupied ? 2 : 0.5,
+    dashArray: occupied ? "4 3" : null,
+    fillColor,
+    fillOpacity: band ? 0.85 : 0.6,
+  };
 }
 // Wars & treaties map mode: relations of the selected country, war fronts and occupations.
 const INTENSITY = { low: 1, medium: 2, high: 3 };
@@ -173,6 +199,7 @@ function diplomacyStyle(f) {
 }
 function styleFor(f) {
   if (mapMode === "diplomacy" && state) return diplomacyStyle(f);
+  if (mapMode === "unrest" && state) return unrestStyle(f);
   const owner = f.properties.owner ?? f.properties.code;
   const isSelected = owner === selected;
   const isPlayer = state && owner === state.player;
@@ -226,6 +253,8 @@ function renderStats() {
       ["population", national.population_text, [lastPopulation, national.displaced ? `${national.displaced.toLocaleString()} displaced` : ""].filter(Boolean).join(" · ")],
       ["GDP per capita", national.gdp_per_capita, ""],
       ["stability", national.stability.replace(/ \(.*/, ""), national.stability.match(/\((.*)\)/)?.[1] || ""],
+      ...(national.government ? [["government", national.government, national.government_since ? `since ${national.government_since}` : "", true]] : []),
+      ...(national.unrest ? [["unrest", national.unrest.replace(/ in .*/, ""), `${national.unrest_score}/100 · ${national.unrest_region}`]] : []),
       ["economy", national.economic_trend.replace(/ \(.*/, ""), national.economic_trend.match(/\((.*)\)/)?.[1] || ""],
       ["at war", national.wars.length ? wars : "At peace", "", true],
       ...(military ? [
@@ -267,14 +296,17 @@ function renderStats() {
   // Folded on a phone so the month's actions stay near the top.
   let politics = $("regional-politics");
   if (!politics) { politics = document.createElement("details"); politics.id = "regional-politics"; politics.open = !phone.matches; $("stats").after(politics); }
-  const regions = Object.entries(state.regional_politics || {}).filter(([id]) => state.territories[id]?.controller === selected);
+  const restive = Object.entries(state.territories).filter(([id, t]) => t.controller === selected && t.unrest >= 35);
+  const merged = { ...Object.fromEntries(restive.map(([id]) => [id, state.regional_politics?.[id] || { agenda: "No standing agenda recorded", relations: "neutral", demands: [] }])), ...(state.regional_politics || {}) };
+  const regions = Object.entries(merged).filter(([id]) => state.territories[id]?.controller === selected);
   politics.hidden = !regions.length;
   const heading = document.createElement("summary");
   heading.textContent = `Regional politics (${regions.length})`;
   politics.replaceChildren(heading);
   for (const [id, p] of regions) {
     const h = document.createElement("h3"); h.textContent = state.territories[id].name;
-    const agenda = document.createElement("p"); agenda.textContent = `${p.agenda} · Relations: ${p.relations}`;
+    const unrest = state.territories[id].unrest || 0;
+    const agenda = document.createElement("p"); agenda.textContent = `${p.agenda} · Relations: ${p.relations}` + (unrest >= 35 ? ` · Unrest: ${unrestBand(unrest)} (${unrest.toFixed(0)}/100)` : "");
     politics.append(h, agenda);
     for (const d of p.demands) { const line = document.createElement("p"); line.textContent = `${d.status}: ${d.text} (${d.id})`; politics.append(line); }
   }
@@ -398,7 +430,7 @@ async function load() {
       }
       for (const event of [...ordered, ...tolls]) {
         const line = document.createElement("p");
-        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : event.action === "war_toll" ? "War toll · " : event.action === "front_advance" ? "Front · " : "") + event.text;
+        line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : EVENT_PREFIX[event.action] || "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.failed || structured?.partial) line.prepend(structured.failed ? "Failed · " : "Partial · ");
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
@@ -792,6 +824,14 @@ async function refreshCampaignMap() {
       regionById.set(f.id,l);f.geometry=null;
       l.bindTooltip(()=>{
         const p=l.feature.properties,box=document.createElement("span");
+        if (mapMode==="unrest") {
+          const unrest=state?.territories?.[p.id]?.unrest||0, controller=p.controller||p.owner;
+          const stability=state?.actors?.[controller]?.status?.stability;
+          const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")];
+          lines.push(`Unrest: ${unrestBand(unrest)}${unrest?` (${unrest.toFixed(0)}/100)`:""}`);
+          if (typeof stability==="number") lines.push(`${state.actors[controller]?.name||controller}: ${STABILITY_BANDS.find(([floor])=>stability>=floor)[1]} (${stability.toFixed(0)}/100)`);
+          box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
+        }
         if (mapMode!=="diplomacy") { box.textContent=regionLabel(p); return box; }
         const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")+(p.displaced?` · ${p.displaced.toLocaleString()} displaced`:"")];
         if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
@@ -836,7 +876,7 @@ function renderCountryBorders() {
 function readPreference(key, fallback) {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
 }
-const MAP_MODES = ["political", "countries", "diplomacy"];
+const MAP_MODES = ["political", "countries", "diplomacy", "unrest"];
 function setMapMode(mode) {
   mapMode = MAP_MODES.includes(mode) ? mode : "political";
   try { localStorage.setItem("mapMode", mapMode); } catch {}
@@ -847,7 +887,7 @@ function setMapMode(mode) {
 const modeControl = L.control({ position: "topleft" });
 modeControl.onAdd = () => {
   const box = L.DomUtil.create("div", "map-modes leaflet-bar");
-  for (const [mode, text] of [["political", "Political"], ["countries", "Countries"], ["diplomacy", "Wars & treaties"]]) {
+  for (const [mode, text] of [["political", "Political"], ["countries", "Countries"], ["diplomacy", "Wars & treaties"], ["unrest", "Stability & unrest"]]) {
     const b = L.DomUtil.create("button", "", box);
     b.type = "button";
     b.dataset.mode = mode;
@@ -880,9 +920,23 @@ legend.addTo(map);
 function renderLegend() {
   const box = legend.getContainer();
   if (!box) return;
-  box.hidden = mapMode !== "diplomacy" || !state;
+  box.hidden = (mapMode !== "diplomacy" && mapMode !== "unrest") || !state;
   box.replaceChildren();
   if (box.hidden) return;
+  if (mapMode === "unrest") {
+    const heading = document.createElement("strong");
+    heading.textContent = "Stability & unrest";
+    box.append(heading);
+    const rows = [...UNREST_BANDS.map(([, text, color]) => [color, `Region ${text}`]), ...STABILITY_BANDS.map(([, text, color]) => [color, `Nation ${text}`]), [null, "Dashed border in the occupier’s colour: occupied"]];
+    for (const [color, text] of rows) {
+      const row = document.createElement("div");
+      const swatch = document.createElement("i");
+      if (color) swatch.style.background = color; else swatch.className = "dashed";
+      row.append(swatch, document.createTextNode(text));
+      box.append(row);
+    }
+    return;
+  }
   const index = diplomacyIndex();
   const title = document.createElement("strong");
   const item = highlight && state[highlight.kind === "conflict" ? "conflicts" : "commitments"][highlight.id];
@@ -1061,7 +1115,8 @@ wireDialog("diplomacy");
 $("diplomacy-mine").onchange = renderDiplomacy;
 for (const tab of document.querySelectorAll("#diplomacy [role=tab]")) tab.onclick = () => { diplomacyTab = tab.dataset.tab; renderDiplomacy(); };
 // Events: markers for what is still on the map, and a menu of every event.
-const EVENT_CATEGORIES = { player: "Your actions", nation: "Other nations", regional: "Regional", world: "World developments", war: "War tolls", construction: "Construction" };
+const EVENT_PREFIX = { war_toll: "War toll · ", front_advance: "Front · ", unrest: "Unrest · ", revolt: "Rebellion · ", secession: "Independence · ", regime_change: "Government · " };
+const EVENT_CATEGORIES = { player: "Your actions", nation: "Other nations", regional: "Regional", domestic: "Unrest & rebellion", world: "World developments", war: "War tolls", construction: "Construction" };
 const eventLayers = L.layerGroup().addTo(map);
 let eventMarkers = new Map(), eventMarkerRequest = 0;
 const locationKey = (p) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;

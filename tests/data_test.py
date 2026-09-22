@@ -29,6 +29,17 @@ for code,population,gdp,stability,currency,rate,estimated,source in stats.values
  assert population>=0 and gdp>=0 and 0<=stability<=100 and len(currency)==3 and rate>0 and source,(code,population,gdp,stability,currency,rate)
  assert not estimated or code in json.loads((root/'data/source/stats_overrides.json').read_text())['countries'],code
 assert 10_000_000<stats['PT'][1]<11_500_000 and stats['PT'][4]=='EUR' and stats['BG'][4]=='EUR' and stats['US'][5]==1
+# Political systems: every actor classifies, into the same twelve values C++ validGovernment() knows.
+SYSTEMS={'parliamentary_republic','presidential_republic','semi_presidential_republic','constitutional_monarchy','absolute_monarchy','theocracy','one_party_state','dominant_party_state','military_junta','transitional_government','dependent_territory','uninhabited_territory'}
+governments={r[0]:r[1:] for r in db.execute('SELECT code,government,government_since FROM country_stats')}
+for code,(system,since) in governments.items():
+ assert system in SYSTEMS,(code,system)
+ assert since==0 or 1200<=since<=2026,(code,since)
+assert {governments[c][0] for c in ('PT','US','KP','SA','MM','AQ')}=={'semi_presidential_republic','presidential_republic','one_party_state','absolute_monarchy','military_junta','uninhabited_territory'}
+# A classification nobody would recognise means the curation drifted: keep the spread plausible.
+counts={s:sum(1 for g in governments.values() if g[0]==s) for s in SYSTEMS}
+assert counts['uninhabited_territory']<10 and counts['dependent_territory']>20,counts
+assert sum(counts[s] for s in ('parliamentary_republic','presidential_republic','semi_presidential_republic','constitutional_monarchy'))>130,counts
 mismatched=db.execute("SELECT c.code FROM country_stats c JOIN (SELECT r.affiliation code,SUM(s.population) p,SUM(s.gdp_usd) g FROM region_stats s JOIN regions r ON r.id=s.id GROUP BY r.affiliation) t ON t.code=c.code WHERE t.p!=c.population OR t.g!=c.gdp_usd").fetchall()
 assert not mismatched,mismatched
 # Coastal regions decide where warships may support a fight, so landlocked states must have none.

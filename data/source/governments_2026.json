@@ -1,0 +1,1201 @@
+{
+ "countries": {
+  "AD": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "AE": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Federation of seven hereditary emirates.",
+   "system": "absolute_monarchy"
+  },
+  "AF": {
+   "since": 2021,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "theocracy"
+  },
+  "AG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "AI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "AL": {
+   "since": 1998,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "AM": {
+   "since": 2018,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "AO": {
+   "since": 2010,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "AQ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "uninhabited_territory"
+  },
+  "AR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "AS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "AT": {
+   "since": 1945,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "AU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "AW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "AX": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "AZ": {
+   "since": 1995,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "BA": {
+   "since": 1995,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "BB": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "BD": {
+   "since": 1972,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "BE": {
+   "since": 1831,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "BF": {
+   "since": 2022,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "BG": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "BH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "BI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "BJ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "BL": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "BM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "BN": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "absolute_monarchy"
+  },
+  "BO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "BR": {
+   "since": 1988,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "BS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "BT": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "BW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "BY": {
+   "since": 1994,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally presidential; classified by the absence of competitive turnover.",
+   "system": "dominant_party_state"
+  },
+  "BZ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "CA": {
+   "since": 1867,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "CD": {
+   "since": 2006,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "CH": {
+   "since": 1848,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "CI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CK": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "CL": {
+   "since": 1980,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "CN": {
+   "since": 1949,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "CO": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CU": {
+   "since": 1959,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "CV": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "CW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "CY": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "CZ": {
+   "since": 1993,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "DE": {
+   "since": 1949,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "DJ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "DK": {
+   "since": 1849,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "DM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "DO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "DZ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "EC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "EE": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "EG": {
+   "since": 2014,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "EH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Non-self-governing territory; administration disputed between Morocco and the SADR.",
+   "system": "transitional_government"
+  },
+  "ER": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "ES": {
+   "since": 1978,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "ET": {
+   "since": 1995,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "FI": {
+   "since": 1919,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "FJ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "FK": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "FM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "FO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "FR": {
+   "since": 1958,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "GA": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "GB": {
+   "since": 1689,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "GD": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "GE": {
+   "since": 2024,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "GG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "GH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "GI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "GL": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "GM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "GN": {
+   "since": 2021,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "GQ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "GR": {
+   "since": 1975,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "GS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "uninhabited_territory"
+  },
+  "GT": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "GU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "GW": {
+   "since": 1994,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "GY": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "HK": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "HM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "uninhabited_territory"
+  },
+  "HN": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "HR": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "HT": {
+   "since": 2024,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Transitional Presidential Council; no sitting legislature.",
+   "system": "transitional_government"
+  },
+  "HU": {
+   "since": 2012,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "ID": {
+   "since": 1945,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "IE": {
+   "since": 1937,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "IL": {
+   "since": 1948,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "IM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "IN": {
+   "since": 1950,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "IO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "IQ": {
+   "since": 2005,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "IR": {
+   "since": 1979,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "theocracy"
+  },
+  "IS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "IT": {
+   "since": 1948,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "JE": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "JM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "JO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "JP": {
+   "since": 1947,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "KE": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "KG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "KH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally a parliamentary constitutional monarchy; the CPP holds every seat.",
+   "system": "dominant_party_state"
+  },
+  "KI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "KM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "KN": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "KP": {
+   "since": 1948,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "KR": {
+   "since": 1987,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "KW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "KY": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "KZ": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "LA": {
+   "since": 1975,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "LB": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "LC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "LI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "LK": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "LR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "LS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "LT": {
+   "since": 1992,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "LU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "LV": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "LY": {
+   "since": 2011,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Rival administrations in Tripoli and the east.",
+   "system": "transitional_government"
+  },
+  "MA": {
+   "since": 2011,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "MC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "MD": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "ME": {
+   "since": 2006,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "MF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "MG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "MH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "MK": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "ML": {
+   "since": 2021,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "MM": {
+   "since": 2021,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "MN": {
+   "since": 1992,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "MO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "MP": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "MR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "MS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "MT": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "MU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "MV": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "MW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "MX": {
+   "since": 1917,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "MY": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "MZ": {
+   "since": 1990,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "NA": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "NC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "NE": {
+   "since": 2023,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "NF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "NG": {
+   "since": 1999,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "NI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally a presidential republic; classified by the absence of competitive turnover.",
+   "system": "dominant_party_state"
+  },
+  "NL": {
+   "since": 1815,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "NO": {
+   "since": 1814,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "NP": {
+   "since": 2015,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "NR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "NU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "NZ": {
+   "since": 1907,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "OM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "absolute_monarchy"
+  },
+  "PA": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "PE": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "PF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "PG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "PH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "PK": {
+   "since": 1973,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "PL": {
+   "since": 1997,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "PM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "PN": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "PR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "PS": {
+   "since": 1994,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Palestinian Authority; authority divided between the West Bank and Gaza.",
+   "system": "transitional_government"
+  },
+  "PT": {
+   "since": 1976,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "PW": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "PY": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "QA": {
+   "since": 2003,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "absolute_monarchy"
+  },
+  "RO": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "RS": {
+   "since": 2006,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "RU": {
+   "since": 1993,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally semi-presidential; classified by the absence of competitive turnover.",
+   "system": "dominant_party_state"
+  },
+  "RW": {
+   "since": 2003,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "SA": {
+   "since": 1932,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "absolute_monarchy"
+  },
+  "SB": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "SC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "SD": {
+   "since": 2021,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "military_junta"
+  },
+  "SE": {
+   "since": 1974,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "SG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "SH": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "SI": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "SK": {
+   "since": 1993,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "SL": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "SM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "SN": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "SO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "SR": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "SS": {
+   "since": 2011,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "ST": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "SV": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "SX": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "SY": {
+   "since": 2024,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Transitional authorities following the fall of the Assad government.",
+   "system": "transitional_government"
+  },
+  "SZ": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "absolute_monarchy"
+  },
+  "TC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "TD": {
+   "since": 2024,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "TF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "uninhabited_territory"
+  },
+  "TG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "TH": {
+   "since": 2017,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "TJ": {
+   "since": 1994,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "TL": {
+   "since": 2002,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "TM": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally presidential; the Democratic Party is the only permitted party of government.",
+   "system": "dominant_party_state"
+  },
+  "TN": {
+   "since": 2022,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "TO": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "TR": {
+   "since": 2018,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "TT": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "TV": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "TW": {
+   "since": 1996,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "TZ": {
+   "since": 1977,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "UA": {
+   "since": 1996,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "semi_presidential_republic"
+  },
+  "UG": {
+   "since": 1995,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "UM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "uninhabited_territory"
+  },
+  "US": {
+   "since": 1789,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "UY": {
+   "since": 1967,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "UZ": {
+   "since": 1991,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  },
+  "VA": {
+   "since": 1929,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Absolute elective monarchy exercised by an ecclesiastical office.",
+   "system": "theocracy"
+  },
+  "VC": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "constitutional_monarchy"
+  },
+  "VE": {
+   "since": 1999,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Formally a presidential republic; classified by the absence of competitive turnover.",
+   "system": "dominant_party_state"
+  },
+  "VG": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "VI": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "VN": {
+   "since": 1976,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "one_party_state"
+  },
+  "VU": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "WF": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dependent_territory"
+  },
+  "WS": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "XK": {
+   "since": 2008,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "YE": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Internationally recognised government and rival authorities divided by civil war.",
+   "system": "transitional_government"
+  },
+  "ZA": {
+   "since": 1996,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "parliamentary_republic"
+  },
+  "ZM": {
+   "since": 0,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "presidential_republic"
+  },
+  "ZW": {
+   "since": 2013,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
+   "system": "dominant_party_state"
+  }
+ },
+ "license": "CIA World Factbook content is in the public domain; the classification itself is project-owned.",
+ "note": "Government type in force on 1 January 2026. Classifications follow each state's constitution and the CIA World Factbook \"Government type\" field; rows that depart from the Factbook's formal label say so in their own source note. \"since\" is the year the current constitutional order began, 0 where it is long-standing or not well established. This is a game starting point, not an authoritative constitutional classification, and it makes no claim about sovereignty."
+}

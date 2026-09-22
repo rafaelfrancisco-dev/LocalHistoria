@@ -65,6 +65,11 @@ Json::Value changeSummaries(const Json::Value &changes, const WorldState &w) {
         } else if (kind == "actor") {
             if (!before.isNull() && before["name"] != after["name"])
                 parts.push_back(before["name"].asString() + " renamed " + after["name"].asString());
+            auto was = before["status"]["government"].asString(),
+                 now = after["status"]["government"].asString();
+            if (!before.isNull() && now != was && validGovernment(now))
+                parts.push_back(after["name"].asString() + " became a " +
+                                lowercase(governmentLabel(now)));
         }
         if (parts.empty())
             continue;
@@ -170,8 +175,8 @@ void events(Server &s, const HttpRequestPtr &req, Json::Value, const CB &cb) {
             throw ValidationError("Unknown actor");
         filter["actor"] = a;
     }
-    static const std::set<std::string> known{"player", "nation", "regional",
-                                             "world",  "war",    "construction"};
+    static const std::set<std::string> known{"player", "nation",       "regional", "world",
+                                             "war",    "construction", "domestic"};
     filter["categories"] = Json::arrayValue;
     for (auto categories = req->getParameter("category"); !categories.empty();) {
         auto comma = categories.find(',');

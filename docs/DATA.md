@@ -11,6 +11,7 @@ The imported database and normalized map are reproducible from project-owned inp
 | `data/source/currencies.json` | Hand-authored ISO 3166 → ISO 4217 map with display symbols, as of January 2026 (Bulgaria uses the euro). |
 | `data/source/stats_overrides.json` | Documented estimates, each with a source note, for the 33 actors the World Bank omits or leaves incomplete (e.g. Taiwan, North Korean GDP, small dependencies, uninhabited territories). They are flagged `estimated` in the game. |
 | `data/source/world_2026.json` | Curated wars, occupations and treaties in force on 1 January 2026, with front regions and three non-state parties (RSF, Myanmar's National Unity Government, AFC/M23). Simplified to whole ADM1 regions; a game starting point, not an authoritative record. |
+| `data/source/governments_2026.json` | Curated political system for every actor on 1 January 2026, one of twelve values, with the year the current constitutional order began where that is well established (0 otherwise). Classifications follow each state's constitution and the CIA World Factbook "Government type" field, which is US-government work in the public domain; the classification itself is project-owned. Rows that depart from the Factbook's formal label carry their own note saying why — Russia and Belarus are classed by the absence of competitive turnover rather than as semi-presidential and presidential republics, Cambodia by the CPP's monopoly rather than as a constitutional monarchy. A game starting point, not an authoritative constitutional classification, and no claim about sovereignty. |
 | `data/source/military_2026.json` | Curated January 2026 inventories: active, reserve, ships, aircraft and gap-filling spending. Ship and some reserve counts are Wikipedia-derived (CC BY-SA 4.0); aircraft totals are factual figures from FlightGlobal *World Air Forces 2025*; active-duty strengths are plan 21 model estimates carrying no upstream licence. Every row is flagged `estimated` and names its own basis. See `licenses/military-data.md`. |
 | `web/vendor/leaflet.js`, `.css` | Leaflet 1.9.4, downloaded from version-pinned unpkg URLs. BSD-2-Clause license retained. No tile provider is used. |
 | `web/vendor/topojson-client.min.js` | topojson-client 3.1.0, `dist/topojson-client.min.js` from the npm tarball. ISC license retained. |
@@ -22,11 +23,16 @@ The imported database and normalized map are reproducible from project-owned inp
 | Chronicles | Model-written summaries (at most 2,400 bytes) derived from cached Wikipedia history (`history_source`, the last 12,000 characters of the History section) and campaign events; Wikipedia contributors, CC BY-SA 4.0, for the derived material. Stored per nation in the save's `chronicles` table and cleared with a new campaign. A chronicle written before its nation's source was cached is rewritten from the source the first month it exists. The long source never enters turn records. |
 | Country Wikidata identifiers | Resolved by P297 country code or explicit overrides, CC0. Separate from city identifiers. |
 
+`tools/import_governments.py` writes `governments_2026.json` from a per-system mapping of country
+codes; the JSON is what the game reads, and the script exists so the classification stays reviewable.
+Re-run it after editing the mapping, then `tools/import_stats.py`. Neither touches the network or the
+geometry.
+
 Confirm exact source provenance before redistributing the supplied geography or presenting the database as a verified upstream snapshot. This is not required for local play.
 
 `tools/import_stats.py` runs after the region import and builds four tables:
 
-- `country_stats`: one row per actor.
+- `country_stats`: one row per actor, including its political system and the year that system began.
 - `region_stats`: population and GDP per region. The split weights each region 70% by its share of the country's verified city population and 30% equally, with residual slivers excluded. Largest-remainder rounding makes regions sum exactly to national totals. It is an estimate: the game has no subnational census.
 - `world_seed`: the 2026 world, with region names resolved to IDs. An unresolved name fails the import.
 - `military_stats`: one row per actor, plus the non-state parties. Observation years are kept separately from the curated scenario year.

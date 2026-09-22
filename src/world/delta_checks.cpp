@@ -38,6 +38,19 @@ void checkActorChange(const Json::Value &c) {
             else
                 expected.removeMember(k);
         }
+        // A constitutional refounding is the only part of status the model may write, and only
+        // when it also founds a new identity revision. Every other status key -- stability, growth,
+        // military -- still has to compare equal, so the model cannot write its own numbers.
+        const auto &after = static_cast<const Json::Value &>(c)["after"];
+        if (after["status"].isObject() && after["identity_revisions"].isArray() &&
+            after["identity_revisions"] != c["before"]["identity_revisions"] &&
+            validGovernment(after["status"]["government"].asString())) {
+            expected["status"]["government"] = after["status"]["government"];
+            if (after["status"].isMember("government_since"))
+                expected["status"]["government_since"] = after["status"]["government_since"];
+            else
+                expected["status"].removeMember("government_since");
+        }
         require(expected == c["after"], "Identity change cannot alter permanent affiliation");
         auto &old = c["before"]["identity_revisions"];
         auto &revs = c["after"]["identity_revisions"];

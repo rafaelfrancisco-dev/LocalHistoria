@@ -11,6 +11,13 @@ INDICATORS = {'SP.POP.TOTL': 'population', 'NY.GDP.MKTP.CD': 'gdp_usd', 'NY.GDP.
               'SP.POP.GROW': 'pop_growth', 'GOV_WGI_PV.SC': 'stability', 'PA.NUS.FCRF': 'usd_rate',
               'MS.MIL.TOTL.P1': 'military_personnel', 'MS.MIL.XPND.CD': 'military_spend_usd'}
 API = 'https://api.worldbank.org/v2'
+# Political systems. The World Bank publishes no regime-type indicator, so this is a curated
+# classification; see governments_2026.json and docs/DATA.md. C++ validGovernment() keeps the
+# same twelve values.
+GOVERNMENTS = ('parliamentary_republic', 'presidential_republic', 'semi_presidential_republic',
+               'constitutional_monarchy', 'absolute_monarchy', 'theocracy', 'one_party_state',
+               'dominant_party_state', 'military_junta', 'transitional_government',
+               'dependent_territory', 'uninhabited_territory')
 EURO_AREA = 'XC'
 # Regional split: part follows verified city population, part is spread evenly as a rural floor.
 URBAN_WEIGHT = 0.7
@@ -48,6 +55,7 @@ def national(codes):
     snapshot = json.loads((SOURCE/'country_stats.json').read_text())
     currencies = json.loads((SOURCE/'currencies.json').read_text())['countries']
     overrides = json.loads((SOURCE/'stats_overrides.json').read_text())['countries']
+    governments = json.loads((SOURCE/'governments_2026.json').read_text())['countries']
     wb = snapshot['indicators']
     rates = wb['PA.NUS.FCRF']
     stats = {}
@@ -76,6 +84,13 @@ def national(codes):
             s['usd_rate'] = rates[peers[0]]['value']
         if o.get('source'): s['source'] = o['source'] if s['estimated'] else s['source'] + '; ' + o['source']
         if s['year'] == 0: s['year'] = 2025
+        g = governments.get(code)
+        if not g: raise SystemExit(f'{code}: missing political system; add it to governments_2026.json')
+        if g['system'] not in GOVERNMENTS: raise SystemExit(f'{code}: unknown political system {g["system"]}')
+        s['government'] = g['system']
+        s['government_since'] = int(g.get('since', 0))
+        if s['government_since'] and not 1200 <= s['government_since'] <= 2026:
+            raise SystemExit(f'{code}: implausible government_since {s["government_since"]}')
         s['population'] = int(round(s['population'])); s['gdp_usd'] = int(round(s['gdp_usd']))
         stats[code] = s
     return stats
@@ -197,13 +212,13 @@ def main():
     stats = national(codes)
     world = seed(db, codes)
     inventories = military(codes, stats, world)
-    db.executescript('DROP TABLE IF EXISTS country_stats; CREATE TABLE country_stats(code TEXT PRIMARY KEY,population INTEGER,gdp_usd INTEGER,gdp_growth REAL,pop_growth REAL,stability REAL,currency TEXT,symbol TEXT,usd_rate REAL,year INTEGER,estimated INTEGER,source TEXT);'
+    db.executescript('DROP TABLE IF EXISTS country_stats; CREATE TABLE country_stats(code TEXT PRIMARY KEY,population INTEGER,gdp_usd INTEGER,gdp_growth REAL,pop_growth REAL,stability REAL,currency TEXT,symbol TEXT,usd_rate REAL,year INTEGER,estimated INTEGER,source TEXT,government TEXT,government_since INTEGER);'
                      'DROP TABLE IF EXISTS region_stats; CREATE TABLE region_stats(id TEXT PRIMARY KEY,population INTEGER,gdp_usd INTEGER);'
                      'DROP TABLE IF EXISTS world_seed; CREATE TABLE world_seed(id INTEGER PRIMARY KEY CHECK(id=1),document TEXT NOT NULL);')
     db.executescript('DROP TABLE IF EXISTS military_stats; CREATE TABLE military_stats(code TEXT PRIMARY KEY,active INTEGER,reserve INTEGER,ships INTEGER,aircraft INTEGER,spend_usd INTEGER,year INTEGER,estimated INTEGER,source TEXT,active_year INTEGER,spend_year INTEGER);')
     db.executemany('INSERT INTO military_stats VALUES(?,?,?,?,?,?,?,?,?,?,?)', [(c, *[s[k] for k in ('active','reserve','ships','aircraft','spend_usd','year','estimated','source','active_year','spend_year')]) for c,s in inventories.items()])
-    db.executemany('INSERT INTO country_stats VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
-                   [(c, s['population'], s['gdp_usd'], s['gdp_growth'], s['pop_growth'], s['stability'], s['currency'], s['symbol'], s['usd_rate'], s['year'], s['estimated'], s['source']) for c, s in stats.items()])
+    db.executemany('INSERT INTO country_stats VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                   [(c, s['population'], s['gdp_usd'], s['gdp_growth'], s['pop_growth'], s['stability'], s['currency'], s['symbol'], s['usd_rate'], s['year'], s['estimated'], s['source'], s['government'], s['government_since']) for c, s in stats.items()])
     regions = regional(db, stats)
     db.executemany('INSERT INTO region_stats VALUES(?,?,?)', [(r, p, g) for r, (p, g) in sorted(regions.items())])
     db.execute('INSERT INTO world_seed VALUES(1,?)', (json.dumps(world, sort_keys=True),))
