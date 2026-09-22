@@ -125,12 +125,19 @@ aside {
   overflow: auto;
 }
 .country {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: transparent;
   border: 0;
   margin: 0;
   padding: 8px;
+}
+.country .label {
+  flex: 1;
+  min-width: 0;
 }
 .country.selected {
   background: #344b53;
@@ -140,23 +147,21 @@ aside {
   color: var(--accent);
   font-size: 10px;
   letter-spacing: 1px;
-  margin-left: 6px;
 }
-/* The political system sits under the name, so a long one never pushes the row wider. */
+/* The political system sits under the name and wraps, rather than being cut off. */
 .country .government {
+  display: block;
   color: var(--muted);
   font-size: 10px;
-  margin-left: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 0;
+  line-height: 1.35;
 }
 .country img {
   width: 23px;
   height: 17px;
   object-fit: cover;
-  margin-right: 8px;
-  vertical-align: middle;
+  flex: none;
+  margin-top: 2px;
 }
 input,
 select,
@@ -330,7 +335,8 @@ a {
   color: var(--muted);
   font-size: 11px;
 }
-.stat.wide {
+.stat.wide,
+.stat.stretch {
   grid-column: 1/-1;
 }
 .stat.wide strong {
@@ -496,8 +502,19 @@ label.filter input {
 #events-list .empty {
   color: var(--muted);
 }
+/* The mode bar sits beside the zoom buttons instead of stacking under them. */
+.leaflet-top.leaflet-left {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.leaflet-top.leaflet-left .leaflet-control {
+  float: none;
+  clear: none;
+}
 .map-modes {
   display: flex;
+  flex-wrap: wrap;
   background: var(--panel);
 }
 .map-modes button {

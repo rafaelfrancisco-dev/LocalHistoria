@@ -104,19 +104,26 @@ function countryButton(c) {
   const img = document.createElement("img");
   img.alt = "";
   flag(img, c.code);
-  b.append(img, document.createTextNode(c.name));
-  if (c.government) {
-    const system = document.createElement("small");
-    system.className = "government";
-    system.textContent = c.government;
-    b.append(system);
-  }
+  // Flag, then a column with the name and the political system under it.
+  const label = document.createElement("span");
+  label.className = "label";
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = c.name;
+  label.append(name);
   if (state?.player === c.code) {
     const you = document.createElement("small");
     you.className = "you";
     you.textContent = "YOU";
-    b.append(you);
+    name.append(" ", you);
   }
+  if (c.government) {
+    const system = document.createElement("small");
+    system.className = "government";
+    system.textContent = c.government;
+    label.append(system);
+  }
+  b.append(img, label);
   b.onclick = protect(async () => {
     if (phone.matches) {
       $("search").value = "";
@@ -230,6 +237,24 @@ function restyleMap() {
   renderCountryBorders();
   renderLegend();
 }
+// Two columns: a card left alone on its row stretches across both, so the
+// grid never shows a half-empty row above a full-width card or at the end.
+function fillStatRows() {
+  const cells = [...$("stats").children];
+  let started = false; // a card already sits in the first column of this row
+  let previous = null;
+  for (const cell of cells) {
+    cell.classList.remove("stretch");
+    if (cell.classList.contains("wide")) {
+      if (started) previous.classList.add("stretch");
+      started = false;
+    } else {
+      started = !started;
+    }
+    previous = cell;
+  }
+  if (started) previous.classList.add("stretch");
+}
 function renderStats() {
   $("stats").replaceChildren();
   if (!state?.actors?.[selected]) return;
@@ -291,6 +316,7 @@ function renderStats() {
     cell.append(strong, span);
     $("stats").append(cell);
   }
+  fillStatRows();
   $("country-description").textContent =
     selected === state.player ? "Your nation" : "Another nation of this world";
   // Folded on a phone so the month's actions stay near the top.
