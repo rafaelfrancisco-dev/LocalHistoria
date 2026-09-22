@@ -308,6 +308,20 @@ int main() {
                   applyDelta({governed, {}}, corrections, {})
                           .state.actors["PT"]["status"]["government"] == "parliamentary_republic",
               "A spelling correction is not a revolution");
+        // The widened equality in checkActorChange is the whole security boundary: a refounding
+        // carries government and government_since across, and every other status key must still
+        // compare equal. Forge one onto an otherwise valid refounding and the delta must fail.
+        auto forged = compileOperations(governed, event("PT", regime), {});
+        for (auto &c : forged.changes)
+            if (c["kind"] == "actor" && c["id"] == "PT")
+                c["after"]["status"]["stability"] = 99.0;
+        rejects([&] { applyDelta({governed, {}}, forged, {}); });
+        auto smuggled = compileOperations(governed, event("PT", regime), {});
+        for (auto &c : smuggled.changes)
+            if (c["kind"] == "actor" && c["id"] == "PT")
+                c["after"]["status"]["military"] = parse(R"({"active":9000000})");
+        rejects([&] { applyDelta({governed, {}}, smuggled, {}); });
+
         auto invented = regime;
         invented[0]["government"] = "democracy";
         auto nonsense = compileOperations(governed, event("PT", invented), {});

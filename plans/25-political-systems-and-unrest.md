@@ -257,5 +257,12 @@ evolve rather than an unrest-calibration one.
 - `tests/military_tests.cpp` asserted the front-momentum gate as `statusVersion - 1`. That stopped
   meaning what it said the moment `statusVersion` moved to 4; it now names `frontMomentumVersion - 1`
   directly.
+- The §8 checks landed where the fixtures already were rather than where the plan guessed: the
+  regime-change gate is in `tests/politics_tests.cpp` beside the other identity tests, not
+  `tests/world/deltas.cpp`, which has no status or identity fixture at all. It now also forges
+  `status.stability` and `status.military` onto an otherwise valid refounding and requires the
+  delta to be rejected, which is the actual boundary the widened equality in `checkActorChange`
+  defends. `tests/context_tests.cpp` seeds a government on every fixture nation and asserts the
+  readable label reaches the adjudicator's facts.
 - `src/world/schema.cpp` is 392 lines, over the 350-line ceiling in `docs/ARCHITECTURE.md`. It was
   already 383 at plan 24, and this plan added 9. Splitting it is its own change.

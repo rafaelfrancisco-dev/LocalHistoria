@@ -189,6 +189,11 @@ int main() {
             {"IT", "Italy"},    {"PL", "Poland"}, {"GR", "Greece"}};
         for (auto &[id, name] : names) {
             e.actors[id]["name"] = name;
+            // A political system on every nation, so the facts the adjudicator reads carry one.
+            e.actors[id]["status"] = parse(
+                R"({"government":")" +
+                std::string(id == "PT" ? "semi_presidential_republic" : "parliamentary_republic") +
+                R"(","government_since":1976,"stability":60.0,"baseline_stability":60.0})");
             e.territories["r-" + id] = parse(R"({"name":"Heartland","owner":")" + id +
                                              R"(","controller":")" + id + R"("})");
             e.entities["city-" + id] = parse(R"({"name":"Capital","kind":"city","actor":")" + id +
@@ -229,6 +234,13 @@ int main() {
                   facts["actors"]["FR"]["conflicts"]["war-1"]["front"].asString().find(
                       "stalemate") != std::string::npos,
               "Stalemate and its duration reach the adjudicator through national facts");
+        // The political system has to reach the model, or the instruction telling it that
+        // elections exist only where a government has them has nothing to read.
+        check(facts["actors"]["PT"]["status"]["government"] == "Semi-presidential republic" &&
+                  facts["actors"]["PT"]["status"]["government_id"] ==
+                      "semi_presidential_republic" &&
+                  facts["actors"]["FR"]["status"]["government"] == "Parliamentary republic",
+              "Every nation's political system reaches the adjudicator's facts");
         check(adjudication["intentions"].size() == 13 && dump(adjudication).size() < 30000,
               "Adjudication input stays small: " + std::to_string(dump(adjudication).size()));
         check(adjudication["reference_only"].getMemberNames() ==
