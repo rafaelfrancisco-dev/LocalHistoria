@@ -15,6 +15,8 @@ Resolution MonthlyStatus::run() {
     if (hasMilitary(forceStart) && !hasMilitary(w))
         seedMilitary(w, StatusSeed{});
     before = totals(w);
+    if (realism())
+        loadDisplacement();
 
     // 1. Baseline demographic and economic trend.
     baselineTrend();
@@ -68,6 +70,8 @@ Resolution MonthlyStatus::run() {
 
     // 6. Displaced people return home once their region is calm and back under its owner's control.
     returnDisplaced();
+    if (realism())
+        saveDisplacement();
 
     // 7. Stability drifts toward what the nation's situation supports; model effects leave a
     // lasting trace.
@@ -123,6 +127,44 @@ void MonthlyStatus::accountDestroyed() {
         e["loss_accounted"] = true;
     }
 }
+void MonthlyStatus::loadDisplacement() {
+    for (auto &id : regionIds) {
+        const auto &ledger = cT[id]["displacement"]["hosts"];
+        if (!ledger.isObject())
+            continue;
+        for (auto it = ledger.begin(); it != ledger.end(); ++it)
+            if (it->asInt64() > 0)
+                hosted[it.name()][id] = it->asInt64();
+    }
+}
+// Each origin's outstanding displacement is what the ledger still holds plus any balance of
+// unknown whereabouts carried from before the ledger existed.
+void MonthlyStatus::saveDisplacement() {
+    std::map<std::string, std::map<std::string, Int>> byOrigin;
+    for (const auto &[host, origins] : hosted)
+        for (const auto &[origin, n] : origins)
+            if (n > 0 && cT.isMember(origin))
+                byOrigin[origin][host] = n;
+    for (auto &id : regionIds) {
+        auto unknown = integer(cT[id]["displacement"], "unknown");
+        auto &t = T[id];
+        Int known = 0;
+        Json::Value ledger(Json::objectValue);
+        if (auto at = byOrigin.find(id); at != byOrigin.end())
+            for (const auto &[host, n] : at->second) {
+                ledger["hosts"][host] = n;
+                known += n;
+            }
+        if (unknown > 0)
+            ledger["unknown"] = unknown;
+        if (ledger.empty())
+            t.removeMember("displacement");
+        else
+            t["displacement"] = ledger;
+        if (cT[id].isMember("displaced") || known + unknown > 0)
+            t["displaced"] = known + unknown;
+    }
+}
 const Json::Value &MonthlyStatus::ownerStatus(const Json::Value &t) const {
     return cActors[t["owner"].asString()]["status"];
 }
@@ -166,9 +208,14 @@ void MonthlyStatus::baselineTrend() {
         auto &s = ownerStatus(cT[id]);
         if (!s.isObject())
             continue;
+        auto was = integer(t, "population");
         t["population"] =
             Int(std::llround(double(integer(t, "population")) *
                              (1 + std::clamp(number(s, "pop_growth"), -5.0, 5.0) / 1200)));
+        // Births count as residents of the host; a shrinking population takes hosted people with
+        // it in proportion.
+        if (realism() && integer(t, "population") < was)
+            forget(id, cohorts(id, was - integer(t, "population"), was));
         t["gdp_usd"] =
             Int(std::llround(double(integer(t, "gdp_usd")) *
                              (1 + std::clamp(number(s, "gdp_growth"), -10.0, 10.0) / 1200)));

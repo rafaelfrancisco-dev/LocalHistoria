@@ -137,7 +137,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
             c.facts["turn"] = w.turn;
             c.facts["regional_identity"] = w.territories[r];
             c.facts["regional_identity"]["id"] = r;
-            for (auto k : {"gdp_usd", "occupation_gdp", "control"})
+            for (auto k : {"gdp_usd", "occupation_gdp", "control", "displacement"})
                 c.facts["regional_identity"].removeMember(k);
             c.facts["governing_authority"] = w.actors[a];
             c.facts["governing_authority"].removeMember("identity_revisions");

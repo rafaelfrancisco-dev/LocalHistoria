@@ -192,7 +192,7 @@ Relevant regions show their population. The adjudication prompt asks the model t
    - The one-off 8% on seizure applies to the people the fighting reaches: at most 20 residents per soldier the seizing and losing sides committed to the region (the same committed-personnel measure, frozen at the start of the month). A small region is emptied of its full 8%; a province of 117 million taken by India from Pakistan loses about 1% (roughly 12.5 million people exposed). Turns from before military inventories keep the full 8%.
    - 35% of displaced people cross into bordering non-party countries; the rest go to the owner's unaffected regions. With nowhere safe, they go anywhere else in the country.
    - Half of per-capita output moves with them.
-   - Once a region is calm and back under its owner, 3% of its displaced return each month.
+   - Once a region is calm and back under its owner, 3% of its displaced return each month. Under the realism lifecycle they return only from their recorded hosts (see below).
    - Population is conserved except for deaths.
 6. **Stability** moves 8% of the way toward a target each month, by at most 10 points. The target is the baseline, minus 3 / 8 / 15 for the most intense war, minus 25 × the occupied share of population, minus 5 when GDP fell over 1% that month. Deaths above 0.01% of population cost another point.
 7. **Unrest**, per region, on the same 0–100 scale, charged against whoever controls it. It drifts toward what the situation justifies, `100 × stress × grievance / 2`, closing `16% × (1 − 0.8 × vent)` of the gap when rising and `20% × (1 + vent)` when falling, at most 10 points a month.
@@ -242,6 +242,39 @@ Plan 26 F makes every use of military strength draw on one allocation per month.
 On the real world, 36 idle months move no front differently from Phase E. The Russo-Ukrainian War
 still kills about 196,000 a year. Russia now loses about 33 aircraft and one ship a year, its Black
 Sea coast being on the front and within reach of Ukrainian aircraft; Ukraine's 97 aircraft fall to 90.
+
+### Displacement by origin and host (realism lifecycle)
+
+Under the realism lifecycle (Plan 26 G), people displaced from a region are recorded where they
+shelter. Each origin territory carries an engine-owned `displacement` ledger, `hosts` (host region
+→ people), and its `displaced` count is derived from it at the end of every month.
+
+- **Flight.** Every movement in the month step goes through one helper, which moves population,
+  output and ledger rows together. A front region's residents become displaced from it. People it
+  was already hosting move on still displaced from their own origin, so a second flight is not a
+  second displaced person. Anyone arriving at their own origin has returned.
+- **Deaths and decline.** Deaths in a region, and any fall in its population from negative growth,
+  take hosted people in proportion to their share, so no ledger row outnumbers the living. Births
+  count as the host's own residents.
+- **Return.** Once an origin is calm, held by its owner and not held by force under a control
+  record, 3% of its outstanding people go home each month. They come from the hosts that recorded
+  them, foreign hosts included, and only what actually moved is taken off the ledger. An origin
+  that is occupied or annexed by force keeps its balance unchanged.
+- **Borders.** Transfers of territory do not change the ledger: a host that changes hands still
+  hosts the same people.
+- **Older campaigns.** A count carried from before the ledger existed is kept as
+  `displacement.unknown`. It is never given a host, never returned automatically and never
+  erased. The region tooltip lists where people shelter and how many are of unknown whereabouts.
+- **Cumulative totals.** A conflict's `displaced` still counts every movement it caused;
+  outstanding displacement is the regions' ledgers.
+
+Measured on a deterministic fixture (`tests/status/displacement.cpp`): six months of high-intensity
+war displace about 24,000 people from a border province of a million, 8,300 of them abroad. A year
+of peace brings 7,300 home, each one out of the host that recorded them. On the real January 2026
+world, 36 idle months leave the fronts and forces exactly as in Phase F. Ukraine's outstanding
+displacement grows to 2.2 million, 55,000 of them recorded abroad; nobody returns to the occupied
+east. Flight across a border still reaches only bordering non-party regions, so Ukraine's recorded
+refugees abroad are far fewer than the real figure.
 
 ### Conquest and resistance (realism lifecycle)
 
@@ -302,7 +335,7 @@ On the real January 2026 world:
 - **Everything else:** unchanged. No actor, conflict, revolt or fallen government appears in 60
   idle months, and the front trajectories are identical to the build before this phase.
 
-A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
+A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Under the legacy lifecycle, displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home. The realism lifecycle's ledger, above, records every host.
 
 Status version 3 records autonomous advances and stalemates. Replay passes each turn's recorded version, so existing version-2 campaigns keep their original monthly consequences.
 

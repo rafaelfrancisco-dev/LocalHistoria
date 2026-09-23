@@ -45,4 +45,7 @@ std::pair<double, double> effectiveOutput(const WorldState &, const std::string 
 // it when the claimant or a local movement holds it. `migrating` records what it finds without
 // inventing an age, for occupations present before the campaign's control history began.
 void recordControl(WorldState &, bool migrating);
+// Displacement from before the origin-host ledger existed: an outstanding count with no recorded
+// host is kept as a balance of unknown whereabouts, never assigned a host or returned. Idempotent.
+void recordDisplacement(WorldState &);
 } // namespace lh

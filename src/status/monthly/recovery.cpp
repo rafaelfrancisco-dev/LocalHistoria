@@ -145,6 +145,32 @@ void MonthlyStatus::applyRealismInventory(const std::string &a) {
     }
 }
 void MonthlyStatus::returnDisplaced() {
+    if (realism()) {
+        // People go home only from where they are recorded as sheltering, domestic or abroad, and
+        // only to an origin that is calm and held by its own government. Nobody moving means the
+        // balance stands; people of unknown whereabouts are never returned.
+        std::map<std::string, std::map<std::string, double>> away; // origin -> host -> people
+        for (const auto &[host, origins] : hosted)
+            for (const auto &[origin, n] : origins)
+                if (n > 0)
+                    away[origin][host] = double(n);
+        for (const auto &[origin, hosts] : away) {
+            if (allAffected.contains(origin) || !cT.isMember(origin) ||
+                cT[origin]["owner"] != cT[origin]["controller"] ||
+                hostileControl(w, origin).isObject())
+                continue;
+            Int waiting = 0;
+            for (const auto &[host, n] : hosts)
+                waiting += Int(n);
+            auto count = std::min(
+                waiting, std::max<Int>(1, Int(std::llround(double(waiting) * rate::returnShare))));
+            for (const auto &[host, n] : distribute(count, hosts)) {
+                auto back = move(host, origin, std::min(n, hosted[host][origin]));
+                hosted[host][origin] -= back;
+            }
+        }
+        return;
+    }
     for (auto &id : regionIds) {
         auto &t = T[id];
         auto waiting = integer(cT[id], "displaced");

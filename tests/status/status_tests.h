@@ -28,3 +28,5 @@ void unrestTests();
 void conquestTests();
 // Plan 26 F: one force allocation per month, exposure-based losses and carried fractions.
 void forceTests();
+// Plan 26 G: the origin-host displacement ledger and actual return migration.
+void displacementTests();

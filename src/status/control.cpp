@@ -95,4 +95,12 @@ void recordControl(WorldState &w, bool migrating) {
         w.territories[id]["control"] = next;
     }
 }
+void recordDisplacement(WorldState &w) {
+    for (const auto &id : w.territories.getMemberNames()) {
+        const auto &t = std::as_const(w.territories)[id];
+        auto outstanding = t.get("displaced", 0).asInt64();
+        if (outstanding > 0 && !t.isMember("displacement"))
+            w.territories[id]["displacement"]["unknown"] = outstanding;
+    }
+}
 } // namespace lh

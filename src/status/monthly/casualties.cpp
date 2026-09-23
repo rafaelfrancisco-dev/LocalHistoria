@@ -17,10 +17,64 @@ Int MonthlyStatus::move(const std::string &from, const std::string &to, Int coun
     b["gdp_usd"] = integer(b, "gdp_usd") + output;
     return count;
 }
+// Under the realism rules every movement goes through here: the people who leave take their
+// place in the ledger with them. Residents of `from` become displaced from it; people it was
+// hosting move on still displaced from their own origin, not counted twice; anyone arriving back
+// at their own origin has returned.
+Int MonthlyStatus::flee(const std::string &from, const std::string &to, Int count) {
+    auto population = integer(cT[from], "population");
+    count = std::min(count, population);
+    if (count <= 0)
+        return Int(0);
+    auto parts = cohorts(from, count, population);
+    move(from, to, count);
+    forget(from, parts);
+    for (const auto &[origin, n] : parts) {
+        auto home = origin.empty() ? from : origin;
+        if (home != to && n > 0)
+            hosted[to][home] += n;
+    }
+    return count;
+}
+std::map<std::string, Int> MonthlyStatus::cohorts(const std::string &region, Int count,
+                                                  Int population) const {
+    std::map<std::string, double> weights;
+    Int guests = 0;
+    if (auto at = hosted.find(region); at != hosted.end())
+        for (const auto &[origin, n] : at->second)
+            if (n > 0) {
+                weights[origin] = double(n);
+                guests += n;
+            }
+    if (guests == 0)
+        return {{"", count}};
+    weights[""] = double(std::max<Int>(0, population - guests));
+    auto parts = distribute(std::min(count, std::max(population, guests)), weights);
+    // A share is never larger than the cohort it comes from.
+    Int over = 0;
+    for (auto &[origin, n] : parts)
+        if (!origin.empty() && n > Int(weights[origin])) {
+            over += n - Int(weights[origin]);
+            n = Int(weights[origin]);
+        }
+    parts[""] += over;
+    return parts;
+}
+void MonthlyStatus::forget(const std::string &host, const std::map<std::string, Int> &gone) {
+    auto at = hosted.find(host);
+    if (at == hosted.end())
+        return;
+    for (const auto &[origin, n] : gone)
+        if (!origin.empty() && at->second.contains(origin))
+            at->second[origin] = std::max<Int>(0, at->second[origin] - n);
+}
 Int MonthlyStatus::kill(const std::string &region, Int count) {
     count = std::min(count, integer(cT[region], "population") / 100);
     if (count <= 0)
         return Int(0);
+    // The dead include hosted people in proportion, so the ledger never outnumbers the living.
+    if (realism())
+        forget(region, cohorts(region, count, integer(cT[region], "population")));
     auto per = double(integer(cT[region], "gdp_usd")) /
                double(std::max<Int>(1, integer(cT[region], "population")));
     T[region]["population"] = integer(cT[region], "population") - count;
@@ -288,10 +342,13 @@ void MonthlyStatus::displace(const Front &f, const std::string &region, double m
                                      : Int(std::llround(double(outflow) * rate::refugeeShare));
     Int moved = 0;
     for (auto &[to, n] : distribute(refugees, abroad))
-        moved += move(region, to, n);
+        moved += realism() ? flee(region, to, n) : move(region, to, n);
     for (auto &[to, n] : distribute(outflow - refugees, internal))
-        moved += move(region, to, n);
-    t["displaced"] = integer(t, "displaced") + moved;
+        moved += realism() ? flee(region, to, n) : move(region, to, n);
+    // Under the realism rules the outstanding count is derived from the ledger at the end of the
+    // month; the conflict keeps counting every movement.
+    if (!realism())
+        t["displaced"] = integer(t, "displaced") + moved;
     displaced += moved;
 }
 } // namespace lh::detail

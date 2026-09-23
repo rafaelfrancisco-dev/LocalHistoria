@@ -51,6 +51,17 @@ class MonthlyStatus {
     std::set<std::string> engagedPairs;
     // 5
     Int move(const std::string &from, const std::string &to, Int count);
+    // Realism: the displacement ledger. People displaced from each origin, by the region hosting
+    // them now, loaded from the origin territories at the start of the month and written back once
+    // every movement, death and return has been counted.
+    void loadDisplacement();
+    void saveDisplacement();
+    // Who among `count` of a region's people leave or die: residents, and each origin's hosted
+    // people in proportion to their share of `population`. Residents are keyed "".
+    std::map<std::string, Int> cohorts(const std::string &region, Int count, Int population) const;
+    void forget(const std::string &host, const std::map<std::string, Int> &gone);
+    Int flee(const std::string &from, const std::string &to, Int count);
+    std::map<std::string, std::map<std::string, Int>> hosted; // host -> origin -> people
     Int kill(const std::string &region, Int count);
     void warToll(const Front &f, std::map<std::string, Totals> &current);
     Int partyLosses(const Front &f, const std::string &p, std::map<std::string, Totals> &current,

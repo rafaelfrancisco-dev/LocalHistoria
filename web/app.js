@@ -55,6 +55,17 @@ function controlText(p) {
   return `${annexed ? "Annexed" : "Held"} by ${name(c.holder)}${since}, taken from ${name(c.claimant)}` +
     (annexed ? ` · ${Math.floor(c.integration || 0)}% integrated` : "");
 }
+// Where a region's displaced people are sheltering, from the engine's origin-host ledger. A balance
+// carried from before the ledger existed has no recorded host and is said so.
+function displacementText(p) {
+  const d = state?.territories?.[p.id]?.displacement;
+  if (!d) return "";
+  const hosts = Object.entries(d.hosts || {}).sort((a, b) => b[1] - a[1]);
+  const where = hosts.slice(0, 3).map(([id, n]) => `${n.toLocaleString()} in ${state.territories[id]?.name || id}`);
+  if (hosts.length > 3) where.push(`${hosts.length - 3} more regions`);
+  if (d.unknown) where.push(`${d.unknown.toLocaleString()} whereabouts unknown`);
+  return where.length ? `Displaced: ${where.join(", ")}` : "";
+}
 function month(turn) {
   return new Date(Date.UTC(2026, turn, 1)).toLocaleDateString("en", {
     month: "long",
@@ -876,6 +887,8 @@ async function refreshCampaignMap() {
         if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
         const held=controlText(p);
         if (held) lines.push(held);
+        const away=displacementText(p);
+        if (away) lines.push(away);
         for (const c of Object.values(state.conflicts)) if (c.status==="open"&&(c.affected_regions||[]).includes(p.id)) lines.push(`Front: ${c.name} (${c.intensity})`);
         const treaties=Object.values(state.commitments).filter(c=>c.status==="open"&&c.actors.includes(p.owner)).map(c=>c.name);
         if (treaties.length) lines.push("Treaties: "+treaties.slice(0,4).join(", ")+(treaties.length>4?` +${treaties.length-4}`:""));

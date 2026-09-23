@@ -89,7 +89,30 @@ browser, restart and replay, the legacy v0/v2/v3/v4 replays, and `make format-ch
 - **Known limits.** Reserve mobilisation is still 2% of starting reserves in a high-intensity war
   (support constraints and demobilisation arrive with H). Carrier aviation and naval blockade are
   not modelled. Formation creation stays allocation, not procurement.
-Next: Phase G (displacement by origin and host).
+
+2026-09-23: Phase G gate passed. There are 17 CTest cases; `status` gains the displacement
+scenarios. Also passing: the HTTP integration suite with browser, restart and replay, the legacy
+v0/v2/v3/v4 replays, and `make format-check`.
+- **Ledger.** Each origin territory carries `displacement.hosts` (host → people), and `displaced`
+  is derived from it. One helper moves population, output and ledger rows together. Secondary flight
+  moves hosted balances instead of counting a second displaced person. Deaths and population decline
+  take hosted people in proportion, so no row exceeds its host's population.
+- **Return.** Returns come only from recorded hosts, foreign ones included, and only what actually
+  moved leaves the ledger. An origin held by force keeps its balance. Border changes keep
+  provenance.
+- **Older saves.** An outstanding count without a ledger is kept as `displacement.unknown` at the
+  start of the first realism turn. It is never returned, and the region tooltip shows it as
+  whereabouts unknown.
+- **Tested.** Domestic and foreign returns, no safe origin, repeated flight, host casualties, border
+  changes, legacy balances, save/reload, determinism and global conservation, plus the legacy
+  return rule unchanged (1,000 → 970 without moving anyone).
+- **Real world.** The 36-month fronts and forces match Phase F. Ukraine's outstanding displacement
+  reaches 2.2 million after three years, 55,000 abroad; nobody returns to the occupied east. This
+  closes Phase E's limit that people returned to annexed land from the new owner's regions.
+- **Known limits.** Flight abroad reaches only bordering non-party regions, so long-distance refugee
+  flows (Ukrainians in Poland and Germany) stay small. Conflicts still report cumulative movements
+  under `displaced`.
+Next: Phase H (ongoing effort, trade lifecycle and military replacement).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -549,7 +572,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] D — Valid access/sea routes, supply bounds, and captured construction.
 - [x] E — Persistent conquest consequences and local resistance.
 - [x] F — Conserved force allocations and fractional, exposure-based attrition.
-- [ ] G — Origin–host displacement and actual return migration.
+- [x] G — Origin–host displacement and actual return migration.
 - [ ] H — Paid progress, recurring trade, replacement, and demobilization.
 - [ ] I — Evidence-based combat pacing and exhaustion.
 - [ ] J — Fair urgent reactions, accurate presentation, and complete verification.
