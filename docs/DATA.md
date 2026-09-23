@@ -37,6 +37,20 @@ Confirm exact source provenance before redistributing the supplied geography or 
 - `world_seed`: the 2026 world, with region names resolved to IDs. An unresolved name fails the import.
 - `military_stats`: one row per actor, plus the non-state parties. Observation years are kept separately from the curated scenario year.
 
+`tools/sea_routes.py` writes the coastal-route graph as two tables of its own, from the region
+geometry already imported and the land outline in `countries.geojson`; it never rebuilds geometry
+and takes a few minutes (`make data/.sea-routes`).
+
+- `sea_routes`: for each coastal region, every coastal region a fleet can reach within 1,500 km,
+  with the route length in whole kilometres. Anchor points are placed along each region's own
+  shoreline, one per degree cell, and linked by straight hops of at most 400 km that stay clear of
+  land eroded by about 9 km. Erosion opens straits up to about 18 km wide (Gibraltar, the Bosporus
+  and Dardanelles, the Oresund, Kerch) and isthmuses as narrow (Corinth, Perekop); the Suez,
+  Panama and Kiel canals are added explicitly. A fleet in a region on two seas can sail from
+  either, but no route crosses a region to reach the other sea. The graph is symmetric.
+- `sea_route_meta`: one content revision. Each month records it in its references; a replay
+  export carries the graph, and replay refuses a different one.
+
 Exchange rates use the World Bank's latest official annual average: the euro-area rate for euro users, 1 for dollar users, a peer country's rate for shared currencies, and pegged currencies via `usd_rate_like`. Some rates are stale for high-inflation currencies.
 
 Normalization is explicit: France→FR, Norway→NO, Kosovo→XK, Taiwan→TW. Other two-letter uppercase codes in the supplied map identify sandbox actors. `XK` is the explicit Kosovo sandbox convention; it does not assert ISO assignment or sovereignty. Unresolved territories are visible and non-playable. IDs `feature-000` etc. belong to features, never country codes, so unresolved codes cannot collide. Missing flags hide their image while preserving text; absent city records show an empty reference list.

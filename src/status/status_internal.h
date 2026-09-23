@@ -42,6 +42,9 @@ constexpr int warLullMonths = 6;
 // Reservists count toward defence only: a mobilisation base for holding home ground, never an
 // expeditionary pool available next month.
 constexpr double reserveDefence = 0.05;
+// A formation or region cut off from home land by enemy or neutral ground, with no sea route
+// back, fights on what it holds: half its usual effectiveness, and no national reinforcement.
+constexpr double isolatedSupport = 0.5;
 
 // Unrest, on the same 0-100 scale as stability but per region and charged against whoever
 // controls it.

@@ -11,6 +11,9 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
     auto &reference = d.reference;
     auto &references = d.references;
     auto refs = lifecycleReference(w);
+    // Fleet reach and supply follow the coastal-route graph; replay must use the same one.
+    if (!d.adjacency.seaRevision.empty())
+        refs["sea_route_revision"] = d.adjacency.seaRevision;
     auto mentions = mentioned(w, w.player, orders);
     // AI nations that act this month: those the player addresses first, then ongoing
     // disputes and one rotating neighbor.

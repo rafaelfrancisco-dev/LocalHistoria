@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
         for (auto &a : input["adjacency"].getMemberNames())
             for (auto &b : input["adjacency"][a])
                 adjacency[a].insert(b.asString());
+        decodeSeaRoutes(adjacency, input["sea_routes"]);
         int turns = 0;
         for (const auto &turn : input["turns"]) {
             for (auto &actor : turn["intentions"].getMemberNames())

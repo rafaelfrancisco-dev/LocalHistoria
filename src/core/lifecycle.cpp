@@ -1,6 +1,37 @@
 #include "localhistoria/lifecycle.h"
 #include "localhistoria/conflicts.h"
+#include <algorithm>
 namespace lh {
+void reconcileProjects(WorldState &w, std::vector<ResolvedEvent> &events) {
+    for (auto &id : w.entities.getMemberNames()) {
+        auto &e = w.entities[id];
+        if (e["status"] != "under_construction" || e["kind"] == "event_site")
+            continue;
+        auto builder = e["actor"].asString(), region = e["region"].asString();
+        const auto &t = std::as_const(w.territories)[region];
+        auto holder = t["controller"].asString();
+        auto label =
+            e["name"].asString() + " (" + e["kind"].asString() + ") in " + t["name"].asString();
+        if (!e.isMember("paused") && holder != builder &&
+            std::as_const(e)["completes_turn"].isInt()) {
+            Json::Value paused;
+            paused["since"] = w.turn;
+            paused["remaining_months"] = std::max(1, e["completes_turn"].asInt() - w.turn);
+            e["paused"] = paused;
+            e.removeMember("completes_turn");
+            auto by = holder.empty() ? std::string("no one")
+                                     : std::as_const(w.actors)[holder]["name"].asString();
+            events.push_back({builder, "construction_paused", id,
+                              "Work on " + label + " halted: " + by + " now holds the region.",
+                              region});
+        } else if (std::as_const(e)["paused"].isObject() && holder == builder) {
+            e["completes_turn"] = w.turn + e["paused"]["remaining_months"].asInt();
+            e.removeMember("paused");
+            events.push_back(
+                {builder, "construction_resumed", id, "Work on " + label + " resumed.", region});
+        }
+    }
+}
 LifecycleRules lifecycleRules(const Json::Value &reference) {
     LifecycleRules rules;
     if (reference.isMember("lifecycle_version")) {
@@ -68,6 +99,9 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
 Resolution finishTurn(const Resolution &base, const WorldDelta &delta, const Adjacency &adjacency,
                       const Json::Value &geography, const Json::Value &reference) {
     const auto rules = lifecycleRules(reference);
+    if (reference.isMember("sea_route_revision") &&
+        reference["sea_route_revision"].asString() != adjacency.seaRevision)
+        throw ValidationError("Sea route graph differs from the one this turn used");
     // Old exports without a delta never ran delta validation. Preserve that path too.
     auto result = base;
     if (rules.lifecycle != legacyLifecycleVersion || reference.isMember("delta") ||
@@ -75,6 +109,8 @@ Resolution finishTurn(const Resolution &base, const WorldDelta &delta, const Adj
         result = applyDelta(base, delta, geography);
     if (rules.monthly)
         result = applyMonthlyStatus(result, delta, adjacency, rules.monthly);
+    if (rules.lifecycle == realismLifecycleVersion)
+        reconcileProjects(result.state, result.events);
     return result;
 }
 } // namespace lh

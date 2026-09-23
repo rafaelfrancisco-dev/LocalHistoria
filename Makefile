@@ -7,13 +7,20 @@ CXX_SOURCES := $(shell find src include tests tools -name '*.cpp' -o -name '*.h'
 all: data
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
 	cmake --build build -j $(JOBS)
-data: data/world.sqlite web/regions.topojson data/.stats-imported
+data: data/world.sqlite web/regions.topojson data/.stats-imported data/.sea-routes
 data/world.sqlite: tools/import_data.py tools/import_regions.py tools/region_coastal.py data/source/countries.geojson data/source/json-cities.json.gz
 	$(GEO_PYTHON) -c "import shapely"
 	python3 tools/import_data.py
 	$(GEO_PYTHON) tools/import_regions.py
+	$(GEO_PYTHON) tools/sea_routes.py
+	touch data/.sea-routes
 	python3 tools/import_stats.py
 	touch data/.stats-imported
+# The coastal-route graph is two tables of its own: regenerating it (a few minutes) never rebuilds
+# region geometry.
+data/.sea-routes: tools/sea_routes.py data/source/countries.geojson
+	$(GEO_PYTHON) tools/sea_routes.py
+	touch $@
 # National statistics need only Python: refreshing them never rebuilds geography.
 data/.stats-imported: tools/import_stats.py data/source/country_stats.json data/source/currencies.json data/source/stats_overrides.json data/source/world_2026.json data/source/military_2026.json data/source/governments_2026.json
 	python3 tools/import_stats.py

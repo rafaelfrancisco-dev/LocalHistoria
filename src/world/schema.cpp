@@ -184,6 +184,9 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         p["conflict"] = enumeration(conflicts);
         clause("end_conflict", p);
     }
+    p = Json::objectValue;
+    p["to"] = actorId;
+    clause("grant_access", p);
     if (!regions.empty()) {
         p = Json::objectValue;
         p["region"] = region;

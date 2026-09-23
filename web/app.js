@@ -821,7 +821,7 @@ async function refreshEntities() {
   entityLayers.clearLayers();
   for (const e of entities) {
     const label=document.createElement("div");
-    const status=e.status==="under_construction"?`under construction until ${month(e.completes_turn-1)}`:e.kind==="event_site"&&e.expires_turn!==undefined?`fades at the end of ${month(e.expires_turn-1)}`:e.status;
+    const status=e.status==="under_construction"?(e.paused?`construction halted: ${e.paused.remaining_months} month${e.paused.remaining_months===1?"":"s"} of work left, awaiting control of the region`:`under construction until ${month(e.completes_turn-1)}`):e.kind==="event_site"&&e.expires_turn!==undefined?`fades at the end of ${month(e.expires_turn-1)}`:e.status;
     label.textContent=`${e.name}${e.kind === "army" ? ` · ${(e.personnel ?? 10000).toLocaleString()} troops` : e.kind === "fleet" ? ` · ${(e.ships ?? 3).toLocaleString()} ships` : ""} · ${kindLabel(e.kind)} · ${actorName(e.actor)} · ${status} · ${state.territories[e.region]?.name||e.region}`;
     L.circleMarker([e.latitude,e.longitude],{radius:5,color:state.actors[e.actor]?.color||"#fff",dashArray:e.status==="under_construction"?"2 3":null}).bindPopup(label).addTo(entityLayers);
   }
@@ -1010,6 +1010,7 @@ function termText(t) {
   if (t.action === "cede") return `${t.from ? actorName(t.from) + " cedes" : "Cedes"} ${region} to ${actorName(t.to)}`;
   if (t.action === "occupy") return `${actorName(t.by)} holds ${region} while in force`;
   if (t.action === "withdraw") return `${t.by ? actorName(t.by) + " withdraws" : "Withdrawal"} from ${region}`;
+  if (t.action === "grant_access") return `Military access for ${actorName(t.to)} on the other parties' land`;
   return kindLabel(t.action);
 }
 function termList(terms) {

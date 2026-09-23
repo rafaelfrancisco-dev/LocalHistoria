@@ -1,5 +1,6 @@
 #include "localhistoria/conflicts.h"
 #include <algorithm>
+#include <deque>
 namespace lh {
 bool realismRules(const WorldState &w) { return w.engine.get("lifecycle_version", 0).asInt() == 1; }
 std::string hostilePairKey(const std::string &a, const std::string &b) {
@@ -68,6 +69,51 @@ bool fightingPair(const WorldState &w, const Json::Value &c, const std::string &
         if (isOpen(k) && isParty(k, a) && isParty(k, b) &&
             (k["kind"] == "ceasefire" || k["kind"] == "peace_treaty" ||
              k["kind"] == "non_aggression_pact"))
+            return false;
+    return true;
+}
+bool mayEnter(const WorldState &w, const std::string &a, const std::string &region) {
+    const auto &t = w.territories[region];
+    auto holder = t["controller"].asString();
+    if (holder.empty() || holder == a)
+        return true;
+    for (const auto &k : w.commitments)
+        if (isOpen(k) && isParty(k, a) && isParty(k, holder))
+            for (const auto &term : k["terms"])
+                if (term["action"] == "grant_access" && term["to"] == a &&
+                    (!term.isMember("region") || term["region"] == region))
+                    return true;
+    return false;
+}
+bool supplied(const WorldState &w, const Adjacency &adj, const std::string &a,
+              const std::string &region) {
+    auto home = [&](const std::string &id) {
+        const auto &t = w.territories[id];
+        return t["owner"] == a && t["controller"] == a;
+    };
+    if (!w.territories.isMember(region) || !mayEnter(w, a, region))
+        return false;
+    std::set<std::string> seen{region};
+    std::deque<std::string> queue{region};
+    auto visit = [&](const std::string &n) {
+        if (w.territories.isMember(n) && w.territories[n]["kind"] != "residual" &&
+            mayEnter(w, a, n) && seen.insert(n).second)
+            queue.push_back(n);
+    };
+    while (!queue.empty()) {
+        auto id = queue.front();
+        queue.pop_front();
+        if (home(id))
+            return true;
+        if (auto at = adj.find(id); at != adj.end())
+            for (const auto &n : at->second)
+                visit(n);
+        if (auto at = adj.sea.find(id); at != adj.sea.end())
+            for (const auto &[n, km] : at->second)
+                visit(n);
+    }
+    for (const auto &id : w.territories.getMemberNames())
+        if (home(id))
             return false;
     return true;
 }

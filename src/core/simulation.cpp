@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <utility>
 namespace lh {
 std::string lowercase(const std::string &s) {
     std::string o;
@@ -240,6 +241,10 @@ Resolution resolve(const WorldState &w, int lifecycleVersion) {
         }
         r.events.push_back({k["actors"][0].asString(), "expiry", id, text});
     }
+    // Control may have moved since the projects were last checked; nothing completes behind
+    // enemy lines.
+    if (lifecycleVersion == realismLifecycleVersion)
+        reconcileProjects(r.state, r.events);
     for (auto &id : r.state.entities.getMemberNames()) {
         auto &e = r.state.entities[id];
         // An event site no later event renewed leaves the map without a journal line.
@@ -249,8 +254,9 @@ Resolution resolve(const WorldState &w, int lifecycleVersion) {
             e.removeMember("expires_turn");
             continue;
         }
-        if (e["status"] != "under_construction" || !e["completes_turn"].isInt() ||
-            e["completes_turn"].asInt() > r.state.turn)
+        // A const read: a paused project has no completion turn, and naming one would insert it.
+        const auto &due = std::as_const(e)["completes_turn"];
+        if (e["status"] != "under_construction" || !due.isInt() || due.asInt() > r.state.turn)
             continue;
         e["status"] = "active";
         e.removeMember("completes_turn");

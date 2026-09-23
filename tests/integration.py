@@ -62,7 +62,8 @@ class Server:
   args=[str(ROOT/'build/localhistoria'),str(self.config)]
   if self.endpoint:args.append(f'--llama-endpoint={self.endpoint}')
   self.proc=subprocess.Popen(args,cwd=ROOT,stdout=self.log,stderr=self.log)
-  for _ in range(100):
+  # A debug build parses every region's geometry at start-up, which takes about five seconds.
+  for _ in range(300):
    if self.proc.poll() is not None:raise RuntimeError('Server exited; '+str(self.config))
    try:self.get('campaign');return
    except (ConnectionError,OSError):time.sleep(.05)

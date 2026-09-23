@@ -104,6 +104,7 @@ class OperationCompiler {
     void opBuild(EventScope &s, OpScope &op);
     void allocateForce(const std::string &builder, const std::string &kind, Json::Value &v) const;
     void opEntity(EventScope &s, OpScope &op);
+    void checkPassage(const std::string &eid, const std::string &region) const;
     void moveEntity(EventScope &s, const OpScope &op, const std::string &eid, Json::Value &v,
                     const std::string &owner);
     void setEntityStatus(EventScope &s, OpScope &op, const std::string &eid, Json::Value &v,

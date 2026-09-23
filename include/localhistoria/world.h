@@ -8,7 +8,21 @@ WorldDelta parseDelta(const Json::Value &);
 Json::Value encode(const WorldDelta &);
 Resolution applyDelta(const Resolution &, const WorldDelta &, const Json::Value &geography);
 // Small models emit compact operations nested in events; C++ derives exact before/after changes.
-using Adjacency = std::map<std::string, std::set<std::string>>;
+// Region borders, plus the frozen coastal-route graph: for each coastal region, the coastal regions
+// a fleet can reach within a month and the route's length in whole kilometres. The graph's revision
+// is recorded in each turn's references so replay uses the same one.
+struct Adjacency : std::map<std::string, std::set<std::string>> {
+    using std::map<std::string, std::set<std::string>>::map;
+    std::map<std::string, std::map<std::string, int>> sea;
+    std::string seaRevision;
+};
+// A fleet's monthly allowance, and the troops one major warship can conservatively carry.
+constexpr int fleetRangeKm = 1500, troopsPerShip = 500;
+// Length of the sea route between two coastal regions, 0 for the same region, -1 for none.
+int seaKm(const Adjacency &, const std::string &from, const std::string &to);
+// The sea routes and their revision for a replay export: each route once, from the lower ID.
+Json::Value encodeSeaRoutes(const Adjacency &);
+void decodeSeaRoutes(Adjacency &, const Json::Value &);
 // actions: (actor, text) pairs in the order the model sees them; the schema requires one outcome
 // per action. The first six words of an action, which open its adjudicated outcome.
 std::string actionOpening(const std::string &);
@@ -38,7 +52,8 @@ void assignActorColors(WorldState &,
 // The same region, or regions that share a border.
 bool adjacent(const Adjacency &, const std::string &from, const std::string &to);
 // Whether an actor can project force into a region this month (bordering controlled land, or a
-// nearby army/fleet).
+// nearby army/fleet). Under the realism lifecycle a fleet reaches coastal regions along its sea
+// routes rather than across land borders.
 bool reaches(const WorldState &, const Adjacency &, const std::string &actor,
              const std::string &region);
 bool containsPoint(const Json::Value &geometry, double longitude, double latitude);

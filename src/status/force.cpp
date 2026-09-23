@@ -104,29 +104,78 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
     int count = defending ? fronts(w, adj, a) : 1;
     bool noLand = landless(w, a),
          naval = !noLand && w.territories[region].get("coastal", false).asBool();
+    const bool realism = realismRules(w);
+    // National reinforcement arrives over supplied land: an attacker needs a supplied region on
+    // the target's border, a defender a supplied region to defend. The full pool never sails.
+    double pool = 1;
+    if (realism && !noLand) {
+        bool linked = false;
+        if (defending)
+            linked = supplied(w, adj, a, region);
+        else if (auto at = adj.find(region); at != adj.end())
+            for (const auto &n : at->second)
+                if (w.territories[n]["controller"] == a && w.territories[n]["kind"] != "residual" &&
+                    supplied(w, adj, a, n)) {
+                    linked = true;
+                    break;
+                }
+        pool = linked ? 1 : defending ? rate::isolatedSupport : 0;
+    }
     double land = 0;
-    if (!noLand)
-        for (const auto &e : w.entities)
-            if (e["status"] == "active") {
-                auto at = e["region"].asString();
-                if (at == region &&
-                    (e["kind"] == "port" || e["kind"] == "fleet" || e.get("port", false).asBool()))
-                    naval = true;
-                if (e["actor"] != a || !adjacent(adj, at, region))
-                    continue;
-                if (e["kind"] == "army")
-                    land += e.get("personnel", 10000).asInt();
-                if (e["kind"] == "fleet")
-                    naval = true;
+    if (!noLand) {
+        std::set<std::string> counted;
+        for (const auto &id : w.entities.getMemberNames()) {
+            const auto &e = w.entities[id];
+            if (e["status"] != "active")
+                continue;
+            auto at = e["region"].asString();
+            if (at == region &&
+                (e["kind"] == "port" || e["kind"] == "fleet" || e.get("port", false).asBool()))
+                naval = true;
+            if (e["actor"] != a)
+                continue;
+            if (e["kind"] == "army" && adjacent(adj, at, region)) {
+                auto support = !realism || supplied(w, adj, a, at) ? 1.0 : rate::isolatedSupport;
+                land += support * e.get("personnel", 10000).asInt();
+                counted.insert(id);
             }
+            auto km = realism ? seaKm(adj, at, region) : -1;
+            if (e["kind"] == "fleet" &&
+                (realism ? km >= 0 && km <= fleetRangeKm : adjacent(adj, at, region)))
+                naval = true;
+        }
+        // Overseas, only troops already embarked count: armies sharing a region with a fleet whose
+        // routes reach the target, up to what its warships can lift.
+        if (realism && !defending && w.territories[region].get("coastal", false).asBool())
+            for (const auto &f : w.entities)
+                if (f["actor"] == a && f["kind"] == "fleet" && f["status"] == "active") {
+                    auto from = f["region"].asString();
+                    auto km = seaKm(adj, from, region);
+                    if (km < 0 || km > fleetRangeKm)
+                        continue;
+                    double lift = double(f.get("ships", 3).asInt()) * troopsPerShip;
+                    for (const auto &id : w.entities.getMemberNames()) {
+                        const auto &e = w.entities[id];
+                        if (lift <= 0 || e["actor"] != a || e["kind"] != "army" ||
+                            e["status"] != "active" || e["region"] != from ||
+                            !counted.insert(id).second)
+                            continue;
+                        double carried = std::min(lift, double(e.get("personnel", 10000).asInt()));
+                        lift -= carried;
+                        land += carried * (supplied(w, adj, a, from) ? 1.0 : rate::isolatedSupport);
+                    }
+                }
+    }
     auto share = defending ? (mobilised(w, a) ? 0.40 : 0.25) : (mobilised(w, a) ? 0.30 : 0.20);
-    land += share * (noLand ? number(m, "active") : uncommittedPersonnel(w, a)) / count;
+    land += pool * share * (noLand ? number(m, "active") : uncommittedPersonnel(w, a)) / count;
     // Reservists hold ground they already live on; they are not an expeditionary pool, so they
     // count only in defence. Without this a nation whose strength is mostly its reserve reads as
     // defenceless.
     if (defending)
         land += rate::reserveDefence * number(m, "reserve") / count;
-    double air = (defending ? 0.50 : 0.30) * number(m, "aircraft") * 200 / count;
+    // Carrier aviation is not modelled: air power follows the same supplied land as the pool.
+    double air = (realism && !noLand ? pool : 1) * (defending ? 0.50 : 0.30) *
+                 number(m, "aircraft") * 200 / count;
     double sea = naval ? 0.30 * number(m, "ships") * 1500 : 0;
     double cp = quality(w, a) * (land + air + sea) * (defending ? 1.5 : 1);
     if (defending) {

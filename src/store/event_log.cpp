@@ -175,10 +175,12 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                     item["actors"] = w.conflicts[target]["actors"];
                 } else if (w.hasActor(target) && target != x["actor"].asString())
                     item["actors"].append(target);
-            } else if (action == "completion") {
+            } else if (action == "completion" || action == "construction_paused" ||
+                       action == "construction_resumed") {
                 item["category"] = "construction";
-                // A finished city is years of work; units, bases and ports are routine.
-                item["major"] = w.entities[target]["kind"] == "city";
+                // A finished city is years of work; units, bases and ports are routine, and so is
+                // work halting or resuming as the front moves.
+                item["major"] = action == "completion" && w.entities[target]["kind"] == "city";
                 item["entities"].append(target);
                 if (w.entities.isMember(target))
                     item["regions"].append(w.entities[target]["region"]);

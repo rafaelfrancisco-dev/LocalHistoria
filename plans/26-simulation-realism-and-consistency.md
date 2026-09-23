@@ -10,7 +10,26 @@ version 4 remains unchanged for legacy turns. No campaign save was modified.
 Phase C fixed a latent defect found by the browser gate: `buildEvent` named
 `event["effects"]` on a failed event, and jsoncpp's non-const `operator[]` inserted a
 null member that `checkDelta` then rejected, failing the whole month instead of the
-event. Next: Phase D (access, sea routes, captured construction).
+event.
+
+2026-09-23: Phase D gate passed — 17 CTest cases (adding `access`, 35 checks), sea-route
+fixtures in the `data` test, the HTTP integration suite with browser, restart and replay of
+exports that now carry the sea graph, and a 36-month run of the seeded world whose
+trajectories match the pre-D build exactly. Known limits, by design for this pass:
+- The sea graph is region-grained: a region on two seas (Colombia's Chocó) lets a fleet based
+  there use either, and erosion opens isthmuses under about 18 km (Corinth, Perekop).
+- Land a nation owns is always its own supply base, so enclaves and distant possessions are
+  never cut off; supply ignores naval interdiction; carrier aviation is not modelled.
+- Embarkation is the explicit co-location of an army and a fleet, capped at 500 troops per
+  warship; there is no separate embark operation. Access is national in scope.
+- Every loss of control pauses a builder's project, consensual cession included: the land's new
+  controller finishes it only by an explicit takeover. A takeover costs a construction slot; its
+  resource cost arrives with H. A paused military
+  project can be abandoned (releasing its reservation) or destroyed, not evacuated.
+- `committedPersonnel`, used for seizure displacement, still uses the old pool; F replaces it.
+- The adjudication prompt gained two clause glosses (`grant_access`, sea movement); their
+  effect on the live model is not yet measured.
+Next: Phase E (persistent conquest consequences and local resistance).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -467,7 +486,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] A — Legacy fixtures, complete lifecycle versioning, and deterministic migrations.
 - [x] B — Explicit proposal consent and outcome-grounded effects.
 - [x] C — Hostile pairs, scoped peace/intensity, and conflict deduplication.
-- [ ] D — Valid access/sea routes, supply bounds, and captured construction.
+- [x] D — Valid access/sea routes, supply bounds, and captured construction.
 - [ ] E — Persistent conquest consequences and local resistance.
 - [ ] F — Conserved force allocations and fractional, exposure-based attrition.
 - [ ] G — Origin–host displacement and actual return migration.

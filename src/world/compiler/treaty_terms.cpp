@@ -79,6 +79,16 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
         kept["conflict"] = cid;
         return kept;
     }
+    // Military access: the other signatories let one party base and move forces on the ground
+    // they hold, for as long as the treaty stays open. Nothing moves when it is signed.
+    if (clause == "grant_access") {
+        auto to = actorRef(field("to"));
+        if (!party(to) || members.size() < 2)
+            throw Infeasible("access can only be granted to a party by the other parties");
+        kept["to"] = to;
+        s.actors.insert(to);
+        return kept;
+    }
     auto r = field("region");
     if (!w.territories.isMember(r))
         throw Infeasible("unknown region");

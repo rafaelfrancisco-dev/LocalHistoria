@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/status.h"
 #include "localhistoria/world.h"
 #include <algorithm>
@@ -134,8 +135,45 @@ void assignActorColors(WorldState &w,
 bool adjacent(const Adjacency &adjacency, const std::string &from, const std::string &to) {
     return from == to || (adjacency.contains(from) && adjacency.at(from).contains(to));
 }
+int seaKm(const Adjacency &adjacency, const std::string &from, const std::string &to) {
+    if (from == to)
+        return 0;
+    auto at = adjacency.sea.find(from);
+    if (at == adjacency.sea.end())
+        return -1;
+    auto route = at->second.find(to);
+    return route == at->second.end() ? -1 : route->second;
+}
+Json::Value encodeSeaRoutes(const Adjacency &adjacency) {
+    Json::Value j;
+    j["revision"] = adjacency.seaRevision;
+    j["routes"] = Json::objectValue;
+    for (const auto &[from, routes] : adjacency.sea)
+        for (const auto &[to, km] : routes)
+            if (from < to)
+                j["routes"][from][to] = km;
+    return j;
+}
+void decodeSeaRoutes(Adjacency &adjacency, const Json::Value &j) {
+    if (!j.isObject())
+        return;
+    adjacency.seaRevision = j["revision"].asString();
+    for (const auto &from : j["routes"].getMemberNames())
+        for (const auto &to : j["routes"][from].getMemberNames()) {
+            int km = j["routes"][from][to].asInt();
+            adjacency.sea[from][to] = km;
+            adjacency.sea[to][from] = km;
+        }
+}
 bool reaches(const WorldState &w, const Adjacency &adjacency, const std::string &a,
              const std::string &r) {
+    // A fleet lies off a coast its routes reach; a land border says nothing about the sea.
+    auto fleetReaches = [&](const Json::Value &e) {
+        if (!realismRules(w))
+            return adjacent(adjacency, e["region"].asString(), r);
+        auto km = seaKm(adjacency, e["region"].asString(), r);
+        return w.territories[r].get("coastal", false).asBool() && km >= 0 && km <= fleetRangeKm;
+    };
     // Reach is judged from the start of the month: controlled land (residual slivers excepted) or
     // active armies and fleets.
     for (auto &id : w.territories.getMemberNames()) {
@@ -145,9 +183,11 @@ bool reaches(const WorldState &w, const Adjacency &adjacency, const std::string 
     }
     for (auto &id : w.entities.getMemberNames()) {
         auto &e = w.entities[id];
-        if (e["actor"] == a && e["status"] == "active" &&
-            (e["kind"] == "army" || e["kind"] == "fleet") &&
-            adjacent(adjacency, e["region"].asString(), r))
+        if (e["actor"] != a || e["status"] != "active")
+            continue;
+        if (e["kind"] == "army" && adjacent(adjacency, e["region"].asString(), r))
+            return true;
+        if (e["kind"] == "fleet" && fleetReaches(e))
             return true;
     }
     return false;

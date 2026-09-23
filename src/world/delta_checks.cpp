@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include "world/delta_internal.h"
@@ -215,10 +216,31 @@ void checkEntities(const Resolution &base, WorldState &w, const Json::Value &geo
                     (e["status"] == "active" || e["status"] == "destroyed" ||
                      e["status"] == "inactive" || e["status"] == "under_construction"),
                 "Invalid entity description");
-        require(e["status"] == "under_construction"
-                    ? e["completes_turn"].isInt() && e["completes_turn"].asInt() > w.turn
-                    : !e.isMember("completes_turn"),
-                "Invalid construction schedule");
+        const auto &before = base.state.entities[id];
+        if (realismRules(w)) {
+            // Only the engine pauses and resumes work; a delta may keep a pause, end it by a
+            // takeover, or abandon the project, and never finishes construction itself.
+            const auto &paused = e.get("paused", Json::nullValue);
+            require(!e.isMember("paused") ||
+                        (e["status"] == "under_construction" && paused == before["paused"] &&
+                         before["actor"] == e["actor"]),
+                    "Construction pauses are engine-owned");
+            require(!before["paused"].isObject() || e.isMember("paused") ||
+                        e["status"] != "under_construction" || e["actor"] != before["actor"],
+                    "A paused project resumes only with its region or by a takeover");
+            require(before["status"] != "under_construction" || e["status"] != "active",
+                    "Construction completes only on schedule");
+            require(e["status"] == "under_construction"
+                        ? (paused.isObject() && !e.isMember("completes_turn")) ||
+                              (!e.isMember("paused") && e["completes_turn"].isInt() &&
+                               e["completes_turn"].asInt() > w.turn)
+                        : !e.isMember("completes_turn") && !e.isMember("paused"),
+                    "Invalid construction schedule");
+        } else
+            require(e["status"] == "under_construction"
+                        ? e["completes_turn"].isInt() && e["completes_turn"].asInt() > w.turn
+                        : !e.isMember("completes_turn"),
+                    "Invalid construction schedule");
         // Event sites fade after a few months; sites saved before expiry existed keep none until an
         // event touches them.
         require(!e.isMember("expires_turn") ||

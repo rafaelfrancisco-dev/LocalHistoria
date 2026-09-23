@@ -275,6 +275,11 @@ void replay(Server &s, const HttpRequestPtr &, Json::Value, const CB &cb) {
                 j["adjacency"][from].append(region);
     }
     for (auto &t : j["turns"])
+        if (t["reference"].asString().find("\"sea_route_revision\"") != std::string::npos) {
+            j["sea_routes"] = encodeSeaRoutes(s.adjacency);
+            break;
+        }
+    for (auto &t : j["turns"])
         for (auto k : {"state", "intentions", "events", "reference"})
             t[k] = parse(t[k].asString());
     reply(cb, j);

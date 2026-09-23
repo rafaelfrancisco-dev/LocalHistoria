@@ -77,3 +77,21 @@ fallback=import_military(['ZZ'],{'ZZ':{'population':10000}},{'actors':{}})['ZZ']
 assert (fallback['active'],fallback['reserve'],fallback['ships'],fallback['aircraft'],fallback['estimated'])==(200,100,0,0,1)
 assert military['MG']['reserve']==0 and military['rapid-support-forces']['active']==100000
 print('Military references, provenance, fallbacks, observed aircraft and seeded formations passed')
+# Sea routes: symmetric, coastal only, within a month's sailing, and never across a continent.
+routes={(a,b):km for a,b,km in db.execute('SELECT a,b,km FROM sea_routes')}
+assert len(routes)>50_000 and all(routes.get((b,a))==km and 0<km<=1500 for (a,b),km in routes.items())
+assert db.execute('SELECT count(*) FROM sea_routes WHERE a IN (SELECT id FROM regions WHERE coastal=0)').fetchone()[0]==0
+assert len(db.execute('SELECT revision FROM sea_route_meta').fetchall())==1
+region=lambda name,code:db.execute('SELECT id FROM regions WHERE name=? AND affiliation=?',(name,code)).fetchone()[0]
+sea=lambda a,b:routes.get((region(*a),region(*b)))
+odesa,crimea=('Odessa Oblast','UA'),('Autonomous Republic of Crimea','UA')
+# Straits and canals open: the Bosporus and Dardanelles, Gibraltar, the Oresund, Kerch, Suez, Panama.
+assert sea(odesa,('İstanbul','TR')) and sea(odesa,('İzmir','TR'))
+assert sea(('Casablanca-Settat','MA'),('Andalucía','ES')) and sea(('Andalucía','ES'),('Tangier-Tetouan-Al Hoceima','MA'))
+assert sea(('Kaliningrad','RU'),('Västra Götalands län','SE')) and sea(crimea,('Krasnodar Krai','RU'))
+assert sea(('Alexandria Governorate','EG'),('Suez Governorate','EG')) and sea(('Colón Province','PA'),('Provincia de Panamá','PA'))
+# Enclosed and distant waters stay apart: the Caspian, Anatolia's two coasts, Hawaii.
+assert sea(('Gilan','IR'),('Atyrau Region','KZ')) and not sea(('Gilan','IR'),('Krasnodar Krai','RU'))
+assert not sea(('Atyrau Region','KZ'),odesa) and not sea(('Mersin','TR'),('Samsun','TR'))
+assert not sea(('California','US'),('Hawaii','US'))
+print(f'Sea routes passed: {len(routes)//2} symmetric coastal routes, straits, canals and enclosed seas')

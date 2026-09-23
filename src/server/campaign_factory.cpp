@@ -1,6 +1,7 @@
 #include "server/campaign_factory.h"
 #include <cstdio>
 #include <drogon/utils/Utilities.h>
+#include <sstream>
 namespace lh {
 using namespace drogon;
 Json::Value loadGeography(Store &reference) {
@@ -13,6 +14,21 @@ Adjacency loadAdjacency(Store &reference) {
     Adjacency adjacency;
     for (auto &r : reference.query("SELECT a,b FROM region_neighbors"))
         adjacency[r["a"].asString()].insert(r["b"].asString());
+    // Older reference databases predate the coastal-route graph; fleets then have no sea routes.
+    if (reference.query("SELECT name FROM sqlite_master WHERE name='sea_routes'").empty())
+        return adjacency;
+    // One row per coastal region: a hundred thousand JSON rows would slow every start-up.
+    for (auto &r : reference.query("SELECT a, group_concat(b || ' ' || km, ' ') AS routes "
+                                   "FROM sea_routes GROUP BY a")) {
+        auto &routes = adjacency.sea[r["a"].asString()];
+        std::istringstream in(r["routes"].asString());
+        std::string to;
+        int km;
+        while (in >> to >> km)
+            routes[to] = km;
+    }
+    for (auto &r : reference.query("SELECT revision FROM sea_route_meta"))
+        adjacency.seaRevision = r["revision"].asString();
     return adjacency;
 }
 StatusSeed loadStatusSeed(Store &reference) {
