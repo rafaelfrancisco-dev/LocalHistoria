@@ -21,10 +21,26 @@ bool hasGovernment(const WorldState &);
 void seedGovernment(WorldState &, const StatusSeed &);
 namespace force {
 double quality(const WorldState &, const std::string &);
-Json::Value committedForce(const WorldState &, const Adjacency &, const std::string &,
-                           const std::string &, bool);
+// Strength an actor brings to one region, attacking or defending. `opponent`, the other side,
+// sets which engagement the realism rules charge it to; legacy rules ignore it.
+Json::Value committedForce(const WorldState &, const Adjacency &, const std::string &actor,
+                           const std::string &region, bool defending,
+                           const std::string &opponent = "");
 int assaultCapacity(const WorldState &, const Adjacency &, const std::string &, const std::string &,
                     const std::string &);
+// {attack, defend, capacity} for an assault on one region. assaultCapacity() returns only the
+// band; the monthly front model needs the ratio behind it.
+Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
+                    const std::string &d, const std::string &r);
+// The realism allocation, one engagement at a time: the actor's national pool divided across
+// every engagement (those it is already in, and this opponent), plus each active army in or next
+// to the regions at the share it can spare for this enemy. Summed over all its enemies it never
+// exceeds the actor's active strength. `parts`, when given, receives each army's contribution by
+// entity ID and the pool's under "".
+double engaged(const WorldState &w, const Adjacency &adj, const std::string &a,
+               const std::vector<std::string> &regions, const std::string &opponent,
+               std::map<std::string, double> *parts = nullptr);
+
 int constructionCapacity(const WorldState &, const std::string &);
 int uncommittedPersonnel(const WorldState &, const std::string &);
 int uncommittedShips(const WorldState &, const std::string &);

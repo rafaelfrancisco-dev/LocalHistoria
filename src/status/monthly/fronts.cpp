@@ -23,11 +23,11 @@ double MonthlyStatus::seizedShare(const std::string &region, double population) 
     if (static_cast<const WorldState &>(forceStart)
             .actors[taker]["status"]["military"]
             .isObject()) {
-        double committed = force::committedPersonnel(forceStart, adjacency, taker, {region});
+        double committed = force::committedPersonnel(forceStart, adjacency, taker, {region}, loser);
         if (static_cast<const WorldState &>(forceStart)
                 .actors[loser]["status"]["military"]
                 .isObject())
-            committed += force::committedPersonnel(forceStart, adjacency, loser, {region});
+            committed += force::committedPersonnel(forceStart, adjacency, loser, {region}, taker);
         exposed = std::min(population, rate::residentsPerCombatant * committed);
     }
     return exposed == population ? rate::seizedDisplacement

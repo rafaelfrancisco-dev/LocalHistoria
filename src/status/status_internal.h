@@ -1,6 +1,7 @@
 #pragma once
 #include "localhistoria/status.h"
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 namespace lh {
@@ -159,11 +160,12 @@ std::vector<std::string> parties(const Json::Value &v);
 double jitter(const WorldState &w, const std::string &key);
 } // namespace detail
 namespace force {
+// Personnel an actor commits around some regions. Under the realism rules this is `engaged`
+// against `opponent` (a garrison when empty); legacy rules ignore the opponent.
 double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::string &a,
-                          const std::vector<std::string> &regions);
-// {attack, defend, capacity} for an assault on one region. assaultCapacity() returns only the
-// band; the monthly front model needs the ratio behind it.
-Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
-                    const std::string &d, const std::string &r);
+                          const std::vector<std::string> &regions,
+                          const std::string &opponent = "");
+// Everyone an actor is fighting or disputing ground with.
+std::set<std::string> engagements(const WorldState &w, const Adjacency &adj, const std::string &a);
 } // namespace force
 } // namespace lh

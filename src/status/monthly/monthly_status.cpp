@@ -60,7 +60,10 @@ Resolution MonthlyStatus::run() {
 
     // 5b. Apply all inventory changes after computing every conflict from the same frozen inputs.
     for (const auto &a : w.actors.getMemberNames())
-        applyInventory(a);
+        if (realism())
+            applyRealismInventory(a);
+        else
+            applyInventory(a);
     accountDestroyed();
 
     // 6. Displaced people return home once their region is calm and back under its owner's control.
@@ -95,6 +98,13 @@ void MonthlyStatus::freezeForceInputs() {
             else
                 (*collection)[id] = change["before"];
         }
+    }
+    // Under the realism rules forces stand where they stood, but the month's wars and treaties
+    // are the ones in force after the orders: a war declared this month draws on the same pool as
+    // every other engagement rather than getting a full force of its own.
+    if (realism()) {
+        forceStart.conflicts = base.state.conflicts;
+        forceStart.commitments = base.state.commitments;
     }
 }
 void MonthlyStatus::accountDestroyed() {

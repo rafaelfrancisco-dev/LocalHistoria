@@ -208,6 +208,41 @@ Relevant regions show their population. The adjudication prompt asks the model t
 
 Status version 4 adds all of this. Turns recorded at 3 or below gain no unrest at all, so existing campaigns replay unchanged.
 
+### Force allocation and attrition (realism lifecycle)
+
+Plan 26 F makes every use of military strength draw on one allocation per month.
+
+- **Engagements.** An actor's engagements are the enemies it is fighting plus neighbours
+  disputing ground with it. A war declared this month counts: the compiler judges seizures with
+  this month's wars and treaties in force, and the month step reads its forces from the start of
+  the month but its wars from after the orders. The national pool (20%, or 30% when mobilised, of
+  uncommitted personnel), the air arm and the fleet are divided across every engagement, attacking
+  as well as defending. A second front therefore costs offensive strength: in the access fixture, a
+  war opened against a neutral earlier in the month halves Aland's odds against Bland, and a
+  seizure it could otherwise make fails.
+- **Formations.** An army in or next to the fight splits evenly among the distinct enemies it
+  faces, so it cannot fight two battles at full strength. An army facing no one garrisons where it
+  stands. `force::engaged` is the one calculation behind assaults, advances, garrison checks,
+  seizure displacement and casualties. Summed over an actor's enemies, it never exceeds its active
+  strength.
+- **Personnel losses** fall on what was engaged against that enemy, in proportion: the armies next
+  to the front and the pool's share. An army at home, or one still assembling, loses nobody. Deaths
+  reduce the population once, and a destroyed army's remaining troops leave the inventory once, as
+  dispersed or captured.
+- **Aircraft** are exposed when the actor holds supplied ground on or next to the front: 30% of the
+  air arm, divided by engagements. Enemy aircraft cost them 1% (high) or 0.3% (medium) a month;
+  ground fire alone costs half that. **Ships** are exposed in fleets within sailing range of a
+  coastal front region, and the uncommitted fleet only off its own front-line coast. They are lost
+  at 0.5% or 0.15% a month when the enemy has ships or aircraft engaged there. A fleet out of reach
+  loses nothing, whatever the enemy owns. Low intensity costs no equipment.
+- **Fractions carry forward.** Each front's losses are summed per actor before rounding, and what
+  is below one soldier, aircraft or ship is kept in `status.attrition` for next month. Under the old
+  rounding, 30 aircraft at high intensity never lost one; now they lose about one a year.
+
+On the real world, 36 idle months move no front differently from Phase E. The Russo-Ukrainian War
+still kills about 196,000 a year. Russia now loses about 33 aircraft and one ship a year, its Black
+Sea coast being on the front and within reach of Ukrainian aircraft; Ukraine's 97 aircraft fall to 90.
+
 ### Conquest and resistance (realism lifecycle)
 
 Under the realism lifecycle (Plan 26 E), a region held by force carries an engine-owned `control`

@@ -148,7 +148,7 @@ void MonthlyStatus::advanceRebellions() {
                     reachable = reachable || cT[n]["controller"].asString() == rebel;
             if (!reachable)
                 continue;
-            double garrison = force::committedPersonnel(forceStart, adjacency, state, {id});
+            double garrison = force::committedPersonnel(forceStart, adjacency, state, {id}, rebel);
             if (garrison >= double(integer(cT[id], "population")) * rate::garrisonPerResident)
                 continue;
             if (best.empty() || number(cT[id], "unrest") > number(cT[best], "unrest"))

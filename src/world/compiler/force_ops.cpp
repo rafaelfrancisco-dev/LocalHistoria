@@ -200,7 +200,8 @@ void OperationCompiler::setEntityStatus(EventScope &s, OpScope &op, const std::s
         op.hostile.insert(owner);
     }
     if (ev != owner && status != "active" && w.actors[ev]["status"]["military"].isObject() &&
-        force::assaultCapacity(w, adjacency, ev, owner, entity["region"].asString()) < 1)
+        force::assaultCapacity(realism() ? engagementWorld() : w, adjacency, ev, owner,
+                               entity["region"].asString()) < 1)
         throw Infeasible("too weak to defeat this formation");
     // A formation disbanded when its ground changed hands does not muster again on foreign soil.
     if (realism() && status == "active" && v["status"] == "inactive" &&
@@ -234,7 +235,10 @@ void OperationCompiler::take(const std::string &a, const std::string &r) {
     if (defender.empty())
         defender = w.territories[r]["owner"].asString();
     if (w.actors[a]["status"]["military"].isObject() && defender != a) {
-        int cap = force::assaultCapacity(w, adjacency, a, defender, r);
+        // Under the realism rules strength is judged with this month's wars and treaties in force,
+        // the same allocation the month's fronts use: a war declared this month shares the pool.
+        int cap =
+            force::assaultCapacity(realism() ? engagementWorld() : w, adjacency, a, defender, r);
         if (!cap)
             throw Infeasible("too weak to occupy " + w.territories[r]["name"].asString());
         int used = 0;
@@ -251,6 +255,17 @@ void OperationCompiler::take(const std::string &a, const std::string &r) {
     taken[a].insert(r);
     if (taken[a].size() > 2)
         throw Infeasible("at most two regions can change hands by force in one month");
+}
+// The start-of-month world, forces where they stood, with the wars and treaties this month's events
+// have already made: the engagements a new order has to share the national pool with.
+WorldState OperationCompiler::engagementWorld() const {
+    auto now = w;
+    for (const auto &p : pending)
+        if (p.kind == "commitment")
+            now.commitments[p.id] = p.after;
+        else if (p.kind == "conflict")
+            now.conflicts[p.id] = p.after;
+    return now;
 }
 // The start-of-month world with this month's entities, less the forces of formations destroyed
 // here.

@@ -93,7 +93,9 @@ Int MonthlyStatus::partyLosses(const Front &f, const std::string &p,
                       ":military:" + p);
     auto losses = Int(std::llround(std::min(front, rate::militaryPopulationCap * pool)));
     const auto &m = static_cast<const WorldState &>(forceStart).actors[p]["status"]["military"];
-    if (m.isObject()) {
+    if (m.isObject() && realism())
+        losses = realismLosses(f, p, multiplier, kind);
+    else if (m.isObject()) {
         static constexpr double deathRate[]{0.0005, 0.004, 0.015};
         std::vector<std::string> affected;
         const auto &startConflict = forceStart.conflicts[f.id];
@@ -151,6 +153,94 @@ Int MonthlyStatus::partyLosses(const Front &f, const std::string &p,
     for (auto &[region, n] : distribute(losses, weights))
         demographicLoss += kill(region, n);
     return m.isObject() ? losses : demographicLoss;
+}
+// What one side of a pair's front puts in harm's way. Aircraft fly from supplied ground on or next
+// to the front, at the pool's share for this engagement. Ships are exposed where a fleet lies
+// within sailing range of a coastal front region, and the uncommitted fleet only off its own
+// front-line coast: a navy on the other side of the world is not at risk.
+MonthlyStatus::Exposure MonthlyStatus::exposure(const std::string &p, const std::string &q,
+                                                const Front &f) const {
+    Exposure out;
+    const auto &world = static_cast<const WorldState &>(forceStart);
+    const auto &m = world.actors[p]["status"]["military"];
+    if (!m.isObject())
+        return out;
+    auto engaged = force::engagements(world, adjacency, p);
+    engaged.insert(q);
+    double count = double(engaged.size());
+    bool landless = true, based = false, homeCoast = false;
+    for (auto it = world.territories.begin(); it != world.territories.end() && landless; ++it)
+        landless = (*it)["controller"] != p && (*it)["owner"] != p;
+    for (const auto &region : f.regions) {
+        std::vector<std::string> near{region};
+        if (auto at = adjacency.find(region); at != adjacency.end())
+            near.insert(near.end(), at->second.begin(), at->second.end());
+        for (const auto &n : near)
+            if (!based && world.territories[n]["controller"] == p &&
+                supplied(world, adjacency, p, n))
+                based = true;
+        const auto &t = world.territories[region];
+        homeCoast = homeCoast || (t["controller"] == p && t.get("coastal", false).asBool());
+    }
+    if (based || landless)
+        out.air = 0.30 * number(m, "aircraft") / count;
+    for (auto it = world.entities.begin(); it != world.entities.end(); ++it) {
+        const auto &e = *it;
+        if (e["actor"] != p || e["kind"] != "fleet" || e["status"] != "active")
+            continue;
+        for (const auto &region : f.regions) {
+            auto km = seaKm(adjacency, e["region"].asString(), region);
+            if (world.territories[region].get("coastal", false).asBool() && km >= 0 &&
+                km <= fleetRangeKm) {
+                out.fleets[it.name()] = number(e, "ships", 3);
+                out.ships += number(e, "ships", 3);
+                break;
+            }
+        }
+    }
+    if (homeCoast) {
+        double pool = 0.30 * force::uncommittedShips(world, p) / count;
+        out.fleets[""] = pool;
+        out.ships += pool;
+    }
+    return out;
+}
+// One side's losses on a pair's front under the realism rules, kept fractional until the month's
+// inventories are settled. Personnel losses fall on the forces engaged against this enemy: the
+// armies next to the front at their share and the pool's share, never an army still assembling.
+// Returns the rounded deaths for this front's toll.
+Int MonthlyStatus::realismLosses(const Front &f, const std::string &p, double multiplier,
+                                 const std::string &kind) {
+    static constexpr double deathRate[]{0.0005, 0.004, 0.015};
+    // Aircraft face enemy aircraft at the full rate and ground fire alone at half; ships face any
+    // enemy warship or aircraft in reach. Low intensity costs no equipment.
+    static constexpr double airRate[]{0, 0.003, 0.01}, shipRate[]{0, 0.0015, 0.005};
+    std::string q;
+    for (const auto &party : f.parties)
+        if (party != p)
+            q = party;
+    std::map<std::string, double> parts;
+    double exposed = force::engaged(forceStart, adjacency, p, f.regions, q, &parts);
+    auto key = hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) + ":military:" + p;
+    double loss = exposed * deathRate[f.intensity] * multiplier * jitter(forceStart, key);
+    const auto &now = w.actors[p]["status"]["military"];
+    double available = number(now, "active") + number(now, "reserve") - personnelLoss[p];
+    loss = std::clamp(loss, 0.0, std::max(0.0, available));
+    for (const auto &[id, n] : parts)
+        if (exposed > 0)
+            personnelWeights[p][id] += loss * n / exposed;
+    personnelLoss[p] += loss;
+    auto mine = exposure(p, q, f), theirs = exposure(q, p, f);
+    if (mine.air > 0)
+        aircraftLoss[p] += mine.air * airRate[f.intensity] * (theirs.air > 0 ? 1 : 0.5);
+    if (mine.ships > 0 && (theirs.ships > 0 || theirs.air > 0))
+        for (const auto &[id, n] : mine.fleets) {
+            shipLoss[p] += n * shipRate[f.intensity];
+            shipWeights[p][id] += n * shipRate[f.intensity];
+        }
+    if (f.intensity == 2 && (kind == "war" || kind == "civil_war"))
+        mobilising.insert(p);
+    return Int(std::llround(loss));
 }
 // Civilian deaths in a front region, then flight to safe regions at home and across the border.
 void MonthlyStatus::displace(const Front &f, const std::string &region, double multiplier,

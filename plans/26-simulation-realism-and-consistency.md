@@ -23,7 +23,8 @@ trajectories match the pre-D build exactly. Known limits, by design for this pas
   warship; there is no separate embark operation. Access is national in scope.
 - A takeover of a captured project costs a construction slot; its resource cost arrives with H. A paused military
   project can be abandoned (releasing its reservation) or destroyed, not evacuated.
-- `committedPersonnel`, used for seizure displacement, still uses the old pool; F replaces it.
+- `committedPersonnel`, used for seizure displacement, still uses the old pool; F replaces it
+  (done: it is now `force::engaged` under the realism rules).
 
 2026-09-23: Phase D follow-up resolved the three decisions left open above.
 - Agreed transfers (cession, agreed occupation, withdrawal, expiry) hand the previous holder's
@@ -66,7 +67,29 @@ v0/v2/v3/v4 replays, and `make format-check`.
 - **Known limits.** Displaced people still return to annexed land from the new owner's regions
   (Phase G). A resistance that holds ground does not hand it back to its claimant. Integration does
   not yet answer to explicit policy orders beyond regional relations.
-Next: Phase F (shared force allocations and fractional attrition).
+
+2026-09-23: Phase F gate passed. There are 17 CTest cases. `access` now has 53 checks, adding a
+second front declared earlier in the same month blocking a seizure. `status` gains the force
+scenarios, run over 24–36 deterministic months. Also passing: the HTTP integration suite with
+browser, restart and replay, the legacy v0/v2/v3/v4 replays, and `make format-check`.
+- **One allocation.** `force::engaged` divides the national pool, air arm and fleet across every
+  engagement, attack and defence alike. An army split between two enemies serves each at half.
+  Compiler seizures, automatic advances, garrison checks, seizure displacement and casualties all
+  use it. Engagements include wars declared this month, both in the compiler (`engagementWorld`)
+  and in the month step (the frozen force inputs take the post-order wars and treaties).
+- **Exposure-based losses.** Losses fall only on the armies and pool engaged against that enemy;
+  armies at home or assembling lose nobody. Aircraft losses need supplied ground at the front, and
+  ground fire alone threatens them at half rate. Ship losses need a fleet in sailing range, or the
+  uncommitted fleet off its own front-line coast, plus an enemy ship or aircraft engaged.
+- **Fractions carried.** Each front's fractional losses are summed per actor and kept in
+  `status.attrition`. They survive save and reload, and duplicate conflicts cannot add a pair twice.
+- **Real world.** The 36-month fronts match Phase E. The Russo-Ukrainian toll is about 196,000 a
+  year. Russia loses about 33 aircraft and a ship a year; Ukraine's small air arm now wears down too.
+- **Bug fixed.** Realism `atWar` now sees wars declared earlier in the month.
+- **Known limits.** Reserve mobilisation is still 2% of starting reserves in a high-intensity war
+  (support constraints and demobilisation arrive with H). Carrier aviation and naval blockade are
+  not modelled. Formation creation stays allocation, not procurement.
+Next: Phase G (displacement by origin and host).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -525,7 +548,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] C — Hostile pairs, scoped peace/intensity, and conflict deduplication.
 - [x] D — Valid access/sea routes, supply bounds, and captured construction.
 - [x] E — Persistent conquest consequences and local resistance.
-- [ ] F — Conserved force allocations and fractional, exposure-based attrition.
+- [x] F — Conserved force allocations and fractional, exposure-based attrition.
 - [ ] G — Origin–host displacement and actual return migration.
 - [ ] H — Paid progress, recurring trade, replacement, and demobilization.
 - [ ] I — Evidence-based combat pacing and exhaustion.

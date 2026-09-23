@@ -57,8 +57,17 @@ class MonthlyStatus {
                     Int affectedPopulation, double multiplier, const std::string &kind);
     void displace(const Front &f, const std::string &region, double multiplier, Int &deaths,
                   Int &displaced);
+    // Realism: what one side of a pair's front exposes this month, and the losses it takes.
+    struct Exposure {
+        double air = 0, ships = 0;
+        std::map<std::string, double> fleets; // fleet ID ("" the national pool) -> ships
+    };
+    Exposure exposure(const std::string &p, const std::string &q, const Front &f) const;
+    Int realismLosses(const Front &f, const std::string &p, double multiplier,
+                      const std::string &kind);
     // 5b
     void applyInventory(const std::string &a);
+    void applyRealismInventory(const std::string &a);
     // 6–7
     void returnDisplaced();
     void driftStability();
@@ -97,6 +106,10 @@ class MonthlyStatus {
     WorldState forceStart;
     std::vector<std::string> regionIds;
     std::map<std::string, Int> militaryLosses, aircraftLosses, shipLosses, actorDeaths;
+    // Realism: this month's losses before rounding, and where they fall, by actor. Personnel
+    // weights are by army ID with "" for the national pool; ship weights by fleet ID likewise.
+    std::map<std::string, double> personnelLoss, aircraftLoss, shipLoss;
+    std::map<std::string, std::map<std::string, double>> personnelWeights, shipWeights;
     std::set<std::string> mobilising;
     std::map<std::string, double> effectGdp, effectStability;
     std::set<std::string> seized;

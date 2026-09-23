@@ -447,6 +447,23 @@ int main() {
         check(opened.commitments.size() == 1 && mayEnter(opened, "AA", "N2"),
               "An accepted access treaty takes effect");
 
+        // A war declared earlier in the month draws on the same pool as the assault that follows:
+        // alone Aland can take B1, but not after opening a second front against DD first.
+        auto stretched = w;
+        stretched.actors["AA"]["status"]["military"]["active"] = 250000;
+        check(done(ops(stretched, "AA", R"([{"action":"occupy","region":"B1","by":"AA"}])")),
+              "One front: strong enough to take B1");
+        auto overreach = ops(stretched, "AA",
+                             R"([{"action":"open_conflict","actors":["AA","DD"],"kind":"war",)"
+                             R"("intensity":"medium","name":"Northern War","text":"War on DD"},)"
+                             R"({"action":"occupy","region":"B1","by":"AA"}])");
+        bool declared = false, took = false;
+        for (const auto &c : overreach.changes) {
+            declared = declared || c["kind"] == "conflict";
+            took = took || (c["kind"] == "territory" && c["id"] == "B1");
+        }
+        check(declared && !took, "A second front declared this month leaves too little to take B1");
+
         std::cout << checks << " access, movement and construction checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

@@ -26,3 +26,5 @@ void realWorldTests();
 void unrestTests();
 // Plan 26 E: control history, annexation, occupation resistance and integration.
 void conquestTests();
+// Plan 26 F: one force allocation per month, exposure-based losses and carried fractions.
+void forceTests();

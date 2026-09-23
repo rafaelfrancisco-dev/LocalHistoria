@@ -108,7 +108,8 @@ double MonthlyStatus::occupationPressure(const std::string &id) const {
         p += rate::occupationStrained;
     else if (politics["relations"] == "cooperative")
         p += rate::occupationCooperative;
-    if (force::committedPersonnel(forceStart, adjacency, controller, {id}) >=
+    if (force::committedPersonnel(forceStart, adjacency, controller, {id},
+                                  record["claimant"].asString()) >=
         population * rate::garrisonPerResident)
         p *= rate::garrisonedPressure;
     return std::clamp(p, 0.0, 100.0);

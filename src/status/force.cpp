@@ -70,7 +70,7 @@ int constructionCapacity(const WorldState &w, const std::string &a) {
                 gdp += number(t, "gdp_usd");
     return std::max(1, int(std::min(double(INT_MAX), std::floor(gdp / 150e9))));
 }
-int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
+std::set<std::string> engagements(const WorldState &w, const Adjacency &adj, const std::string &a) {
     std::set<std::string> enemies;
     for (const auto &c : w.conflicts)
         if (isOpen(c) && isParty(c, a))
@@ -89,10 +89,77 @@ int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
                 enemies.insert(p);
         }
     }
-    return std::max(1, int(enemies.size()));
+    return enemies;
+}
+int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
+    return std::max(1, int(engagements(w, adj, a).size()));
+}
+namespace {
+// The engagements an actor divides its national pool among when it faces `opponent`: everyone it
+// is already fighting or disputing ground with, and the opponent itself.
+std::set<std::string> engagedWith(const WorldState &w, const Adjacency &adj, const std::string &a,
+                                  const std::string &opponent) {
+    auto enemies = engagements(w, adj, a);
+    if (!opponent.empty() && opponent != a)
+        enemies.insert(opponent);
+    return enemies;
+}
+// The share of an army that one engagement can draw on: an army facing several enemies at once
+// splits evenly between them rather than fighting each battle at full strength. An army facing no
+// one is a garrison and serves wherever it stands.
+double armyShare(const WorldState &w, const Adjacency &adj, const std::set<std::string> &enemies,
+                 const Json::Value &army, const std::string &opponent) {
+    std::set<std::string> facing;
+    if (!opponent.empty())
+        facing.insert(opponent);
+    auto at = army["region"].asString();
+    auto consider = [&](const std::string &region) {
+        auto holder = w.territories[region]["controller"].asString();
+        if (enemies.contains(holder))
+            facing.insert(holder);
+    };
+    consider(at);
+    if (auto it = adj.find(at); it != adj.end())
+        for (const auto &n : it->second)
+            consider(n);
+    return facing.empty() ? 1.0 : 1.0 / double(facing.size());
+}
+} // namespace
+double engaged(const WorldState &w, const Adjacency &adj, const std::string &a,
+               const std::vector<std::string> &regions, const std::string &opponent,
+               std::map<std::string, double> *parts) {
+    const auto &m = inventory(w, a);
+    if (!m.isObject())
+        return 0;
+    auto enemies = engagedWith(w, adj, a, opponent);
+    double count = std::max<double>(1, double(enemies.size()));
+    bool noLand = landless(w, a);
+    double pool = (mobilised(w, a) ? 0.30 : 0.20) *
+                  (noLand ? number(m, "active") : double(uncommittedPersonnel(w, a))) / count;
+    double total = pool;
+    if (parts)
+        (*parts)[""] += pool;
+    if (!noLand)
+        for (auto it = w.entities.begin(); it != w.entities.end(); ++it) {
+            const auto &e = *it;
+            if (e["actor"] != a || e["kind"] != "army" || e["status"] != "active")
+                continue;
+            bool near = false;
+            for (const auto &r : regions)
+                near = near || adjacent(adj, e["region"].asString(), r);
+            if (!near)
+                continue;
+            double n = armyShare(w, adj, enemies, e, opponent) * e.get("personnel", 10000).asInt();
+            total += n;
+            if (parts)
+                (*parts)[it.name()] += n;
+        }
+    return std::min(total, number(m, "active"));
 }
 double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::string &a,
-                          const std::vector<std::string> &regions) {
+                          const std::vector<std::string> &regions, const std::string &opponent) {
+    if (realismRules(w))
+        return engaged(w, adj, a, regions, opponent);
     if (landless(w, a))
         return (mobilised(w, a) ? 0.30 : 0.20) * number(inventory(w, a), "active") /
                fronts(w, adj, a);
@@ -107,12 +174,18 @@ double committedPersonnel(const WorldState &w, const Adjacency &adj, const std::
     return std::min(n, number(inventory(w, a), "active"));
 }
 Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std::string &a,
-                           const std::string &region, bool defending) {
+                           const std::string &region, bool defending, const std::string &opponent) {
     const auto &m = inventory(w, a);
-    int count = defending ? fronts(w, adj, a) : 1;
+    const bool realism = realismRules(w);
+    // Under the realism rules attack and defence draw on the same allocation: the pool, the air
+    // arm and the fleet divided across every engagement including this one, and each army split
+    // among the enemies it faces. A second front therefore costs offensive strength too.
+    std::set<std::string> enemies;
+    if (realism)
+        enemies = engagedWith(w, adj, a, opponent);
+    int count = realism ? std::max(1, int(enemies.size())) : defending ? fronts(w, adj, a) : 1;
     bool noLand = landless(w, a),
          naval = !noLand && w.territories[region].get("coastal", false).asBool();
-    const bool realism = realismRules(w);
     // National reinforcement arrives over supplied land: an attacker needs a supplied region on
     // the target's border, a defender a supplied region to defend. The full pool never sails.
     double pool = 1;
@@ -143,7 +216,9 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
             if (e["actor"] != a)
                 continue;
             if (e["kind"] == "army" && adjacent(adj, at, region)) {
-                auto support = !realism || supplied(w, adj, a, at) ? 1.0 : rate::isolatedSupport;
+                auto support = !realism ? 1.0
+                                        : (supplied(w, adj, a, at) ? 1.0 : rate::isolatedSupport) *
+                                              armyShare(w, adj, enemies, e, opponent);
                 land += support * e.get("personnel", 10000).asInt();
                 counted.insert(id);
             }
@@ -168,7 +243,9 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
                             e["status"] != "active" || e["region"] != from ||
                             !counted.insert(id).second)
                             continue;
-                        double carried = std::min(lift, double(e.get("personnel", 10000).asInt()));
+                        double carried =
+                            std::min(lift, armyShare(w, adj, enemies, e, opponent) *
+                                               double(e.get("personnel", 10000).asInt()));
                         lift -= carried;
                         land += carried * (supplied(w, adj, a, from) ? 1.0 : rate::isolatedSupport);
                     }
@@ -184,7 +261,7 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
     // Carrier aviation is not modelled: air power follows the same supplied land as the pool.
     double air = (realism && !noLand ? pool : 1) * (defending ? 0.50 : 0.30) *
                  number(m, "aircraft") * 200 / count;
-    double sea = naval ? 0.30 * number(m, "ships") * 1500 : 0;
+    double sea = naval ? 0.30 * number(m, "ships") * 1500 / (realism ? count : 1) : 0;
     double cp = quality(w, a) * (land + air + sea) * (defending ? 1.5 : 1);
     if (defending) {
         for (const auto &c : w.conflicts)
@@ -204,8 +281,8 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
 }
 Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
                     const std::string &d, const std::string &r) {
-    double attack = committedForce(w, adj, a, r, false)["cp"].asDouble();
-    double defend = committedForce(w, adj, d, r, true)["cp"].asDouble();
+    double attack = committedForce(w, adj, a, r, false, d)["cp"].asDouble();
+    double defend = committedForce(w, adj, d, r, true, a)["cp"].asDouble();
     for (const auto &c : w.conflicts)
         if (isOpen(c) && isParty(c, a) && isParty(c, d) && c["started_turn"].isInt() &&
             w.turn - c["started_turn"].asInt() >= 12) {

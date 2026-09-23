@@ -136,6 +136,7 @@ class OperationCompiler {
     bool reaches(const std::string &a, const std::string &r) const;
     void take(const std::string &a, const std::string &r);
     WorldState allocatedWorld() const;
+    WorldState engagementWorld() const;
 
     void renewEventSites(EventScope &s);
     void finishRegionalHistory(EventScope &s);
