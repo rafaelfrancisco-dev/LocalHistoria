@@ -129,6 +129,44 @@ constexpr double integrationMonths = 120, integrationSetback = 10;
 // A conqueror uses this share of a conquered region's output before integration, the rest of the
 // way as integration progresses; the legal owner of land it does not control uses none.
 constexpr double conqueredOutput = 0.3;
+
+// Implementation, trade and military recovery, realism lifecycle only (Plan 26 H). These are
+// scenario estimates for gameplay, not fiscal accounting: GDP is output, never a treasury balance.
+//
+// Each nation has one monthly implementation allowance: implementationShare of its effective annual
+// output, less militaryClaim of its recorded military spending (the running cost of the forces it
+// already has), but never below allowanceFloor of the envelope. Measured on the seeded world:
+// Portugal about US$1.8 billion a month, Sudan US$0.38 billion, Ukraine the floor, US$0.34 billion.
+constexpr double implementationShare = 0.08, militaryClaim = 0.5, allowanceFloor = 0.25;
+// What a month of construction costs, in US dollars at the builder's price level (the force quality
+// factor, 0.6 to 1.4): a rich nation pays more for a port and still affords far more of them.
+// Assembling an army or fleet only moves existing forces and costs their logistics.
+constexpr double projectCost[] = {50e6, 100e6, 150e6, 300e6, 500e6}; // army fleet base port city
+// Ongoing national efforts the model may start but not price. Cost is a share of effective annual
+// output, spread over the months; the benefit arrives once, on paid completion.
+constexpr int investmentMonths = 12, reformMonths = 18;
+constexpr double investmentCost = 0.006, reformCost = 0.003; // of annual output, in total
+constexpr double investmentGain = 1.0;                       // % of output, once
+constexpr double reformGain = 3.0, reformConfidence = 2.0;   // baseline points, stability points
+constexpr int reformMemoryMonths = 60; // earlier reforms in this window dilute the next one
+// Trade: a continuing growth bonus while agreements are open, scaled by each partner's share of
+// the pair's combined output and counted once per partner however many treaties link them. Only
+// the change from the campaign's first realism month counts, since seeded growth already includes
+// the trade of 2026.
+constexpr double tradeGrowth = 0.25; // % a year per unit of partner weight
+constexpr double tradeCap = 3.0;     // partner weight counted at most
+// Replacement: losses below the establishment frozen at the first realism month are made good by
+// paid orders, delivered only on completion. Recruits are drawn from civilians (population is
+// unchanged); aircraft and ships also occupy a construction slot.
+constexpr double recruitCost = 30e3, aircraftCost = 60e6, shipCost = 600e6; // US$ per unit
+constexpr int recruitMonths = 6, aircraftMonths = 18, shipMonths = 36;
+constexpr double replacementBatch = 0.05; // of establishment per order, at least one unit
+// Mobilising a reservist is essential in a high-intensity war but not free.
+constexpr double mobiliseCost = 5e3;
+// After a year without fighting, excess active personnel return to the reserve, 2% of the
+// establishment a month, never below what formations hold.
+constexpr int demobiliseAfter = 12;
+constexpr double demobiliseShare = 0.02;
 } // namespace rate
 namespace detail {
 using Int = Json::Int64;

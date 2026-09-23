@@ -140,6 +140,10 @@ void MonthlyStatus::applyRealismInventory(const std::string &a) {
         Int moved = std::min(
             integer(m, "reserve"),
             Int(std::floor(number(forceStart.actors[a]["status"]["military"], "reserve") * 0.02)));
+        // Calling up reservists is the first claim on the month's allowance, and only what it can
+        // pay for reports for duty.
+        moved = std::min(moved, Int(std::floor(budget[a] / rate::mobiliseCost)));
+        budget[a] -= double(moved) * rate::mobiliseCost;
         m["reserve"] = integer(m, "reserve") - moved;
         m["active"] = integer(m, "active") + moved;
     }
@@ -211,8 +215,10 @@ void MonthlyStatus::driftStability() {
         if (!cActors[a]["status"].isObject())
             continue;
         auto &s = w.actors[a]["status"];
-        auto baseline =
-            std::clamp(number(s, "baseline_stability", 50) + 0.25 * effectStability[a], 0.0, 100.0);
+        // Under the realism rules a good month is confidence, not institutions: only setbacks leave
+        // a trace on the baseline, and durable gains come from completed reforms.
+        auto trace = realism() ? std::min(0.0, effectStability[a]) : effectStability[a];
+        auto baseline = std::clamp(number(s, "baseline_stability", 50) + 0.25 * trace, 0.0, 100.0);
         double war = 0;
         for (auto &f : fronts)
             if (f.parties.contains(a) && f.intensity >= 0)

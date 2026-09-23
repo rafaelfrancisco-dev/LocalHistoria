@@ -187,7 +187,7 @@ Json::Value adjudicationInput(const WorldState &w,
             !fronts.contains(region))
             continue;
         auto e = w.entities[id];
-        for (auto k : {"longitude", "latitude", "origin_event"})
+        for (auto k : {"longitude", "latitude", "origin_event", "arrears", "unfunded"})
             e.removeMember(k);
         input["facts"]["entities"][id] = e;
     }

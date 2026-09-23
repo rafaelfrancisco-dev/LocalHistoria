@@ -30,3 +30,5 @@ void conquestTests();
 void forceTests();
 // Plan 26 G: the origin-host displacement ledger and actual return migration.
 void displacementTests();
+// Plan 26 H: the implementation allowance, efforts, trade and military replacement.
+void economyTests();

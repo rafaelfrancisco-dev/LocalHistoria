@@ -76,6 +76,18 @@ class MonthlyStatus {
     Exposure exposure(const std::string &p, const std::string &q, const Front &f) const;
     Int realismLosses(const Front &f, const std::string &p, double multiplier,
                       const std::string &kind);
+    // 1b, 3b and 5c (realism): trade, the implementation allowance and what it pays for.
+    void tradeStep();
+    std::map<std::string, double> outputs() const;
+    std::set<std::string> tradePartners(const std::string &a) const;
+    void allowances();
+    void implementation();
+    void fund(const std::string &a);
+    void recover(const std::string &a);
+    void complete(const std::string &a, const std::string &category);
+    // Effective output after the occupation drain, the allowance it supports and what is left of
+    // it.
+    std::map<std::string, double> effective, budget, allowance;
     // 5b
     void applyInventory(const std::string &a);
     void applyRealismInventory(const std::string &a);

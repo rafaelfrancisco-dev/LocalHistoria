@@ -276,6 +276,69 @@ displacement grows to 2.2 million, 55,000 of them recorded abroad; nobody return
 east. Flight across a border still reaches only bordering non-party regions, so Ukraine's recorded
 refugees abroad are far fewer than the real figure.
 
+### Implementation, trade and recovery (realism lifecycle)
+
+Under the realism lifecycle (Plan 26 H), what a nation builds, reforms and replaces competes for one
+monthly **implementation allowance**. It is a gameplay estimate, not a treasury: GDP stays output,
+and nothing is borrowed. The coefficients live in `src/status/status_internal.h`.
+
+- **Allowance.** 8% of effective annual output, less half the recorded military spending (the
+  running cost of the forces a nation already has), but never below a quarter of that 8%, divided
+  by 12. On the seeded world: US$164 billion a month for the United States, US$2.1 billion for
+  Portugal, US$0.30 billion for Sudan and Ukraine (Ukraine at the floor). The median actor has
+  US$163 million, and 142 of 242 have less than one port-month. Most of those are microstates,
+  movements and the poorest countries. Every coefficient scales these figures in proportion.
+- **Priority.** Mobilising reservists in a high-intensity war comes first, at US$5,000 each, and
+  only what is paid for reports. Then work already under way, oldest first; then this month's new
+  work in recorded order; then replacement orders. Whatever is left pays for as much of the month
+  as it covers. A project behind by a whole month finishes a month later (`arrears`, `unfunded`),
+  and the first shortfall is reported as `construction_stalled`. Paused work costs nothing.
+- **Construction costs** per month, at the builder's price level (the force quality factor,
+  0.6–1.4): army US$50 million, fleet 100 million, base 150 million, port 300 million, city
+  500 million. Construction slots still apply. Projects under way when a campaign moves to these
+  rules keep their progress and pay only from then on.
+- **Efforts.** A `reform` or `investment` independent outcome with a positive effect starts an
+  effort (`status.efforts`), priced by C++, not the model. An investment costs 0.6% of annual
+  output over 12 months and raises output 1% once, on paid completion. A reform costs 0.3% over 18
+  months and raises the stability baseline by 3 points, divided by one plus the number of reforms
+  completed in the previous five years, with 2 points of immediate stability on top. Starting one
+  may bring a month's confidence (its stability effect); its economic effect is dropped. Asking
+  again while it runs continues it and earns nothing. Positive model stability effects no longer
+  ratchet the baseline; setbacks still do.
+- **Trade.** Signing a trade agreement or union no longer forces growth, and ending one no longer
+  forces a decline. Instead, each partner gained since the campaign's first realism month raises
+  growth by 0.25% a year, times its share of the pair's combined output. Each partner lost lowers
+  it by the same rule, and the change in each direction is capped at 3 partner-weights. A partner
+  counts once however many treaties link them, so a renamed copy adds nothing. Expiry, withdrawal
+  and breach end the same future benefit and keep growth already earned. The seeded treaties are
+  the baseline (`status.trade_reference`), because 2026 growth already includes them.
+- **Replacement.** The inventory at the first realism month is the establishment
+  (`military.establishment`). Losses below it open one paid order of each kind (`status.procurement`),
+  at most 5% of the establishment each: recruits (US$30,000 each, 6 months), aircraft (US$60
+  million, 18 months) and warships (US$600 million, 36 months). Aircraft and warships also take a
+  construction slot, and none are ordered while construction fills every slot. Deliveries arrive only
+  on paid completion. Recruits change classification, not population. Assembling a formation
+  still only allocates existing forces.
+- **Demobilisation.** After 12 months without fighting anywhere (`military.peace_months`), excess
+  active personnel return to the reserve at 2% of the establishment a month, never below what
+  formations hold.
+
+Measured on deterministic fixtures (`tests/status/economy.cpp`):
+- **Rich and poor:** a rich nation pays for two ports without delay. A poor one finishes its older
+  port a little late and its newer one much later, but finishes both.
+- **Efforts:** an investment raises output exactly 1% once, after 12 paid months. A second reform
+  within five years is worth half the first.
+- **Trade:** a large partner counts for about 500 times a microstate. Duplicate treaties add
+  nothing. Expiry and withdrawal agree.
+- **Replacement:** recruits arrive only after 6 paid months and stop at the establishment.
+- **Demobilisation:** excess troops return to the reserve after a year of peace, never below the
+  formations and never during a war.
+
+On the real world, 36 idle months take and lose exactly the same regions as before. Sudan, the RSF
+and Myanmar now replace their losses in batches, so their armies hold roughly steady instead of
+shrinking by about 10%. Russia orders replacement aircraft and a warship; Ukraine orders aircraft.
+Mobilisation stays affordable for every belligerent.
+
 ### Conquest and resistance (realism lifecycle)
 
 Under the realism lifecycle (Plan 26 E), a region held by force carries an engine-owned `control`

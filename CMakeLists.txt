@@ -14,7 +14,7 @@ add_library(historia_core src/core/lifecycle.cpp src/core/simulation.cpp src/cor
   src/world/compiler/events.cpp
   src/status/helpers.cpp src/status/conflicts.cpp src/status/control.cpp src/status/force.cpp src/status/seed.cpp src/status/national.cpp
   src/status/agreements.cpp src/status/regimes.cpp src/status/monthly/monthly_status.cpp
-  src/status/monthly/fronts.cpp src/status/monthly/casualties.cpp src/status/monthly/recovery.cpp
+  src/status/monthly/fronts.cpp src/status/monthly/casualties.cpp src/status/monthly/economy.cpp src/status/monthly/recovery.cpp
   src/status/monthly/unrest.cpp src/status/monthly/rebellion.cpp)
 target_include_directories(historia_core PUBLIC include PRIVATE src)
 if(TARGET SQLite3::SQLite3)
@@ -58,7 +58,7 @@ target_link_libraries(world_probe PRIVATE historia_services)
 add_executable(politics_tests tests/politics_tests.cpp)
 target_link_libraries(politics_tests PRIVATE historia_services)
 add_test(NAME politics COMMAND politics_tests)
-add_executable(status_tests tests/status/main.cpp tests/status/real_world.cpp tests/status/unrest.cpp tests/status/conquest.cpp tests/status/forces.cpp tests/status/displacement.cpp)
+add_executable(status_tests tests/status/main.cpp tests/status/real_world.cpp tests/status/unrest.cpp tests/status/conquest.cpp tests/status/forces.cpp tests/status/displacement.cpp tests/status/economy.cpp)
 target_link_libraries(status_tests PRIVATE historia_core)
 target_compile_definitions(status_tests PRIVATE SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME status COMMAND status_tests)

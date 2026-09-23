@@ -175,7 +175,7 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                     item["actors"].append(target);
             } else if (action == "completion" || action == "construction_paused" ||
                        action == "construction_resumed" || action == "construction_transferred" ||
-                       action == "construction_disbanded") {
+                       action == "construction_disbanded" || action == "construction_stalled") {
                 item["category"] = "construction";
                 // A finished city is years of work; units, bases and ports are routine, and so is
                 // work halting or resuming as the front moves.

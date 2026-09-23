@@ -78,7 +78,7 @@ void OperationCompiler::buildEvent(EventScope &s) {
         settleEffects(s, event);
     if (realism() && failed) {
         // get(): naming a missing member would insert a null "effects" the delta rejects.
-        if (!event.get("effects", Json::arrayValue).empty()) {
+        if (!event.get("effects", Json::arrayValue).empty() || event.isMember("effort")) {
             event.removeMember("failed");
             event["partial"] = true;
             event["text"] = "The independent " + s.e["independent_outcome"].asString() +
@@ -108,6 +108,13 @@ void OperationCompiler::buildEvent(EventScope &s) {
     for (auto &x : event.get("effects", Json::arrayValue))
         for (auto k : {"economy", "stability"})
             strong = strong || x[k] == "severe_decline" || x[k] == "strong_growth";
+    // A programme the model rated strong is still news when it starts, though its benefit waits
+    // for completion.
+    if (event.isMember("effort"))
+        for (const auto &x : s.e["effects"])
+            if (x.isObject() && actorRef(x["actor"].asString()) == s.ev)
+                strong =
+                    strong || x["economy"] == "strong_growth" || x["stability"] == "strong_growth";
     if (happened && !event["major"].asBool() && strong)
         declared.push_back(events.size());
     events.append(event);
@@ -160,6 +167,26 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                     economy = "none";
                     stability = "decline";
                 }
+                // A reform or investment is an effort the month step prices and pays for; its
+                // benefit arrives once, on completion. Starting one may lift confidence for a
+                // month; asking again continues the effort already under way and earns nothing.
+                if ((independent == "reform" || independent == "investment") &&
+                    (rank(economy) > 2 || rank(stability) > 2)) {
+                    auto key = a + ":" + independent;
+                    bool open =
+                        std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
+                        efforts.contains(key);
+                    if (rank(economy) > 2)
+                        economy = "none";
+                    if (open && rank(stability) > 2)
+                        stability = "none";
+                    if (!open) {
+                        efforts.insert(key);
+                        event["effort"] = independent;
+                    }
+                    if (economy == "none" && stability == "none")
+                        continue;
+                }
             }
             effects.push_back({a, economy, stability, false});
         }
@@ -178,7 +205,11 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
         if (p != s.ev)
             f.stability = weaker(f.stability, "decline");
     }
+    // Under the realism rules trade is an ongoing relationship the month step values while it
+    // lasts, not a reward for signing or a penalty for ending.
     for (auto &p : s.tradeParties) {
+        if (realism())
+            break;
         auto &f = entry(p);
         f.economy = stronger(f.economy, "growth");
     }
@@ -187,6 +218,8 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
         f.stability = weaker(f.stability, "decline");
     }
     for (auto &p : s.tradeLoss) {
+        if (realism())
+            break;
         auto &f = entry(p);
         f.economy = weaker(f.economy, "decline");
     }

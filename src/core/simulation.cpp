@@ -279,6 +279,8 @@ Resolution resolve(const WorldState &w, int lifecycleVersion) {
             continue;
         e["status"] = "active";
         e.removeMember("completes_turn");
+        e.removeMember("arrears");
+        e.removeMember("unfunded");
         auto region = w.territories[e["region"].asString()]["name"].asString();
         r.events.push_back({e["actor"].asString(), "completion", id,
                             e["name"].asString() + " (" + e["kind"].asString() + ") was completed" +
@@ -312,7 +314,7 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     for (auto &id : w.entities.getMemberNames())
         if (w.entities[id]["actor"] == a && w.entities[id]["status"] != "destroyed") {
             auto e = w.entities[id];
-            for (auto k : {"longitude", "latitude", "actor", "origin_event"})
+            for (auto k : {"longitude", "latitude", "actor", "origin_event", "arrears", "unfunded"})
                 e.removeMember(k);
             f["entities"][id] = e;
         }

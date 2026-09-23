@@ -149,6 +149,46 @@ int main() {
         check(d.events[0]["partial"] == true && d.events[0]["effects"][0]["economy"] == "none" &&
                   d.events[0]["effects"][0]["stability"] == "decline",
               "Supported independent result survives failed operation");
+        // Plan 26 H: trade is an ongoing relationship the month step values, not a reward for
+        // signing or a penalty for ending.
+        auto rewarded = [](const WorldDelta &x) {
+            for (const auto &e : x.events)
+                for (const auto &f : e.get("effects", Json::arrayValue))
+                    if (f["economy"] != "none")
+                        return true;
+            return false;
+        };
+        check(!rewarded(settled), "Signing a trade agreement earns no one-off growth");
+        auto quit = event("AA", "Aland leaves the accord.", "[]");
+        Json::Value leave;
+        leave["action"] = "resolve_commitment";
+        leave["commitment"] = id;
+        quit["operations"].append(leave);
+        check(!rewarded(compile(done, quit)), "Leaving one costs no one-off decline");
+        // A reform or investment starts a priced effort; its benefit waits for completion.
+        auto reform = event("AA", "Aland reforms its civil service.", "[]");
+        reform["independent_outcome"] = "reform";
+        reform["effects"] =
+            parse(R"([{"actor":"AA","economy":"strong_growth","stability":"growth"}])");
+        d = compile(w, reform);
+        check(d.events[0]["effort"] == "reform" && d.events[0]["effects"].size() == 1 &&
+                  d.events[0]["effects"][0]["economy"] == "none" &&
+                  d.events[0]["effects"][0]["stability"] == "growth",
+              "A reform starts an effort, with a month's confidence but no immediate growth");
+        Json::Value twice;
+        twice["events"].append(reform);
+        auto again = reform;
+        again["description"] = "Aland reforms its civil service again.";
+        twice["events"].append(again);
+        d = compileOperations(w, twice, {});
+        check(d.events[0]["effort"] == "reform" && !d.events[1].isMember("effort") &&
+                  !d.events[1].isMember("effects"),
+              "Asking twice in a month continues the same effort and earns nothing more");
+        auto underway = w;
+        underway.actors["AA"]["status"]["efforts"]["reform"]["paid"] = 3;
+        d = compile(underway, reform);
+        check(!d.events[0].isMember("effort") && !d.events[0].isMember("effects"),
+              "A reform already under way is continued, not rewarded again");
         std::cout << checks << " explicit consent and accepted outcome checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

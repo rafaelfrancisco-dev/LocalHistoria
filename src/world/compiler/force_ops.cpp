@@ -75,6 +75,10 @@ void OperationCompiler::allocateForce(const std::string &builder, const std::str
         if (e["actor"] == builder && e["status"] == "under_construction" &&
             e["kind"] != "event_site")
             ++projects;
+    // Replacement aircraft and warships on order use the same yards.
+    if (realism())
+        for (auto order : {"aircraft", "ships"})
+            projects += std::as_const(w.actors)[builder]["status"]["procurement"].isMember(order);
     if (projects >= force::constructionCapacity(w, builder))
         throw Infeasible("construction capacity reached");
     auto &military = w.actors[builder]["status"]["military"];

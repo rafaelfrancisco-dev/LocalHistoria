@@ -20,10 +20,17 @@ Resolution MonthlyStatus::run() {
 
     // 1. Baseline demographic and economic trend.
     baselineTrend();
+    // 1b. Trade relationships opened or closed since the campaign began change growth while they
+    // last.
+    if (realism())
+        tradeStep();
     // 2. Qualitative model effects, bounded per actor per month.
     modelEffects();
     // 3. Occupation drains the output of occupied land, down to a floor.
     occupationDrain();
+    // 3b. What each nation can spend on implementation this month; mobilisation draws on it first.
+    if (realism())
+        allowances();
 
     // 4. War fronts: where each open conflict is actually fought this month.
     collectSeized();
@@ -67,6 +74,10 @@ Resolution MonthlyStatus::run() {
         else
             applyInventory(a);
     accountDestroyed();
+    // 5c. The allowance pays for existing work first, then this month's new work; replacement
+    // orders deliver on paid completion, and a long peace returns excess troops to the reserve.
+    if (realism())
+        implementation();
 
     // 6. Displaced people return home once their region is calm and back under its owner's control.
     returnDisplaced();

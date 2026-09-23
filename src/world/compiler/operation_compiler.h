@@ -160,6 +160,9 @@ class OperationCompiler {
     // Description slugs of events already in campaign history: a background development that
     // repeats one is the model re-reporting the past, not a new development.
     std::set<std::string> priorSlugs;
+    // Efforts started by this month's events, as "actor:category": a second request the same month
+    // continues the first.
+    mutable std::set<std::string> efforts;
     int created = 0, newActors = 0, background = 0;
     Json::Value events{Json::arrayValue};
     std::vector<Json::ArrayIndex> declared;

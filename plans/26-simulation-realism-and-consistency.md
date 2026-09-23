@@ -112,7 +112,32 @@ v0/v2/v3/v4 replays, and `make format-check`.
 - **Known limits.** Flight abroad reaches only bordering non-party regions, so long-distance refugee
   flows (Ukrainians in Poland and Germany) stay small. Conflicts still report cumulative movements
   under `displaced`.
-Next: Phase H (ongoing effort, trade lifecycle and military replacement).
+
+2026-09-23: Phase H gate passed. There are 17 CTest cases. `status` gains the economy scenarios,
+and `consent` gains trade and effort checks (19). Also passing: the HTTP integration suite with
+browser, restart and replay, the legacy v0/v2/v3/v4 replays, and `make format-check`.
+- **Allowance.** One monthly allowance: 8% of effective output, less half of military spending,
+  floored at a quarter. It pays for mobilisation, existing work (oldest first), new work, then
+  replacement. Partial funding slows work; nothing is borrowed. Construction costs scale with the
+  builder's price level.
+- **Efforts.** Reform and investment outcomes start efforts priced in C++. The benefit is paid once,
+  on completion, and repeated reforms have diminishing effect. Repeated requests continue the
+  effort. Positive model stability effects no longer ratchet the baseline.
+- **Trade.** No signing reward or ending penalty. Growth follows partners gained or lost since the
+  first realism month, weighted by market share, once per partner and capped.
+- **Military recovery.** Replacement orders toward the establishment frozen at the first realism
+  month. Aircraft and ships use construction slots; recruits don't create people. Excess troops are
+  demobilised after a year of peace.
+- **Calibration.** The seeded-world allowance runs from about US$4 million a month (p10) to
+  US$4.4 billion (p90), with a median of US$163 million. The coefficients were chosen so that a
+  mid-sized economy (Portugal) funds its two construction slots several times over, while war
+  economies (Ukraine) and poor states feel the limit. The allowance scales linearly with
+  `implementationShare`, so halving it doubles every stretched schedule. The 36-month seeded fronts
+  are unchanged. Armies without reserves (Sudan, RSF, Myanmar) now hold roughly steady.
+- **Known limits.** There is no maintenance drag on growth. Procurement only replaces losses;
+  deliberate expansion is not modelled. Efforts are one per category per nation; the model cannot
+  name a specific reform target. Implementation facts reach the UI but not prompts yet (Phase J).
+Next: Phase I (pacing from exposure and exhaustion).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -573,7 +598,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] E — Persistent conquest consequences and local resistance.
 - [x] F — Conserved force allocations and fractional, exposure-based attrition.
 - [x] G — Origin–host displacement and actual return migration.
-- [ ] H — Paid progress, recurring trade, replacement, and demobilization.
+- [x] H — Paid progress, recurring trade, replacement, and demobilization.
 - [ ] I — Evidence-based combat pacing and exhaustion.
 - [ ] J — Fair urgent reactions, accurate presentation, and complete verification.
 - [ ] Post-implementation audit — every original finding and phase checked against fresh evidence;

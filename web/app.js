@@ -55,6 +55,21 @@ function controlText(p) {
   return `${annexed ? "Annexed" : "Held"} by ${name(c.holder)}${since}, taken from ${name(c.claimant)}` +
     (annexed ? ` · ${Math.floor(c.integration || 0)}% integrated` : "");
 }
+function usd(n) {
+  return n >= 1e9 ? `US$${(n / 1e9).toFixed(1)} billion` : `US$${Math.round(n / 1e6).toLocaleString()} million`;
+}
+// What a nation's implementation allowance is paying for this month (engine-owned status, realism
+// campaigns only): how much it used, work slowed for lack of funds, efforts under way and losses
+// being replaced.
+function implementationDetail(status) {
+  const i = status.implementation;
+  const parts = [`${usd(i.committed_usd)} used`];
+  if (i.stalled) parts.push(`${i.stalled} underfunded`);
+  const efforts = Object.keys(status.efforts || {}), orders = Object.keys(status.procurement || {});
+  if (efforts.length) parts.push(efforts.join(" and ") + " under way");
+  if (orders.length) parts.push("replacing " + orders.map((k) => (k === "personnel" ? "troops" : k)).join(", "));
+  return parts.join(" · ");
+}
 // Where a region's displaced people are sheltering, from the engine's origin-host ledger. A balance
 // carried from before the ledger existed has no recorded host and is said so.
 function displacementText(p) {
@@ -304,6 +319,9 @@ function renderStats() {
       ...(national.unrest ? [["unrest", national.unrest.replace(/ in .*/, ""), `${national.unrest_score}/100 · ${national.unrest_region}`]] : []),
       ["economy", national.economic_trend.replace(/ \(.*/, ""), national.economic_trend.match(/\((.*)\)/)?.[1] || ""],
       ["at war", national.wars.length ? wars : "At peace", "", true],
+      // On a phone the allowance folds into the construction count's tooltip, keeping the month's
+      // actions near the top.
+      ...(last.implementation && !phone.matches ? [["implementation", `${usd(last.implementation.allowance_usd)}/month`, implementationDetail(last)]] : []),
       ...(military ? [
         ["Active troops" + (military.estimated ? " · estimate" : ""), military.active.toLocaleString(), `${military.uncommitted_personnel.toLocaleString()} uncommitted`],
         ["Reserve", military.reserve.toLocaleString(), "Available for mobilisation"],
@@ -335,6 +353,8 @@ function renderStats() {
     strong.textContent = value;
     const span = document.createElement("span");
     span.textContent = label;
+    if (label === "under construction" && last.implementation)
+      cell.title = `Implementation allowance ${usd(last.implementation.allowance_usd)}/month · ${implementationDetail(last)}`;
     cell.append(strong, span);
     $("stats").append(cell);
   }
