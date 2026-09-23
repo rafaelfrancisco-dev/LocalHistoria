@@ -141,6 +141,39 @@ static void access(WorldState &w, const char *grantor, const char *kind = "defen
     k["actors"].append(grantor);
     k["terms"] = parse(R"([{"action":"grant_access","to":"AA"}])");
 }
+// Offers a treaty from `from` to the other parties, then signs it in the next month with every
+// party accepting. Returns the month after signing.
+static WorldState signTreaty(WorldState w, const char *from, const std::string &actors,
+                             const std::string &terms) {
+    auto offer = ops(w, from,
+                     R"([{"action":"add_commitment","kind":"other","name":"Accord","text":"Terms",)"
+                     R"("months":12,"actors":)" +
+                         actors + R"(,"terms":)" + terms + "}]");
+    auto offered = applyDelta({w, {}}, offer, geography()).state;
+    if (offered.proposals.empty())
+        return offered;
+    auto id = offered.proposals.getMemberNames().back();
+    offered.turn++;
+    Json::Value answers(Json::arrayValue);
+    for (const auto &a : parse(actors)) {
+        // An AI proposer signed its own offer; the player never signs in advance.
+        if (a == from && a != w.player)
+            continue;
+        Json::Value yes;
+        yes["proposal"] = id;
+        yes["actor"] = a;
+        yes["revision"] = 1;
+        yes["accept"] = true;
+        answers.append(yes);
+    }
+    Json::Value response;
+    response["events"].append(parse(R"({"actor":"DD","description":"Quiet month",)"
+                                    R"("blocked_by":"none","causes":[],"background":false,)"
+                                    R"("operations":[]})"));
+    return applyDelta({offered, {}}, compileOperations(offered, response, adjacency(), answers),
+                      geography())
+        .state;
+}
 static Json::Value refs() {
     Json::Value r;
     r["lifecycle_version"] = realismLifecycleVersion;
@@ -374,6 +407,46 @@ int main() {
         other.seaRevision = "fixture-2";
         rejects([&] { finishTurn(beginTurn(project, refs()), {}, other, geography(), refs()); },
                 "Replay needs the recorded sea graph");
+        // Signing away a claim does not move the forces of a third party that holds the land.
+        // A3 is BB's, held by AA.
+        auto claim = w;
+        claim.conflicts.clear();
+        auto sold = applyDelta({claim, {}},
+                               ops(claim, "BB",
+                                   R"([{"action":"transfer_territory","region":"A3","to":"DD"}])"),
+                               geography())
+                        .state;
+        check(sold.territories["A3"]["owner"] == "DD" &&
+                  sold.territories["A3"]["controller"] == "AA",
+              "A cession of occupied land transfers the claim, not the occupier");
+        auto treatySold = signTreaty(claim, "BB", R"(["BB","DD"])",
+                                     R"([{"action":"cede","region":"A3","to":"DD"}])");
+        check(treatySold.territories["A3"]["owner"] == "DD" &&
+                  treatySold.territories["A3"]["controller"] == "AA",
+              "A treaty cession between others leaves the occupier in place");
+        auto agreed = signTreaty(claim, "BB", R"(["AA","BB","DD"])",
+                                 R"([{"action":"cede","region":"A3","to":"DD"}])");
+        check(agreed.territories["A3"]["owner"] == "DD" &&
+                  agreed.territories["A3"]["controller"] == "DD",
+              "An occupier that signs the cession hands the region over");
+        auto evicting = signTreaty(claim, "BB", R"(["BB","DD"])",
+                                   R"([{"action":"occupy","region":"A3","by":"DD"}])");
+        check(evicting.territories["A3"]["controller"] == "AA" && evicting.commitments.empty(),
+              "An agreed occupation cannot evict a controller that did not agree");
+        auto legacyClaim = claim;
+        legacyClaim.engine.clear();
+        check(applyDelta({legacyClaim, {}},
+                         ops(legacyClaim, "BB",
+                             R"([{"action":"transfer_territory","region":"A3","to":"DD"}])"),
+                         geography())
+                      .state.territories["A3"]["controller"] == "DD",
+              "Legacy cession still moves control");
+        // An accepted access treaty is a valid treaty in force.
+        auto opened =
+            signTreaty(claim, "AA", R"(["AA","DD"])", R"([{"action":"grant_access","to":"AA"}])");
+        check(opened.commitments.size() == 1 && mayEnter(opened, "AA", "N2"),
+              "An accepted access treaty takes effect");
+
         std::cout << checks << " access, movement and construction checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

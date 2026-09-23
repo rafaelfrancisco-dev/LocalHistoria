@@ -256,6 +256,7 @@ int main() {
 
         realWorldTests();
         unrestTests();
+        conquestTests();
         std::cout
             << "National status, consequences, naming, effects and the January 2026 world passed\n";
         return 0;

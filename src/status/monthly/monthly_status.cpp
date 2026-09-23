@@ -70,6 +70,10 @@ Resolution MonthlyStatus::run() {
     // lasting trace.
     driftStability();
 
+    // 7b. Who holds each region by force, and how far annexed conquests have integrated.
+    if (realism())
+        controlStep();
+
     // 8. Unrest, and what sustained unrest eventually does: revolt, secession, collapse. Last,
     // because it reads the stability this month finished with.
     unrestStep();
@@ -190,7 +194,12 @@ void MonthlyStatus::occupationDrain() {
         auto &t = T[id];
         if (!cT[id].isMember("population"))
             continue;
-        if (cT[id]["owner"] != cT[id]["controller"] && cT[id]["owner"] != "") {
+        bool occupied = cT[id]["owner"] != cT[id]["controller"] && cT[id]["owner"] != "";
+        // Annexing a conquest does not end its drain, and land lent by treaty never started one.
+        if (realism())
+            occupied = hostileControl(w, id).isObject() ||
+                       (occupied && !agreedOccupation(w, id, cT[id]["controller"].asString()));
+        if (occupied) {
             if (!t.isMember("occupation_gdp"))
                 t["occupation_gdp"] = integer(t, "gdp_usd");
             auto floor = double(integer(t, "occupation_gdp")) * rate::occupationGdpFloor;

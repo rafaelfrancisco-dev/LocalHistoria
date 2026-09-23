@@ -44,6 +44,17 @@ function protect(fn) {
     }
   };
 }
+// How a region held by force came to be held: the engine's control record, shown only while its
+// holder still controls the region.
+function controlText(p) {
+  const c = state?.territories?.[p.id]?.control;
+  if (!c || c.holder !== p.controller) return "";
+  const name = (a) => state.actors[a]?.name || a;
+  const since = Number.isInteger(c.since) ? ` since ${month(c.since)}` : "";
+  const annexed = p.owner === c.holder;
+  return `${annexed ? "Annexed" : "Held"} by ${name(c.holder)}${since}, taken from ${name(c.claimant)}` +
+    (annexed ? ` · ${Math.floor(c.integration || 0)}% integrated` : "");
+}
 function month(turn) {
   return new Date(Date.UTC(2026, turn, 1)).toLocaleDateString("en", {
     month: "long",
@@ -855,12 +866,16 @@ async function refreshCampaignMap() {
           const stability=state?.actors?.[controller]?.status?.stability;
           const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")];
           lines.push(`Unrest: ${unrestBand(unrest)}${unrest?` (${unrest.toFixed(0)}/100)`:""}`);
+          const held=controlText(p);
+          if (held) lines.push(held);
           if (typeof stability==="number") lines.push(`${state.actors[controller]?.name||controller}: ${STABILITY_BANDS.find(([floor])=>stability>=floor)[1]} (${stability.toFixed(0)}/100)`);
           box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
         }
         if (mapMode!=="diplomacy") { box.textContent=regionLabel(p); return box; }
         const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")+(p.displaced?` · ${p.displaced.toLocaleString()} displaced`:"")];
         if (p.controller&&p.owner&&p.controller!==p.owner) lines.push(`Occupied by ${state.actors[p.controller]?.name||p.controller}`);
+        const held=controlText(p);
+        if (held) lines.push(held);
         for (const c of Object.values(state.conflicts)) if (c.status==="open"&&(c.affected_regions||[]).includes(p.id)) lines.push(`Front: ${c.name} (${c.intensity})`);
         const treaties=Object.values(state.commitments).filter(c=>c.status==="open"&&c.actors.includes(p.owner)).map(c=>c.name);
         if (treaties.length) lines.push("Treaties: "+treaties.slice(0,4).join(", ")+(treaties.length>4?` +${treaties.length-4}`:""));

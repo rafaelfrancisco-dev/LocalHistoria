@@ -104,6 +104,30 @@ constexpr int secessionMonths = 6; // months a rebellion must hold ground before
 // A state that cannot put down a civil war stops being the state it was.
 constexpr double collapseFloor = 15;
 constexpr int collapseMonths = 6;
+
+// Conquest and resistance, realism lifecycle only.
+//
+// Foreign occupation justifies local unrest by itself, whatever the occupier's own stability: a
+// region taken by force sits at "restive", and devastation, soured relations, a stressed occupier
+// or a thin garrison push it through "unrest" toward revolt. Measured on the seeded world, occupied
+// Ukraine under a garrisoned, repressive Russia settles in the "unrest" band and never reaches
+// Russia's armed line (70 + 0.55 x 25), which is what the partisan record supports.
+constexpr double occupationPressure = 60;
+constexpr double occupationStress = 0.5; // a fully stressed occupier multiplies it by 1.5
+constexpr double occupationDevastation = 10, occupationStrained = 10, occupationCooperative = -15;
+constexpr double garrisonedPressure = 0.8; // a region its occupier garrisons in strength
+// Demands a government leaves unanswered make a region restive on their own, each one to
+// demandPressure once fully aged, but never past demandPressureCap: that path reaches the journal,
+// and only a nation's real decline takes it further.
+constexpr double demandPressure = 20, demandPressureCap = 40;
+// Integration: an annexed conquest becomes ordinary territory only after years of peaceful rule.
+// Ten years without fighting, revolt or a war with the claimant; twice as fast where the region
+// cooperates with its new capital, stalled where it is at odds with it. Fighting there sets it
+// back.
+constexpr double integrationMonths = 120, integrationSetback = 10;
+// A conqueror uses this share of a conquered region's output before integration, the rest of the
+// way as integration progresses; the legal owner of land it does not control uses none.
+constexpr double conqueredOutput = 0.3;
 } // namespace rate
 namespace detail {
 using Int = Json::Int64;

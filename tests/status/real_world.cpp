@@ -1,3 +1,4 @@
+#include "localhistoria/lifecycle.h"
 #include "status_tests.h"
 void realWorldTests() {
     // The real January 2026 world, from the imported reference database.
@@ -182,6 +183,67 @@ void realWorldTests() {
               "An idle real world reports nothing domestic: " + e.text);
     // And the war calibration plan 19 tuned is untouched by any of it.
     check(idle.state.conflicts["c0-1"]["intensity"] == "high", "The seeded wars run as before");
+
+    // The same two idle years under the plan 26 rules. Foreign occupation now breeds resistance
+    // of its own, so occupied Ukraine is allowed to be reported restive; nothing else changes.
+    // Everything above about a quiet world still holds: no new actor, conflict, revolt or fallen
+    // government, and fragile but steady countries stay at zero.
+    {
+        auto realism = world;
+        realism.engine["lifecycle_version"] = 1;
+        Json::Value refs;
+        refs["lifecycle_version"] = 1;
+        refs["status_version"] = statusVersion;
+        Resolution r{realism, {}, 1};
+        std::vector<ResolvedEvent> reported;
+        for (int m = 0; m < 24; ++m) {
+            r = finishTurn(beginTurn(r.state, refs), {}, realAdjacency,
+                           Json::Value(Json::objectValue), refs);
+            reported.insert(reported.end(), r.events.begin(), r.events.end());
+        }
+        const auto &t = std::as_const(r.state.territories);
+        std::map<std::string, std::string> held;
+        for (const auto &id : t.getMemberNames())
+            if (t[id]["control"].isObject())
+                held[t[id]["name"].asString()] = dump(t[id]["control"]);
+        check(held.size() == 3 && held.contains("Autonomous Republic of Crimea") &&
+                  held.contains("Donetsk Oblast") && held.contains("Luhansk Oblast"),
+              "Only Russia's seeded occupations are held by force: " + std::to_string(held.size()));
+        for (const auto &[name, record] : held)
+            check(record.find("\"recorded\"") != std::string::npos &&
+                      record.find("since") == std::string::npos,
+                  "A seeded occupation is recorded without an invented age: " + record);
+        double occupied = 0, elsewhere = 0;
+        std::string loudest;
+        for (const auto &id : t.getMemberNames()) {
+            double u = t[id]["unrest"].asDouble();
+            if (t[id]["control"].isObject())
+                occupied = std::max(occupied, u);
+            else if (u > elsewhere) {
+                elsewhere = u;
+                loudest = t[id]["name"].asString();
+            }
+            check(t[id]["unrest_months"].asInt() == 0,
+                  "No region spends a month past the revolt line under the new rules: " + id);
+        }
+        std::cout << "Two idle years under the plan 26 rules: occupied Ukraine at " << occupied
+                  << "/100; elsewhere " << (loudest.empty() ? "none" : loudest) << " at "
+                  << elsewhere << "/100\n";
+        check(occupied >= 35 && occupied < 70,
+              "Occupied Ukraine resists short of revolt: " + std::to_string(occupied));
+        check(elsewhere < 35, "Nothing unoccupied approaches unrest: " + loudest);
+        for (const auto *code : {"YE", "ML", "SY", "SO", "AF"})
+            for (const auto &id : t.getMemberNames())
+                if (t[id]["controller"] == code)
+                    check(t[id]["unrest"].asDouble() == 0,
+                          std::string("A fragile but steady country stays quiet: ") + code);
+        check(r.state.actors.size() == actorCount && r.state.conflicts.size() == conflictCount,
+              "No actor or conflict appears in an idle world under the new rules");
+        for (const auto &e : reported)
+            check(e.action != "revolt" && e.action != "secession" && e.action != "regime_change" &&
+                      e.action != "integrated",
+                  "Nothing breaks in an idle world under the new rules: " + e.text);
+    }
 
     // Chronicles: missing, a year old, or source-less once the source exists.
     auto chronicle = parse(R"({"summary":"Old","through_turn":2,"with_source":true})");

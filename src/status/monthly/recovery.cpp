@@ -93,6 +93,22 @@ void MonthlyStatus::returnDisplaced() {
 }
 void MonthlyStatus::driftStability() {
     auto after = totals(w);
+    // Under the realism rules, each nation's population held by others, as {held, of which no
+    // longer its own}: it still feels land taken from it after the taker annexes it, and does not
+    // feel land it lent by treaty.
+    std::map<std::string, std::pair<Int, Int>> lost;
+    if (realism())
+        for (auto &id : regionIds) {
+            const auto &t = cT[id];
+            auto owner = t["owner"].asString(), controller = t["controller"].asString();
+            const auto &record = hostileControl(w, id);
+            if (record.isObject()) {
+                auto claimant = record["claimant"].asString();
+                lost[claimant].first += integer(t, "population");
+                lost[claimant].second += owner == claimant ? 0 : integer(t, "population");
+            } else if (owner != controller && !agreedOccupation(w, id, controller))
+                lost[owner].first += integer(t, "population");
+        }
     for (auto &a : w.actors.getMemberNames()) {
         if (!cActors[a]["status"].isObject())
             continue;
@@ -104,16 +120,20 @@ void MonthlyStatus::driftStability() {
             if (f.parties.contains(a) && f.intensity >= 0)
                 war = std::max(war, rate::stabilityWar[f.intensity]);
         Int occupiedPopulation = 0;
-        for (auto &id : regionIds)
-            if (cT[id]["owner"] == a && cT[id]["controller"] != a)
-                occupiedPopulation += integer(cT[id], "population");
+        if (realism())
+            occupiedPopulation = lost[a].first;
+        else
+            for (auto &id : regionIds)
+                if (cT[id]["owner"] == a && cT[id]["controller"] != a)
+                    occupiedPopulation += integer(cT[id], "population");
         auto &b = before[a];
         auto &n = after[a];
+        Int population = n.population + lost[a].second;
         double gdpChange = b.gdp > 0 ? (double(n.gdp) - double(b.gdp)) / double(b.gdp) * 100 : 0;
         double target = baseline - war -
-                        (n.population > 0 ? rate::occupiedStability * double(occupiedPopulation) /
-                                                double(n.population)
-                                          : 0) -
+                        (population > 0 ? rate::occupiedStability * double(occupiedPopulation) /
+                                              double(population)
+                                        : 0) -
                         (gdpChange < -1 ? rate::contractionStability : 0);
         auto stability = number(s, "stability", 50);
         double shock =

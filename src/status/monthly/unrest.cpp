@@ -62,7 +62,12 @@ double MonthlyStatus::regionalGrievance(const std::string &id) const {
     auto owner = t["owner"].asString(), controller = t["controller"].asString();
     double g = 0;
     double population = double(integer(t, "population"));
-    if (!owner.empty() && !controller.empty() && owner != controller) {
+    // Under the realism rules a foreign occupation is its own path, occupationPressure, independent
+    // of the occupier's decline; this one keeps only rule by a movement from the region itself.
+    bool occupied = !owner.empty() && !controller.empty() && owner != controller;
+    if (realism() && occupied)
+        occupied = !hostileControl(w, id).isObject() && !agreedOccupation(w, id, controller);
+    if (occupied) {
         g += rate::grievanceOccupied;
         // Devastation compounds occupation but is never a grievance on its own: almost all
         // displacement is war damage, and a population does not turn on the government fighting to
@@ -84,6 +89,41 @@ double MonthlyStatus::regionalGrievance(const std::string &id) const {
     return std::max(0.0, g);
 }
 
+// What a foreign occupation justifies on its own. The occupier's stress, devastation and the
+// region's relations with its new rulers raise it; a strong garrison and integration lower it.
+double MonthlyStatus::occupationPressure(const std::string &id) const {
+    const auto &record = hostileControl(w, id);
+    if (!record.isObject())
+        return 0;
+    const auto &t = cT[id];
+    auto controller = t["controller"].asString();
+    double p = rate::occupationPressure * (1 - number(record, "integration") / 100) *
+               (1 + rate::occupationStress * nationalStress(controller));
+    double population = double(integer(t, "population"));
+    if (population > 0 &&
+        double(integer(t, "displaced")) / population >= rate::displacedGrievanceShare)
+        p += rate::occupationDevastation;
+    const auto &politics = view(static_cast<const Json::Value &>(w.regionalPolitics), id);
+    if (politics["relations"] == "strained")
+        p += rate::occupationStrained;
+    else if (politics["relations"] == "cooperative")
+        p += rate::occupationCooperative;
+    if (force::committedPersonnel(forceStart, adjacency, controller, {id}) >=
+        population * rate::garrisonPerResident)
+        p *= rate::garrisonedPressure;
+    return std::clamp(p, 0.0, 100.0);
+}
+// Demands left unanswered make a region restive without any national decline, up to a bound.
+double MonthlyStatus::demandPressure(const std::string &id) const {
+    double p = 0;
+    for (const auto &d : view(static_cast<const Json::Value &>(w.regionalPolitics), id)["demands"])
+        if (d["status"] == "pending")
+            p += rate::demandPressure *
+                 std::clamp((w.turn - demandTurn(d["id"].asString())) / rate::demandAgeMonths, 0.0,
+                            1.0);
+    return std::min(p, rate::demandPressureCap);
+}
+
 void MonthlyStatus::accrueUnrest() {
     for (const auto &id : regionIds) {
         auto controller = cT[id]["controller"].asString();
@@ -91,6 +131,8 @@ void MonthlyStatus::accrueUnrest() {
             continue;
         double grievance = std::min(regionalGrievance(id), rate::unrestGrievanceCap);
         double target = 100 * nationalStress(controller) * grievance / rate::unrestGrievanceCap;
+        if (realism() && cT[id]["kind"] != "residual" && integer(cT[id], "population") > 0)
+            target = std::max({target, occupationPressure(id), demandPressure(id)});
         double unrest = number(cT[id], "unrest");
         const auto &g = regime(cActors[controller]["status"].get("government", "").asString());
         double share = target > unrest ? rate::unrestRise * (1 - rate::ventRise * g.vent)
@@ -106,8 +148,9 @@ void MonthlyStatus::accrueUnrest() {
         if (band != unrestLabel(unrest) &&
             (next >= rate::unrestNotice || unrest >= rate::unrestNotice))
             r.events.push_back({controller, "unrest", id,
-                                cT[id]["name"].asString() + " is " + band + " under " +
-                                    cActors[controller]["name"].asString() + ".",
+                                cT[id]["name"].asString() + " is " +
+                                    (realism() && band == "unrest" ? "in unrest" : band) +
+                                    " under " + cActors[controller]["name"].asString() + ".",
                                 id});
         T[id]["unrest"] = round1(next);
         double armed = rate::revoltThreshold + g.repression * rate::repressionHold;
@@ -119,16 +162,19 @@ void MonthlyStatus::formRebellions() {
     // One a month, campaign-wide, and never a second one against a state that is already fighting
     // this region's rebellion.
     std::set<std::string> spokenFor;
-    for (const auto &c : static_cast<const Json::Value &>(w.conflicts))
-        if (isOpen(c))
-            for (const auto *key : {"affected_regions", "theatre"})
-                for (const auto &region : c[key])
-                    spokenFor.insert(region.asString());
+    if (!realism())
+        for (const auto &c : static_cast<const Json::Value &>(w.conflicts))
+            if (isOpen(c))
+                for (const auto *key : {"affected_regions", "theatre"})
+                    for (const auto &region : c[key])
+                        spokenFor.insert(region.asString());
     std::string best;
     for (const auto &id : regionIds) {
         if (integer(cT[id], "unrest_months") < rate::revoltMonths || spokenFor.contains(id))
             continue;
         auto controller = cT[id]["controller"].asString();
+        if (realism() && represented(id, controller))
+            continue;
         if (controller.empty() || !cActors[controller]["status"]["military"].isObject())
             continue;
         if (best.empty() || number(cT[id], "unrest") > number(cT[best], "unrest"))
@@ -136,6 +182,59 @@ void MonthlyStatus::formRebellions() {
     }
     if (!best.empty())
         raiseRebellion(best);
+}
+
+// Under the realism rules a region already has its rising only when a civil war or insurgency its
+// controller is fighting reaches it, or a rebellion against that controller holds ground next door
+// and would carry the revolt there itself. Another war passing through is no substitute for one.
+bool MonthlyStatus::represented(const std::string &id, const std::string &controller) const {
+    for (const auto &c : static_cast<const Json::Value &>(w.conflicts))
+        if (isOpen(c) && (c["kind"] == "civil_war" || c["kind"] == "insurgency") &&
+            isParty(c, controller))
+            for (const auto *key : {"affected_regions", "theatre"})
+                for (const auto &region : c[key])
+                    if (region == id)
+                        return true;
+    if (auto at = adjacency.find(id); at != adjacency.end())
+        for (const auto &n : at->second) {
+            const auto &rebellion = cActors[cT[n]["controller"].asString()]["rebellion"];
+            if (rebellion.isObject() && rebellion["against"] == controller &&
+                !rebellion.get("state", false).asBool())
+                return true;
+        }
+    return false;
+}
+
+// Control history: opened, moved or ended by whatever changed hands this month, and integration
+// for annexed conquests at peace with their claimant and short of revolt. Resentment alone does
+// not stop it, since the occupation itself keeps a conquest restive; fighting there sets it back.
+void MonthlyStatus::controlStep() {
+    recordControl(w, false);
+    for (const auto &id : regionIds) {
+        const auto &record = hostileControl(w, id);
+        if (!record.isObject())
+            continue;
+        auto holder = record["holder"].asString(), claimant = record["claimant"].asString();
+        double integration = number(record, "integration"), was = integration;
+        const auto &politics = view(static_cast<const Json::Value &>(w.regionalPolitics), id);
+        if (allAffected.contains(id))
+            integration = std::max(0.0, integration - rate::integrationSetback);
+        else if (cT[id]["owner"] == holder && !fighting(w, holder, claimant) &&
+                 number(cT[id], "unrest") < rate::revoltThreshold &&
+                 politics["relations"] != "strained")
+            integration +=
+                100 / rate::integrationMonths * (politics["relations"] == "cooperative" ? 2 : 1);
+        if (integration >= 100) {
+            T[id].removeMember("control");
+            r.events.push_back({holder, "integrated", id,
+                                cT[id]["name"].asString() + " is now fully integrated into " +
+                                    cActors[holder]["name"].asString() + ".",
+                                id});
+            continue;
+        }
+        if (integration != was)
+            T[id]["control"]["integration"] = std::round(integration * 100) / 100;
+    }
 }
 
 void MonthlyStatus::unrestStep() {

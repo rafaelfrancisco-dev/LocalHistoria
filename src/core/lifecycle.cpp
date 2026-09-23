@@ -113,8 +113,11 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
     if (rules.lifecycle == realismLifecycleVersion &&
         w.engine.get("lifecycle_version", legacyLifecycleVersion) != realismLifecycleVersion)
         throw ValidationError("Missing lifecycle migration");
-    if (rules.lifecycle == realismLifecycleVersion)
+    if (rules.lifecycle == realismLifecycleVersion) {
         initializeConflictPairs(w);
+        // Occupations older than the control history are recorded as found, never given an age.
+        recordControl(w, true);
+    }
     return resolve(w, rules.lifecycle);
 }
 Resolution finishTurn(const Resolution &base, const WorldDelta &delta, const Adjacency &adjacency,

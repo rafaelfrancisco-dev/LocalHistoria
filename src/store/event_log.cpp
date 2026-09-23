@@ -160,9 +160,10 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                         item["regions"] = w.conflicts[target]["affected_regions"];
                 }
             } else if (action == "unrest" || action == "revolt" || action == "secession" ||
-                       action == "regime_change") {
-                // What a country's own people do to it. A revolt, a secession and a government
-                // falling are news; a province growing restive is a running note.
+                       action == "regime_change" || action == "integrated") {
+                // What a country's own people do to it. A revolt, a secession, a government
+                // falling and a conquest finally absorbed are news; a province growing restive is
+                // a running note.
                 item["category"] = "domestic";
                 item["major"] = action != "unrest";
                 if (!x["region"].asString().empty())

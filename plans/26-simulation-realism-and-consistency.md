@@ -38,7 +38,35 @@ trajectories match the pre-D build exactly. Known limits, by design for this pas
 - The two prompt glosses were A/B tested on the live model and kept (`docs/MODELS.md`): better
   on access treaties and sealift, equal on regressions, no echo in two played months. Both
   prompts often narrate treaties without a treaty operation, a Phase J concern.
-Next: Phase E (persistent conquest consequences and local resistance).
+
+2026-09-23: Phase E gate passed. There are 17 CTest cases. `access` now has 51 checks: cession
+around a third party, eviction by an `occupy` term, and an accepted access treaty. `status` gains
+the conquest scenarios, run over 24–60 deterministic months, and the plan 26 run of the idle real
+world. Also passing: the HTTP integration suite with browser, restart and replay, the legacy
+v0/v2/v3/v4 replays, and `make format-check`.
+- **Control history.** Regions held by force keep an engine-owned `control` record (claimant,
+  holder, since, cause, integration) through annexation. Annexation no longer ends the output
+  drain, the resistance or the claimant's stability penalty. Integration takes ten peaceful years,
+  five with cooperative relations.
+- **Usable output.** Strength and construction capacity count the output a nation actually
+  commands, so lost land counts for nobody. A conquest counts at 30% for its holder until it is
+  integrated.
+- **Resistance.** Occupation now produces resistance whatever the occupier's own stability: two
+  years under a stable occupier reach 46. Ignored demands can make a province restive, up to 40.
+  The duplicate-rebellion guard covers only the relevant rising, so an occupied war theatre rose
+  once, after 46 months. Resistance is raised from local people, not by defection from the
+  occupier's army, and declares no state.
+- **Third parties.** A cession or `occupy` term no longer evicts a controller that did not sign.
+- **Real world.** Occupied Ukraine is restive at month 10 and reaches 57–68, below Russia's armed
+  line of 84. RSF- and M23-held land is not foreign occupation. The 36-month fronts match Phase D
+  exactly, and the month step is faster than before because the per-actor occupied-population loop
+  now runs once.
+- **Phase D bug fixed.** An accepted treaty with a `grant_access` term failed delta validation
+  ("Invalid treaty term"), which failed the whole month. The term is now valid under realism.
+- **Known limits.** Displaced people still return to annexed land from the new owner's regions
+  (Phase G). A resistance that holds ground does not hand it back to its claimant. Integration does
+  not yet answer to explicit policy orders beyond regional relations.
+Next: Phase F (shared force allocations and fractional attrition).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -496,7 +524,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] B — Explicit proposal consent and outcome-grounded effects.
 - [x] C — Hostile pairs, scoped peace/intensity, and conflict deduplication.
 - [x] D — Valid access/sea routes, supply bounds, and captured construction.
-- [ ] E — Persistent conquest consequences and local resistance.
+- [x] E — Persistent conquest consequences and local resistance.
 - [ ] F — Conserved force allocations and fractional, exposure-based attrition.
 - [ ] G — Origin–host displacement and actual return migration.
 - [ ] H — Paid progress, recurring trade, replacement, and demobilization.

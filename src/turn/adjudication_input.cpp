@@ -142,8 +142,8 @@ Json::Value adjudicationInput(const WorldState &w,
         if (!w.territories.isMember(id))
             continue;
         auto t = w.territories[id];
-        for (auto k :
-             {"longitude", "latitude", "initial_affiliation", "kind", "gdp_usd", "occupation_gdp"})
+        for (auto k : {"longitude", "latitude", "initial_affiliation", "kind", "gdp_usd",
+                       "occupation_gdp", "control"})
             t.removeMember(k);
         for (auto &a : acting)
             if (reaches(w, adjacency, a, id))

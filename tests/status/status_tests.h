@@ -24,3 +24,5 @@ inline WorldDelta events(const char *json) {
 void realWorldTests();
 // Regional unrest, and the rebellion, secession and regime-collapse chain it feeds.
 void unrestTests();
+// Plan 26 E: control history, annexation, occupation resistance and integration.
+void conquestTests();

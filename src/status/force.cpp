@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <tuple>
 namespace lh {
 using namespace detail;
 namespace force {
@@ -44,22 +45,29 @@ int uncommittedShips(const WorldState &w, const std::string &a) {
     return uncommitted(w, a, "fleet", "ships", "ships", 3);
 }
 double quality(const WorldState &w, const std::string &a) {
-    Int population = 0, gdp = 0;
-    for (const auto &t : w.territories)
-        if (t["owner"] == a) {
-            population += integer(t, "population");
-            gdp += integer(t, "gdp_usd");
-        }
+    double population = 0, gdp = 0;
+    // Under the realism rules only output the nation actually commands counts: not land it has
+    // lost, and conquests only as far as they are integrated.
+    if (realismRules(w))
+        std::tie(gdp, population) = effectiveOutput(w, a);
+    else
+        for (const auto &t : w.territories)
+            if (t["owner"] == a) {
+                population += double(integer(t, "population"));
+                gdp += double(integer(t, "gdp_usd"));
+            }
     // The spread is deliberately narrow: wealth buys better equipment and training, but it does
     // not outweigh mass. A wider range let a rich mid-sized force outrank the largest armies.
-    return std::clamp(std::sqrt(population > 0 ? double(gdp) / double(population) / 20000 : 0), 0.6,
-                      1.4);
+    return std::clamp(std::sqrt(population > 0 ? gdp / population / 20000 : 0), 0.6, 1.4);
 }
 int constructionCapacity(const WorldState &w, const std::string &a) {
     double gdp = 0;
-    for (const auto &t : w.territories)
-        if (t["owner"] == a)
-            gdp += number(t, "gdp_usd");
+    if (realismRules(w))
+        gdp = effectiveOutput(w, a).first;
+    else
+        for (const auto &t : w.territories)
+            if (t["owner"] == a)
+                gdp += number(t, "gdp_usd");
     return std::max(1, int(std::min(double(INT_MAX), std::floor(gdp / 150e9))));
 }
 int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {

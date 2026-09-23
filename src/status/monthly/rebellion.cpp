@@ -34,21 +34,31 @@ void MonthlyStatus::raiseRebellion(const std::string &region) {
     auto &army = w.actors[state]["status"]["military"];
     double unrest = number(cT[region], "unrest") / 100;
     const auto &g = regime(cActors[state]["status"].get("government", "").asString());
-    double committed = force::committedPersonnel(forceStart, adjacency, state, {region});
+    // Resistance to a foreign occupation is raised from the region's own people: nobody defects to
+    // it from the occupier's army, and it takes the economic character of the nation it was taken
+    // from rather than the occupier's.
+    std::string claimant;
+    if (realism() && hostileControl(w, region).isObject())
+        claimant = hostileControl(w, region)["claimant"].asString();
+    double committed =
+        claimant.empty() ? force::committedPersonnel(forceStart, adjacency, state, {region}) : 0;
     double raised = committed * rate::defectionShare * unrest * (1 + g.repression) +
                     double(integer(cT[region], "population")) * rate::militiaPerResident * unrest;
     Int active =
         std::clamp(Int(std::llround(raised)), Int(rate::minimumRebels), Int(rate::maximumRebels));
-    active = std::min(active, integer(army, "active"));
-    if (active < rate::minimumRebels)
-        return; // A state with no army left to defect from is already finished.
-    army["active"] = integer(army, "active") - active;
+    if (claimant.empty()) {
+        active = std::min(active, integer(army, "active"));
+        if (active < rate::minimumRebels)
+            return; // A state with no army left to defect from is already finished.
+        army["active"] = integer(army, "active") - active;
+    }
 
     Json::Value identity;
     identity["name"] = rebelName;
     identity["color"] = paletteColor(id);
     reviseIdentity(identity, Json::nullValue, w.campaignId + id, "revolt:" + region);
-    auto s = cActors[state]["status"];
+    auto s = cActors[!claimant.empty() && cActors[claimant]["status"].isObject() ? claimant : state]
+                    ["status"];
     s["stability"] = s["baseline_stability"] = s["seeded_stability"] = 25.0;
     s["gdp_growth"] = s["pop_growth"] = 0.0;
     s["government"] = "transitional_government";
@@ -68,10 +78,13 @@ void MonthlyStatus::raiseRebellion(const std::string &region) {
     rebellion["origin"] = region;
     rebellion["since_turn"] = w.turn;
     rebellion["held_since"] = -1;
+    if (!claimant.empty())
+        rebellion["resisting_for"] = claimant;
     identity["rebellion"] = rebellion;
     w.actors[id] = identity;
 
-    bool major = double(active) >= rate::civilWarShare * double(integer(army, "active") + active);
+    bool major = claimant.empty() &&
+                 double(active) >= rate::civilWarShare * double(integer(army, "active") + active);
     std::string kind = major ? "civil_war" : "insurgency";
     std::set<std::string> taken;
     for (const auto &c : static_cast<const Json::Value &>(w.conflicts))
@@ -90,9 +103,12 @@ void MonthlyStatus::raiseRebellion(const std::string &region) {
     conflict["affected_regions"] = conflict["theatre"] = Json::arrayValue;
     conflict["affected_regions"].append(region);
     conflict["theatre"].append(region);
-    conflict["text"] = "Sustained unrest in " + cT[region]["name"].asString() +
-                       " broke into armed revolt against " + cActors[state]["name"].asString() +
-                       ".";
+    conflict["text"] =
+        claimant.empty()
+            ? "Sustained unrest in " + cT[region]["name"].asString() +
+                  " broke into armed revolt against " + cActors[state]["name"].asString() + "."
+            : "Resistance to " + cActors[state]["name"].asString() + "'s occupation of " +
+                  cT[region]["name"].asString() + " became an armed insurgency.";
     auto conflictId = "c" + std::to_string(w.turn) + "-r" + id.substr(0, 20);
     w.conflicts[conflictId] = conflict;
     w.actors[id]["rebellion"]["conflict"] = conflictId;
@@ -168,7 +184,9 @@ void MonthlyStatus::declareSecessions() {
             rebellion["held_since"] = w.turn;
             continue;
         }
+        // A resistance fights for the nation the land was taken from, not for a state of its own.
         if (secededThisMonth || rebellion.get("state", false).asBool() ||
+            rebellion.isMember("resisting_for") ||
             w.turn - integer(rebellion, "held_since") < rate::secessionMonths ||
             atPeace(rebel, state))
             continue;

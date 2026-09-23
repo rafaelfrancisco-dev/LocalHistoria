@@ -343,7 +343,8 @@ void checkAgreements(const Resolution &base, WorldState &w) {
                 for (auto &t : v["terms"])
                     require(t.isObject() &&
                                 (t["action"] == "end_conflict" || t["action"] == "cede" ||
-                                 t["action"] == "occupy" || t["action"] == "withdraw"),
+                                 t["action"] == "occupy" || t["action"] == "withdraw" ||
+                                 (realismRules(w) && t["action"] == "grant_access")),
                             "Invalid treaty term");
             }
             if (v["hostile_pairs"].isArray()) {

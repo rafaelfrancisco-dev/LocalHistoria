@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/lifecycle.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
@@ -136,7 +137,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
             c.facts["turn"] = w.turn;
             c.facts["regional_identity"] = w.territories[r];
             c.facts["regional_identity"]["id"] = r;
-            for (auto k : {"gdp_usd", "occupation_gdp"})
+            for (auto k : {"gdp_usd", "occupation_gdp", "control"})
                 c.facts["regional_identity"].removeMember(k);
             c.facts["governing_authority"] = w.actors[a];
             c.facts["governing_authority"].removeMember("identity_revisions");
@@ -146,8 +147,10 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
             // additionally knows is whether the war has reached its own ground. Without this a
             // region has nothing at stake to act on and writes a ceremony.
             Json::Value situation;
+            // Annexation does not make a conquered district stop being occupied in its own eyes.
             situation["occupied"] =
-                w.territories[r][key::owner] != w.territories[r][key::controller];
+                w.territories[r][key::owner] != w.territories[r][key::controller] ||
+                (realismRules(w) && hostileControl(w, r).isObject());
             situation["on_front"] = false;
             for (auto &cid : w.conflicts.getMemberNames()) {
                 auto &conflict = w.conflicts[cid];

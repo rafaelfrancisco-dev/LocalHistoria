@@ -70,6 +70,10 @@ void OperationCompiler::transfer(EventScope &s, const OpScope &op, const std::st
         s.warParties.insert(ev);
     }
     t["owner"] = to;
+    // An owner can sign away its claim to land a third party holds, but not the third party's
+    // forces: they stay until they agree to leave or are driven out.
+    if (realism() && cession && !controller.empty() && controller != owner && controller != to)
+        return;
     t["controller"] = to;
     // Ceded or handed-back land takes its unfinished civilian works with it.
     if (realism() && (cession || returned))

@@ -208,6 +208,65 @@ Relevant regions show their population. The adjudication prompt asks the model t
 
 Status version 4 adds all of this. Turns recorded at 3 or below gain no unrest at all, so existing campaigns replay unchanged.
 
+### Conquest and resistance (realism lifecycle)
+
+Under the realism lifecycle (Plan 26 E), a region held by force carries an engine-owned `control`
+record: `claimant` (who it was taken from), `holder`, `since` (the month it was taken), `cause` and
+`integration` (0–100). One rule, `recordControl` in `src/status/control.cpp`, keeps it in step with
+whoever holds the region. It runs at the start of each turn and again in the month step, after the
+fronts, so every seizure is covered: an order, a front advance, a treaty, a rebellion. Replay
+reproduces it exactly. A delta still cannot write it.
+
+- **What counts.** A controller other than the owner opens a record unless the owner lent the region
+  in an open treaty (`occupy` term), or the holder is a movement from that land (an unfounded rebel,
+  or a side in a civil war or insurgency with the owner). The RSF in Darfur and M23 in North Kivu are
+  therefore not foreign occupiers; Russia in Crimea, Donetsk and Luhansk is. Occupations present
+  before the history began are recorded with `cause: "recorded"` and no `since`, never given an age.
+- **Annexation keeps it.** Annexing a region changes its owner, but the record stays. So do the
+  output drain, the resistance, and the claimant's stability penalty for the population it lost.
+  Only three things end a record: the claimant regaining the region, a local movement taking it,
+  or full integration of an annexed region. Losing the region to a third party gives the new
+  holder a fresh record, and the claim stays with the original claimant.
+- **Integration** needs annexation, peace between holder and claimant, no fighting in the region
+  and unrest short of revolt. It takes 10 years (0.83 a month); `cooperative` relations double the
+  rate and `strained` relations halt it. Fighting in the region costs 10 points. At 100 the record
+  is removed and an `integrated` domestic event is reported.
+- **Usable output.** Strength (`quality`) and construction capacity use `effectiveOutput`: an
+  undisputed region counts in full, a lost one counts for nobody, and a conquest counts at
+  30% + 70% × integration for its holder alone. Territorial totals in the national status stay
+  descriptive and unchanged.
+- **Resistance** is its own unrest target, independent of the occupier's decline:
+  `60 × (1 − integration) × (1 + 0.5 × occupier stress)`, then +10 where over 2% of the people are
+  displaced, +10 for `strained` relations, −15 for `cooperative` ones, and × 0.8 where the occupier
+  garrisons at least 0.004 troops per resident. The region's target is the highest of this, the
+  domestic path above (which no longer counts foreign occupation) and **ignored demands**: 20 per
+  fully aged pending demand, capped at 40. That cap is enough to report a region as restive but
+  never enough to arm it. Only a nation's real decline takes it further.
+- **Rising.** The duplicate guard now covers only the relevant rising. A region is skipped only when
+  a civil war or insurgency its controller is fighting already reaches it, or when rebels against
+  that controller hold neighbouring ground. Another war passing through no longer suppresses a
+  revolt. A rising against an occupier is raised from local militia, not by defection from the
+  occupier's army. It takes the claimant's economic character, records `resisting_for`, is always
+  an `insurgency`, and never declares a state of its own.
+- **Cession and third parties.** An owner may sign away its claim to land a third party holds, but
+  the third party's forces stay. An `occupy` term cannot evict a controller that is not a party.
+
+Measured on deterministic fixtures (`tests/status/conquest.cpp`):
+- **Stable occupier:** two years under a stable occupier bring unrest to 46, or 37 with a strong
+  garrison. Under the legacy rules the same occupation stays at 0.
+- **Integration:** a cooperative annexed province integrates in 60 months, and its unrest falls
+  from 46 to 16 by month 31.
+- **War theatre:** an occupied, devastated and strained war theatre under a stable republic rises
+  after 46 months, once.
+- **Ignored demands:** five years of ignored demands in a steady junta plateau at 40.
+- **Invaded, not occupied:** a defended front stays at 0.
+
+On the real January 2026 world:
+- **Occupied Ukraine:** Crimea, Donetsk and Luhansk become restive in month 10 and reach "unrest"
+  (57 after two years, 68 after five). Russia's armed line is 84, so they never reach it.
+- **Everything else:** unchanged. No actor, conflict, revolt or fallen government appears in 60
+  idle months, and the front trajectories are identical to the build before this phase.
+
 A year of the inventory-seeded Russo-Ukrainian War at high intensity produces roughly 195,000 deaths in the deterministic reference fixture (the test accepts 80,000–300,000); civilian displacement retains the earlier model. That is the order of magnitude of 2023–25 estimates. Displacement within the country is simplified: people displaced from a region are tracked there, but refugees who crossed a border are not sent home.
 
 Status version 3 records autonomous advances and stalemates. Replay passes each turn's recorded version, so existing version-2 campaigns keep their original monthly consequences.

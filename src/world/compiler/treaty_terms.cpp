@@ -101,8 +101,12 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
             throw Infeasible("only its owner can cede " + place + " to another party");
         auto &v = pending.touch("territory", r, w.territories[r], s.id, why);
         v["owner"] = to;
-        v["controller"] = to;
-        if (realism())
+        // A third party holding the region keeps it unless it signed too.
+        bool held = realism() && !controller.empty() && controller != owner && controller != to &&
+                    !party(controller);
+        if (!held)
+            v["controller"] = to;
+        if (realism() && !held)
             handOver(s, r, controller, to, why);
         kept["from"] = owner;
         kept["to"] = to;
@@ -112,6 +116,11 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
         if (!party(by) || !party(owner) || by == owner)
             throw Infeasible("an agreed occupation of " + place +
                              " needs its owner and the occupier as parties");
+        if (realism() && !controller.empty() && controller != owner && controller != by &&
+            !party(controller))
+            throw Infeasible(place + " is held by " +
+                             pending.current("actor", w.actors, controller)["name"].asString() +
+                             ", which is not a party");
         pending.touch("territory", r, w.territories[r], s.id, why)["controller"] = by;
         if (realism())
             handOver(s, r, controller, by, why);

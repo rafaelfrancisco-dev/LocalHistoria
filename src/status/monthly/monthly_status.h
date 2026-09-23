@@ -62,6 +62,8 @@ class MonthlyStatus {
     // 6–7
     void returnDisplaced();
     void driftStability();
+    // 7b
+    void controlStep();
     // 4c and 8: unrest and what it eventually does. Ground moves with the conventional advances so
     // the toll, displacement and front drawing treat a rebel seizure exactly like any other; the
     // rest runs last, because it reads the stability this month finished with.
@@ -69,8 +71,11 @@ class MonthlyStatus {
     void unrestStep();
     double nationalStress(const std::string &actor) const;
     double regionalGrievance(const std::string &region) const;
+    double occupationPressure(const std::string &region) const;
+    double demandPressure(const std::string &region) const;
     void accrueUnrest();
     void formRebellions();
+    bool represented(const std::string &region, const std::string &controller) const;
     void raiseRebellion(const std::string &region);
     void declareSecessions();
     void regimeCollapse();
