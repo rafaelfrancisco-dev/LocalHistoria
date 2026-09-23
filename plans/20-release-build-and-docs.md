@@ -29,8 +29,7 @@ code and measurements.
    results" (new table), "Validation boundaries"; `docs/MODELS.md` "Speed", "Thinking", "Requests",
    parallel flags and the 9B experiment; `docs/API.md` new fields/routes; `docs/VERIFICATION.md` new suites
    and the date; `docs/ARCHITECTURE.md` file layout after plan 12.
-4. Add `docs/AUDIT.md` status: for each finding ID, "fixed in <commit>" or "open". Delete `plans/` files that
-   are done, or move them to `plans/done/`.
+4. Delete `plans/` files that are done.
 
 ## Acceptance
 Fresh clone → `make test` builds RelWithDebInfo and passes; docs contain no stale numbers (grep for
