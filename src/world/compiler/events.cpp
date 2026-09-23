@@ -74,21 +74,21 @@ void OperationCompiler::buildEvent(EventScope &s) {
         if (e.isMember(k))
             event[k] = e[k];
     // Only something that happened has consequences.
-    if (happened && (!realism() || !failed || s.e.get("independent_outcome", "none") != "none"))
+    if (happened && (!realism() || !failed || s.e.get("outcome_kind", "none") != "none"))
         settleEffects(s, event);
     if (realism() && failed) {
         // get(): naming a missing member would insert a null "effects" the delta rejects.
         if (!event.get("effects", Json::arrayValue).empty() || event.isMember("effort")) {
             event.removeMember("failed");
             event["partial"] = true;
-            event["text"] = "The independent " + s.e["independent_outcome"].asString() +
+            event["text"] = "The independent " + s.e["outcome_kind"].asString() +
                             " proceeded; the proposed operations could not be carried out.";
         } else
             event["text"] = "The proposed action could not be carried out.";
     } else if (realism() && happened && !s.dropped.empty())
         event["text"] = "Only part of the proposed action was carried out; see accepted changes.";
     if (realism() && happened && !failed && s.successfulOps.empty() &&
-        s.e.get("independent_outcome", "none") == "none") {
+        s.e.get("outcome_kind", "none") == "none" && !s.e.get("background", false).asBool()) {
         event["text"] = "No validated change resulted from the proposed action.";
         event["major"] = false;
     }
@@ -142,10 +142,13 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                  o["relations"] != regionalState(w, s.regional)["relations"]))
                 inert = false;
         }
-    auto independent = s.e.get("independent_outcome", "none").asString();
+    auto independent = s.e.get("outcome_kind", "none").asString();
+    // A world event is an unplanned development whose consequence is the point of it, bounded like
+    // any other effect.
     bool supportedIndependent =
-        s.regional.empty() && (independent == "reform" || independent == "investment" ||
-                               independent == "negotiation" || independent == "protest");
+        s.regional.empty() &&
+        (independent == "reform" || independent == "investment" || independent == "negotiation" ||
+         independent == "protest" || s.e.get("background", false).asBool());
     if (!inert && (!realism() || supportedIndependent) && s.e["effects"].isArray())
         for (auto &x : s.e["effects"]) {
             if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
@@ -171,7 +174,7 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                 // benefit arrives once, on completion. Starting one may lift confidence for a
                 // month; asking again continues the effort already under way and earns nothing.
                 if ((independent == "reform" || independent == "investment") &&
-                    (rank(economy) > 2 || rank(stability) > 2)) {
+                    s.successfulOps.empty() && (rank(economy) > 2 || rank(stability) > 2)) {
                     auto key = a + ":" + independent;
                     bool open =
                         std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
@@ -190,6 +193,25 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
             }
             effects.push_back({a, economy, stability, false});
         }
+    // A reform or investment the model named starts its effort even when it rated no effect,
+    // unless it judged the attempt a setback for its author.
+    if (realism() && !inert && supportedIndependent && s.successfulOps.empty() &&
+        (independent == "reform" || independent == "investment") && !event.isMember("effort")) {
+        bool setback = false;
+        for (const auto &x : s.e.get("effects", Json::Value(Json::arrayValue)))
+            setback =
+                setback ||
+                (x.isObject() && actorRef(x["actor"].asString()) == s.ev &&
+                 ((validEffect(x["economy"].asString()) && rank(x["economy"].asString()) < 2) ||
+                  (validEffect(x["stability"].asString()) && rank(x["stability"].asString()) < 2)));
+        auto key = s.ev + ":" + independent;
+        bool open = std::as_const(w.actors)[s.ev]["status"]["efforts"].isMember(independent) ||
+                    efforts.contains(key);
+        if (!open && !setback) {
+            efforts.insert(key);
+            event["effort"] = independent;
+        }
+    }
     auto entry = [&](const std::string &a) -> Effect & {
         auto f = find(a);
         if (f == effects.end()) {

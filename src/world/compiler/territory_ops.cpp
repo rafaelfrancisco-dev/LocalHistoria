@@ -61,6 +61,11 @@ void OperationCompiler::transfer(EventScope &s, const OpScope &op, const std::st
             throw Infeasible("independence needs national agreement or an established relevant "
                              "conflict");
     }
+    // Under the realism rules land passes to another existing nation only by a treaty it signs
+    // (a cede term). An owner may still found a new state, and may recognise the nation that
+    // already holds the region.
+    if (realism() && cession && to != ev && !s.createdHere.contains(to) && to != controller)
+        throw Infeasible("a cession to another nation needs a treaty it signs");
     if (!cession && !annexation && !returned)
         throw Infeasible(controller == ev ? "cannot hand over land it does not own"
                                           : "must occupy " + w.territories[r]["name"].asString() +

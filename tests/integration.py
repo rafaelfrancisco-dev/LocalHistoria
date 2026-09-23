@@ -24,7 +24,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
    value=json.loads(raw);intentions=[i['action'] for i in value['intentions'] if i['actor']=='PT'];fixture=next((o for o in intentions if 'transfer-and-build-fixture' in o),None)
    if fixture:
     rid=fixture.split('(region ')[1].split(')')[0]
-    result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'operations':[{'action':'build','kind':'port','name':'Fixture port','actor':'PT','region':rid},{'action':'transfer_territory','region':rid,'to':'ES'}]}]}
+    result={'events':[{'actor':'PT','blocked_by':'none','description':'Fixture','causes':[],'operations':[{'action':'build','kind':'port','name':'Fixture port','actor':'PT','region':rid},{'action':'create_actor','actor_id':'tagus','name':'Tagus Republic','color':'#3366aa'},{'action':'transfer_territory','region':rid,'to':'Tagus Republic'}]}]}
    elif intentions:
     result={'events':[{'actor':'PT','blocked_by':'none','description':text,'causes':[],'operations':[]} for text in intentions]}
    existing=result['events'];result['events']=[next((e for e in existing if e['actor']==i['actor'] and (e['description']==i['action'] or fixture)),{'actor':i['actor'],'blocked_by':'none','description':i['action'],'causes':[],'operations':[]}) for i in value['intentions']]
@@ -32,8 +32,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
    for i,e in zip(value['intentions'],result['events']):
     if proposing and i['actor']!='PT' and not i.get('regional_actor'):
      e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','months':6,'name':'Fixture Accord','terms':[],'text':'Tariffs cut'}];proposing=False
-    if 'trade talks' in i['action']:e['independent_outcome']='negotiation'
-    if 'railway' in i['action']:e['independent_outcome']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
+    if 'trade talks' in i['action']:e['outcome_kind']='negotiation'
+    if 'railway' in i['action']:e['outcome_kind']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
     if 'war-fixture' in i['action']:

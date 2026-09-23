@@ -205,6 +205,21 @@ void economyTests() {
               "Expiry and withdrawal end the same future benefit and keep what was earned");
     }
 
+    // The establishment is the inventory at the start of the first realism month, before that
+    // month's losses (re-audit N4).
+    {
+        auto war = world();
+        war.state.conflicts["war"] = parse(
+            R"({"kind":"war","status":"open","text":"War","started_turn":0,"theatre":[],)"
+            R"("affected_regions":[],"name":"War","set_intensity":"high","intensity":"high",)"
+            R"("actors":["AA","BB"],"hostile_pairs":[{"actors":["AA","BB"],"status":"active"}],)"
+            R"("postures":{"AA":"high","BB":"high"}})");
+        auto first = month(war, adj);
+        const auto &m = status(first, "AA")["military"];
+        check(m["active"] != 200000 && m["establishment"]["active"] == 200000,
+              "The establishment is set before the first month's losses: " + dump(m));
+    }
+
     // Replacement: losses below the establishment are ordered, paid for and delivered only on
     // completion; recruits change classification, not population.
     {

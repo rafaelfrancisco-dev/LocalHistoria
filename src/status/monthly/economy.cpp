@@ -131,10 +131,14 @@ void MonthlyStatus::fund(const std::string &a) {
     auto &s = w.actors[a]["status"];
     const auto &cs = cActors[a]["status"];
     bool armed = cs["military"].isObject();
-    // The establishment replacement works toward: the inventory at the first realism month.
-    if (armed && !cs["military"].isMember("establishment"))
+    // The establishment replacement works toward: the inventory at the start of the first realism
+    // month, before that month's losses.
+    if (armed && !cs["military"].isMember("establishment")) {
+        const auto &start = std::as_const(forceStart.actors)[a]["status"]["military"];
+        const auto &from = start.isObject() ? start : cs["military"];
         for (auto field : {"active", "aircraft", "ships"})
-            s["military"]["establishment"][field] = integer(cs["military"], field);
+            s["military"]["establishment"][field] = integer(from, field);
+    }
     // Efforts the month's events started. Equivalent requests continue the one already open.
     for (const auto &e : delta.events)
         if (e["actor"] == a && e["effort"].isString()) {

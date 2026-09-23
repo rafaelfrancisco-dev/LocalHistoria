@@ -116,8 +116,27 @@ void OperationCompiler::propose(EventScope &s, OpScope &op, Json::Value v, const
     v["event"] = s.id;
     v["months"] = months;
     v["terms"] = treatyTerms(op.o["terms"]);
-    if (realism())
+    if (realism()) {
+        // The same offer already awaiting answers is not made twice: a nation that means to accept
+        // it answers it, and a second copy would only wait beside the first.
+        std::set<std::string> parties;
+        for (const auto &a : v["actors"])
+            parties.insert(a.asString());
+        auto same = [&](const Json::Value &p) {
+            std::set<std::string> others;
+            for (const auto &a : p["actors"])
+                others.insert(a.asString());
+            return p["status"] == "pending" && p["kind"] == v["kind"] && others == parties &&
+                   p["terms"] == v["terms"];
+        };
+        for (const auto &p : w.proposals)
+            if (same(p))
+                throw Infeasible("the same offer is already awaiting answers");
+        for (const auto &p : pending)
+            if (p.kind == "proposal" && same(p.after))
+                throw Infeasible("the same offer is already awaiting answers");
         initializeProposal(v);
+    }
     pending.touch("proposal", cid, Json::nullValue, s.id, op.why) = v;
     awaiting(s);
     op.done = true;

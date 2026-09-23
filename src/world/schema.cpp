@@ -296,9 +296,15 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     defs["effect"]["properties"]["stability"] = effect;
     event["properties"]["effects"] = parse(R"({"type":"array","maxItems":3})");
     event["properties"]["effects"]["items"] = ref("effect");
-    if (w.engine.get("lifecycle_version", 0).asInt() == 1)
-        event["properties"]["independent_outcome"] = parse(
-            R"({"type":"string","enum":["none","reform","investment","negotiation","protest"]})");
+    // Required under the realism rules: a small model never volunteers an optional field, and an
+    // outcome without a map change keeps its text and effects only when it names what it was.
+    // The key sorts after operations, so the model writes its operations first and classifies
+    // what remains; placed before them, a "negotiation" label talked it out of writing the treaty.
+    if (w.engine.get("lifecycle_version", 0).asInt() == 1) {
+        event["properties"]["outcome_kind"] = parse(
+            R"({"type":"string","enum":["reform","investment","negotiation","protest","none"]})");
+        event["required"].append("outcome_kind");
+    }
     if (causes.empty())
         event["properties"]["causes"]["maxItems"] = 0;
     else
@@ -383,6 +389,7 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     // A development is kept only when it changes something, so it must name at least one effect.
     development["properties"]["effects"]["minItems"] = 1;
     development["properties"].removeMember("operations");
+    development["properties"].removeMember("outcome_kind");
     development["properties"].removeMember("blocked_by");
     std::set<std::string> others(actors);
     others.erase(w.player);

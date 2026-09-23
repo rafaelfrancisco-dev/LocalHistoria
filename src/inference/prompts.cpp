@@ -13,11 +13,18 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     const bool proposals = c.facts["treaty_proposals"].isObject() &&
                            !c.facts["treaty_proposals"].empty() &&
                            c.facts["initiative_type"] != "independent_regional";
+    // Every offered proposal must be answered, true to sign or false to decline, keyed by its ID:
+    // a small model otherwise writes "we accept" as an action and never signs. The revision
+    // answered is the one these facts show.
     if (proposals) {
-        schema["properties"]["responses"] = parse(R"({"type":"array","maxItems":8,"items":{
-          "type":"object","additionalProperties":false,"required":["proposal","revision","accept"],
-          "properties":{"proposal":{"type":"string"},"revision":{"type":"integer","minimum":1},
-          "accept":{"type":"boolean"}}}})");
+        auto &r = schema["properties"]["responses"];
+        r["type"] = "object";
+        r["additionalProperties"] = false;
+        for (const auto &id : c.facts["treaty_proposals"].getMemberNames()) {
+            r["properties"][id]["type"] = "boolean";
+            r["required"].append(id);
+        }
+        schema["required"].append("responses");
     }
     Json::Value answers(Json::arrayValue);
     int count = c.facts.get("action_count", 3).asInt();
@@ -27,8 +34,9 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         schema["properties"]["actions"]["minItems"] = count;
     static const std::string instruction =
         "You represent the actor specified by initiative_type in this fictional monthly sandbox. "
-        "Obey action_count. Answer pending treaty_proposals with responses containing the exact "
-        "proposal ID, revision, and accept boolean; prose conveys no signature. For "
+        "Obey action_count. Answer every pending treaty_proposals entry in responses by its ID: "
+        "true "
+        "signs its terms, false declines; prose conveys no signature. For "
         "independent_regional you represent only regional_identity, not its "
         "governing nation: act on what is actually contested between the region and its capital or "
         "its neighbours, and on what region_situation shows it is living through - revenue and "
@@ -58,15 +66,17 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
             if (key != "actions" && !(proposals && key == "responses"))
                 throw ValidationError("Invalid decision field");
         answers = Json::arrayValue;
-        std::set<std::string> seen;
-        if (j.isMember("responses") && (!j["responses"].isArray() || j["responses"].size() > 8))
+        const auto responses = j.get("responses", Json::Value(Json::objectValue));
+        if (!responses.isObject())
             throw ValidationError("Invalid proposal answers");
-        for (auto answer : j["responses"]) {
-            auto id = answer["proposal"].asString();
+        for (const auto &id : responses.getMemberNames()) {
             const auto &p = c.facts["treaty_proposals"][id];
-            if (!p.isObject() || answer["revision"] != p["revision"] ||
-                !answer["accept"].isBool() || !seen.insert(id).second)
-                throw ValidationError("Invalid proposal answer revision");
+            if (!p.isObject() || !responses[id].isBool())
+                throw ValidationError("Invalid proposal answer");
+            Json::Value answer;
+            answer["proposal"] = id;
+            answer["revision"] = p["revision"];
+            answer["accept"] = responses[id];
             answer["actor"] = c.actor;
             answers.append(answer);
         }
@@ -179,8 +189,10 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "war-weary nations face unrest, desertion and failed reforms; a nation fighting a "
         "high-intensity war has little to spare. Elections, opposition parties and legislatures "
         "exist only where a nation's government has them. "
-        "independent_outcome identifies a separate reform, investment, negotiation or protest; "
-        "effects require that supported independent result. Operations derive consequences in C++. "
+        "outcome_kind names what the outcome itself is when it is not an operation: a "
+        "reform, an investment, a negotiation (talks, offers, diplomacy) or a protest; none only "
+        "if "
+        "nothing happened. Operations derive consequences in C++. "
         "effects: economic and stability consequences of the event, only for nations it clearly "
         "affects; never invent numbers, the game computes them and corrects wars, seizures and "
         "treaties. Omit effects unless something changes; a world_event must list at least one. "

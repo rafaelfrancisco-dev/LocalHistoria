@@ -112,10 +112,11 @@ Json::Value LocalProvider::completion(const Json::Value &input, const Json::Valu
     const unsigned contextLimit = props["default_generation_settings"]["n_ctx"].asUInt();
     // Reasoning shares the output budget, so thinking needs a context large enough to hold it.
     bool thinking = reasoningBudget > 0 && contextLimit >= 16384;
-    // Every adjudicated action needs room for its description, effects and operations.
+    // Every adjudicated action needs room for its description, effects, operations and outcome
+    // kind. At 160 a war month of eleven outcomes ran out of tokens once the kind was required.
     unsigned outcomes = schema["properties"]["events"]["prefixItems"].size();
     unsigned answer = schema["properties"].isMember("events")
-                          ? std::clamp<unsigned>(768 + 160 * outcomes, 1536, 4096)
+                          ? std::clamp<unsigned>(768 + 192 * outcomes, 1536, 4096)
                           : 768;
     // Unbounded, a 4B model reasons for thousands of tokens (minutes) about simple actions.
     b["max_tokens"] = answer + (thinking ? reasoningBudget : 0);

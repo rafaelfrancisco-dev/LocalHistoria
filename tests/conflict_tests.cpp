@@ -1,5 +1,6 @@
 #include "localhistoria/conflicts.h"
 #include "localhistoria/lifecycle.h"
+#include "localhistoria/status.h"
 #include <fstream>
 #include <iostream>
 using namespace lh;
@@ -94,6 +95,37 @@ int main() {
               "Ambiguous legacy coalition labels its fallback and excludes known allies");
         check(encode(decode(encode(repeated.state))) == encode(repeated.state),
               "Pair accounting round-trips");
+        // Re-audit N2: the shared status names only the parties a nation is actually fighting.
+        w = fixture();
+        auto status = nationalStatus(w, "AA")["wars"][0];
+        check(status["against"] == parse(R"(["Bland"])") && !status.isMember("ceasefire_with"),
+              "A co-belligerent is not listed as an enemy");
+        auto truce = w;
+        truce.commitments["truce"] = parse(
+            R"({"name":"Truce","text":"Partial truce","actors":["AA","BB"],"kind":"ceasefire","status":"open"})");
+        status = nationalStatus(truce, "AA")["wars"][0];
+        check(status["against"].empty() && status["ceasefire_with"] == parse(R"(["Bland"])"),
+              "A covered ceasefire is shown as such");
+        // Re-audit N1: a war with a nation that cannot reach you claims none of your forces.
+        Adjacency adj{{"AA", {"BB"}}, {"BB", {"AA", "CC"}}, {"CC", {"BB"}}};
+        auto near = force::assault(w, adj, "BB", "AA", "AA");
+        auto far = w;
+        far.conflicts["far"] = parse(
+            R"({"actors":["AA","CC"],"kind":"war","name":"Far War","text":"War","status":"open","started_turn":0,"set_intensity":"high","intensity":"high"})");
+        initializeConflictPairs(far);
+        check(force::assault(far, adj, "BB", "AA", "AA")["defend"] == near["defend"],
+              "An unreachable war does not divide the defence");
+        far.territories["CC"]["controller"] = "BB";
+        far.territories["BB"]["controller"] = "CC";
+        check(force::assault(far, adj, "BB", "AA", "AA")["defend"].asDouble() <
+                  near["defend"].asDouble(),
+              "A war with a bordering enemy does");
+        // Re-audit N5: access treaties reach the model's facts.
+        truce.commitments["access"] = parse(
+            R"({"name":"Transit Pact","text":"Transit","actors":["AA","CC"],"kind":"other","status":"open","terms":[{"action":"grant_access","to":"AA"}]})");
+        check(describeAgreement(truce, "commitment", "access")["terms"][0] ==
+                  "Aland has military access to the other parties' land",
+              "Access terms are described");
         std::cout << checks << " hostile-pair checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

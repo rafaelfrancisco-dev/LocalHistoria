@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/politics.h"
 #include "status/status_internal.h"
 #include <algorithm>
@@ -201,9 +202,24 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
             war["since"] = campaignDate(c["started_turn"].asInt());
         war["casualties"] = integer(c, "casualties");
         war["against"] = Json::arrayValue;
-        for (auto &p : c["actors"])
-            if (p != a && war["against"].size() < 4)
-                war["against"].append(w.actors[p.asString()]["name"]);
+        if (!realismRules(w)) {
+            for (auto &p : c["actors"])
+                if (p != a && war["against"].size() < 4)
+                    war["against"].append(w.actors[p.asString()]["name"]);
+        } else {
+            // Only the parties this nation is actually fighting: a co-belligerent is not an enemy,
+            // and a covered ceasefire pauses its pair while the rest of the war goes on.
+            for (const auto &pair : hostilePairs(w, c)) {
+                if (!isParty(pair, a))
+                    continue;
+                auto other = pair["actors"][0] == a ? pair["actors"][1] : pair["actors"][0];
+                const char *key = fightingPair(w, c, a, other.asString()) ? "against"
+                                  : pair["status"] == "active"            ? "ceasefire_with"
+                                                                          : nullptr;
+                if (key && war[key].size() < 4)
+                    war[key].append(w.actors[other.asString()]["name"]);
+            }
+        }
         s["wars"].append(war);
     }
     s["treaties"] = Json::arrayValue;

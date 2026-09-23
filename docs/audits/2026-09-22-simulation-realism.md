@@ -2,6 +2,29 @@
 
 The largest realism gaps are in the connections between existing systems: consent, war participation, territorial control, force allocation, displacement, and economic effects. Closing these gaps would improve plausibility more than adding another layer of simulation.
 
+> **Resolution (23 September 2026).** [Plan 26](../../plans/26-simulation-realism-and-consistency.md)
+> addressed every finding below under a versioned "realism" turn lifecycle; the text of this report
+> is unchanged. The [re-audit](2026-09-23-simulation-realism-reaudit.md) reran this report's probe
+> under the new rules and all eight observations are fixed. The defects it found (N1–N8, below) were
+> fixed the same day; see its Resolution section.
+>
+> | # | Resolved by | Remaining (see re-audit) |
+> |---|---|---|
+> | 1 | Phase B: explicit proposals and signatures | N7: a direct cession needs no recipient consent; N8: AI nations never answer proposals in live play |
+> | 2 | Phase C: hostile pairs, pair-scoped peace and posture | N2: the national status still lists allies and ceasefire partners as enemies |
+> | 3 | Phase B: effects only from successful operations or a supported independent result | N3: outcomes without a map change are blanked unless the model sends an optional field, which it did not in live play |
+> | 4 | Phase D: access treaties, sea routes, embarkation, supply | — |
+> | 5 | Phase E: control history, usable output, integration | — |
+> | 6 | Phase E: occupation resistance, narrowed rebellion guard, demand pressure | — |
+> | 7 | Phases F, H: carried fractions, exposure-based losses, replacement, demobilisation | N4: establishment snapshot |
+> | 8 | Phase F: one allocation per month | N1: an unreachable war still takes half the pool |
+> | 9 | Phase G: origin–host ledger | — |
+> | 10 | Phase H: implementation allowance and efforts | N3 |
+> | 11 | Phase H: trade valued while it lasts | — |
+> | 12 | Phase I: exhaustion, capture effort, whole-front weighting | — |
+> | 13 | Phase D: construction pauses with control; agreed handovers | — |
+> | 14 | Phase J: urgency-ranked reactions with fair rotation | N8: proposals that never settle can take the reactive cap |
+
 This is an audit of the current working tree, including the existing uncommitted compiler changes. No production code was changed. Findings marked **probed** were exercised against the current core library; **source-confirmed** means the rule is visible in code but its campaign frequency was not measured. Improvements are design recommendations, not claims of historically calibrated outcomes.
 
 ## Highest priority: rules that admit contradictory outcomes

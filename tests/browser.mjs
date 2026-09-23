@@ -249,7 +249,7 @@ try {
   await page.waitForTimeout(500);
 
   const rid = await page.evaluate(() => Object.values(state.entities).find(e=>e.actor==="PT").region);
-  await page.locator("#action-0").fill("Cede the region to Spain after building a port: transfer-and-build-fixture");
+  await page.locator("#action-0").fill("Free the region as a new state after building a port: transfer-and-build-fixture");
   await page.evaluate((id) => { let target; layers.eachLayer((l) => { if (l.feature.id === id) target = l; }); target.fire("click"); }, rid);
   // The earlier map click on Portugal already pinned a region to the action; remove it with its chip.
   await page.waitForFunction(() => document.querySelectorAll(".action-card .chip").length === 2);
@@ -257,18 +257,19 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".action-card .chip").length === 1);
   await page.locator("#turn").click();
   await page.waitForFunction(()=>document.querySelector("#date").textContent==="April 2026" && !busy);
-  await page.waitForFunction(id=>state.territories[id].owner==="ES",rid);
+  await page.waitForFunction(id=>state.territories[id].owner==="tagus-republic",rid);
   const changed = await page.locator("#journal .changes").first().innerText();
   assert.match(changed, /Fixture port \(port\) construction started/);
-  assert.match(changed, /: Portugal → Spain/);
-  assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"ES");
+  assert.match(changed, /: Portugal → Tagus Republic/);
+  assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"tagus-republic");
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
   await page.evaluate(()=>{entityLayers.getLayers().find(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")).openPopup();});
-  // Ceding the region hands Portugal's unfinished port to Spain on the same schedule.
-  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port · port · Spain · under construction until/);
+  // Under the plan 26 rules land passes to another existing nation only by a treaty it signs; a new
+  // state founded on the region takes Portugal's unfinished port on the same schedule.
+  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port · port · Tagus Republic · under construction until/);
   await page.reload();
-  await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
+  await page.waitForFunction(id=>state?.territories[id]?.owner==="tagus-republic"&&state.entities["e3-fixture-port"],rid);
   assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");
 
   const regional = await page.evaluate(() => Object.keys(state.regional_politics)[0]);

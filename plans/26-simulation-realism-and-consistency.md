@@ -1,6 +1,6 @@
 # 26 · Simulation realism and consistency
 
-**Status: implementation in progress — unpublished.** Drafted 2026-09-22.
+**Status: done 2026-09-23.** Drafted 2026-09-22.
 
 2026-09-23: Phases A, B and C gates passed — 16 CTest cases (adding `consent` and
 `conflicts`), legacy v0/v2/v3/v4 and mixed-version state/event replay, the disposable
@@ -176,6 +176,35 @@ and replay, the legacy replays, and `make format-check`.
 - **Known limits.** The live-model check is two played months, not the full matrix of final
   verification step 6. Returns are shown per region, not summarised in the journal. Adjudication
   instructions were not trimmed further.
+
+2026-09-23: The re-audit blockers are fixed (N1–N8; see the audit's Resolution section).
+- **Tests.** 17/17 CTest (45.2 s), format, and integration with browser, restart and replay.
+- **Live campaign, rerun.** The six-month campaign replays identically. Blanked outcomes fell from
+  37/60 to 4/65, AI nations sign treaties, and reforms start efforts.
+- **Accepted.** Plan 26 is accepted.
+- **Known limits.**
+  - The model still often narrates a treaty offer without the operation.
+  - About 10–15 s more adjudication per war month.
+  - Treaty answers can defer a war opponent's reaction by one month.
+  - The calibration note on single-month border captures stays open for a real short-war check.
+
+2026-09-23: Post-implementation audit run:
+[docs/audits/2026-09-23-simulation-realism-reaudit.md](../docs/audits/2026-09-23-simulation-realism-reaudit.md).
+- **Deterministic.** All fourteen original findings reproduce as fixed. Every phase gate passes on
+  fresh runs: 17/17 CTest, format, integration with browser, restart and replay.
+- **Live campaign.** A bounded live matrix (`world_probe` × 3 and a six-month Ukraine campaign) found
+  defects that block acceptance:
+  - **N3:** outcomes without a map change are blanked unless the model sends the optional
+    `independent_outcome`, which it sent 0 times in 58 events.
+  - **N8:** AI nations accept proposals in prose, never in `responses`, so no AI–AI treaty forms and
+    pending offers crowd the reactive cap.
+  - **N7:** a direct cession needs no recipient consent.
+  - **N1:** an unreachable war halves the pool.
+  - **N2:** the shared status lists allies and ceasefire partners as enemies.
+- **Minor.** N4 (establishment snapshot) and N5 (access terms missing from facts).
+- **Tooling.** `world_probe`'s war fixture is too weak under Phase I (N6).
+- **Docs.** README and the original audit's resolution pointers are done.
+- **Open.** Plan 26 stays open until N1–N3, N7 and N8 are fixed and the live campaign is rerun.
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -639,8 +668,10 @@ phase gates above are intended to catch those risks before further features are 
 - [x] H — Paid progress, recurring trade, replacement, and demobilization.
 - [x] I — Evidence-based combat pacing and exhaustion.
 - [x] J — Fair urgent reactions, accurate presentation, and complete verification.
-- [ ] Post-implementation audit — every original finding and phase checked against fresh evidence;
-      unresolved items recorded explicitly.
+- [x] Post-implementation audit — every original finding and phase checked against fresh evidence;
+      unresolved items recorded explicitly (2026-09-23 re-audit).
+- [x] Re-audit blockers — N3, N8, N7, N1, N2 fixed; `world_probe` recalibrated (N6); six-month live
+      campaign rerun and compared.
 
 ## Post-implementation audit prompt
 

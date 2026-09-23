@@ -84,10 +84,14 @@ int main(int argc, char **argv) {
             name == "invasion" || name == "finish_invasion" || name == "capital_push";
         // Synthetic superiority isolates order comprehension from the real Portuguese force's
         // inability to invade Spain. weak_raid retains the real inventories as a negative control.
+        // These regions lie about 1,100 km apart, so the plan 26 capture effort is about 2 and a
+        // seizure needs an effective 3:1; the forces below clear it with a margin.
         if (strongInvasion) {
-            w.actors["PT"]["status"]["military"]["active"] = 800000;
+            w.actors["PT"]["status"]["military"]["active"] = 2500000;
             w.actors["PT"]["status"]["military"]["aircraft"] = 500;
         }
+        if (name == "conflict")
+            w.actors["ES"]["status"]["military"]["active"] = 450000;
         if (name == "weak_raid")
             w.territories["region-east"]["name"] = "Galicia";
         const bool naval = name == "sea_move" || name == "overseas_landing";
@@ -158,8 +162,14 @@ int main(int argc, char **argv) {
                 for (auto &e : s.entities)
                     expected = expected && e["kind"] != "base";
             }
-            if (name == "reform")
+            // A reform changes no map and starts an effort the month step prices and pays for.
+            if (name == "reform") {
                 expected = delta.changes.empty() && !delta.events.empty();
+                bool effort = false;
+                for (auto &e : delta.events)
+                    effort = effort || e.isMember("effort");
+                expected = expected && effort;
+            }
             if (name == "overreach" || name == "weak_raid")
                 expected = s.territories["region-interior"]["controller"] == "ES" &&
                            s.territories["region-east"]["controller"] == "ES" &&

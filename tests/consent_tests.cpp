@@ -144,7 +144,7 @@ int main() {
         check(d.events[0]["failed"] == true && d.events[0]["effects"].empty() &&
                   d.events[0]["major"] == false,
               "Failed operation grants no reward or headline");
-        bad["independent_outcome"] = "protest";
+        bad["outcome_kind"] = "protest";
         d = compile(w, bad);
         check(d.events[0]["partial"] == true && d.events[0]["effects"][0]["economy"] == "none" &&
                   d.events[0]["effects"][0]["stability"] == "decline",
@@ -167,7 +167,7 @@ int main() {
         check(!rewarded(compile(done, quit)), "Leaving one costs no one-off decline");
         // A reform or investment starts a priced effort; its benefit waits for completion.
         auto reform = event("AA", "Aland reforms its civil service.", "[]");
-        reform["independent_outcome"] = "reform";
+        reform["outcome_kind"] = "reform";
         reform["effects"] =
             parse(R"([{"actor":"AA","economy":"strong_growth","stability":"growth"}])");
         d = compile(w, reform);
@@ -189,6 +189,50 @@ int main() {
         d = compile(underway, reform);
         check(!d.events[0].isMember("effort") && !d.events[0].isMember("effects"),
               "A reform already under way is continued, not rewarded again");
+        // Re-audit N3: a small model never volunteers an optional field, so the realism schema
+        // requires the outcome category; a background development keeps its consequence.
+        auto schema = operationSchema(w, encode(w), {{"AA", "Reform the civil service"}});
+        bool required = false;
+        for (const auto &k : schema["properties"]["events"]["prefixItems"][0]["required"])
+            required = required || k == "outcome_kind";
+        check(required, "The realism schema requires an outcome category");
+        Json::Value world;
+        world["events"] = Json::arrayValue;
+        world["world_events"].append(parse(
+            R"({"actor":"BB","description":"Floods hit Bland.","causes":[],"effects":[{"actor":"BB","economy":"decline","stability":"none"}]})"));
+        d = compileOperations(w, world, {});
+        check(d.events[0]["text"] == "Floods hit Bland." &&
+                  d.events[0]["effects"][0]["economy"] == "decline",
+              "A world event keeps its text and consequence");
+        auto plain = event("AA", "Aland reforms its courts.", "[]");
+        plain["outcome_kind"] = "reform";
+        check(compile(w, plain).events[0]["effort"] == "reform",
+              "A named reform starts its effort without a rated effect");
+        plain["effects"] = parse(R"([{"actor":"AA","economy":"decline","stability":"none"}])");
+        check(!compile(w, plain).events[0].isMember("effort"),
+              "A reform the model judged a setback starts nothing");
+        // Re-audit N8: the same offer is not opened twice while it awaits answers.
+        Json::Value both;
+        both["events"].append(offer("BB"));
+        both["events"].append(offer("AA"));
+        d = compileOperations(w, both, {});
+        check(apply(w, d).proposals.size() == 1 && d.events[1]["failed"] == true,
+              "An identical offer awaiting answers is not made again");
+        // Re-audit N7: land passes to another nation only by a treaty it signs.
+        auto gift = event("BB", "Bland hands its land to Aland.",
+                          R"([{"action":"transfer_territory","region":"BB","to":"AA"}])");
+        d = compile(w, gift);
+        check(d.changes.empty() && d.events[0]["failed"] == true,
+              "A cession to another nation needs its signature");
+        auto held = w;
+        held.territories["BB"]["controller"] = "AA";
+        d = compile(held, gift);
+        check(apply(held, d).territories["BB"]["owner"] == "AA",
+              "An owner may recognise the nation already holding the region");
+        auto legacy = w;
+        legacy.engine = Json::objectValue;
+        check(apply(legacy, compile(legacy, gift)).territories["BB"]["owner"] == "AA",
+              "Legacy campaigns keep unilateral cession");
         std::cout << checks << " explicit consent and accepted outcome checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

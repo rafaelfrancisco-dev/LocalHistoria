@@ -70,12 +70,62 @@ int constructionCapacity(const WorldState &w, const std::string &a) {
                 gdp += number(t, "gdp_usd");
     return std::max(1, int(std::min(double(INT_MAX), std::floor(gdp / 150e9))));
 }
+namespace {
+// Whether two enemies can meet at all: land they hold borders, an active army stands in or next
+// to the other's land, a fleet's routes reach its coast, or a seeded theatre already has them
+// fighting. A war declared on a nation nobody can reach claims none of its forces.
+bool contact(const WorldState &w, const Adjacency &adj, const Json::Value &c, const std::string &a,
+             const std::string &b) {
+    auto held = [&](const std::string &r, const std::string &x) {
+        const auto &t = w.territories[r];
+        return t["controller"] == x && t["kind"] != "residual";
+    };
+    bool theatreA = false, theatreB = false;
+    for (const auto &r : c["theatre"]) {
+        theatreA = theatreA || held(r.asString(), a);
+        theatreB = theatreB || held(r.asString(), b);
+    }
+    if (theatreA && theatreB)
+        return true;
+    for (const auto &[r, neighbours] : adj) {
+        bool ofA = held(r, a);
+        if (!ofA && !held(r, b))
+            continue;
+        for (const auto &n : neighbours)
+            if (held(n, ofA ? b : a))
+                return true;
+    }
+    for (const auto &e : w.entities) {
+        auto x = e["actor"].asString();
+        if ((x != a && x != b) || e["status"] != "active")
+            continue;
+        auto other = x == a ? b : a;
+        auto at = e["region"].asString();
+        if (held(at, other))
+            return true;
+        if (e["kind"] == "army") {
+            if (auto it = adj.find(at); it != adj.end())
+                for (const auto &n : it->second)
+                    if (held(n, other))
+                        return true;
+        } else if (e["kind"] == "fleet") {
+            if (auto it = adj.sea.find(at); it != adj.sea.end())
+                for (const auto &[to, km] : it->second)
+                    if (km <= fleetRangeKm && held(to, other))
+                        return true;
+        }
+    }
+    return false;
+}
+} // namespace
 std::set<std::string> engagements(const WorldState &w, const Adjacency &adj, const std::string &a) {
     std::set<std::string> enemies;
     for (const auto &c : w.conflicts)
         if (isOpen(c) && isParty(c, a))
             for (const auto &p : c["actors"])
-                if (p != a && (!realismRules(w) || fightingPair(w, c, a, p.asString())))
+                if (p != a && !enemies.contains(p.asString()) &&
+                    (!realismRules(w) ||
+                     (fightingPair(w, c, a, p.asString()) && contact(w, adj, c, a, p.asString()))))
                     enemies.insert(p.asString());
     // Neighbours are not enemies simply because they share a peaceful border.
     for (const auto &[r, neighbours] : adj) {

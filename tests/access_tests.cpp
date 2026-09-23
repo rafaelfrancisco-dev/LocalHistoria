@@ -145,15 +145,17 @@ static void access(WorldState &w, const char *grantor, const char *kind = "defen
 }
 // Offers a treaty from `from` to the other parties, then signs it in the next month with every
 // party accepting. Returns the month after signing.
-static WorldState signTreaty(WorldState w, const char *from, const std::string &actors,
-                             const std::string &terms) {
+// A treaty offered by `from` and signed the next month by every party: the state it was offered
+// in and the delta that settles it (empty when the offer was refused outright).
+static std::pair<WorldState, WorldDelta>
+settlement(WorldState w, const char *from, const std::string &actors, const std::string &terms) {
     auto offer = ops(w, from,
                      R"([{"action":"add_commitment","kind":"other","name":"Accord","text":"Terms",)"
                      R"("months":12,"actors":)" +
                          actors + R"(,"terms":)" + terms + "}]");
     auto offered = applyDelta({w, {}}, offer, geography()).state;
     if (offered.proposals.empty())
-        return offered;
+        return {offered, {}};
     auto id = offered.proposals.getMemberNames().back();
     offered.turn++;
     Json::Value answers(Json::arrayValue);
@@ -172,9 +174,12 @@ static WorldState signTreaty(WorldState w, const char *from, const std::string &
     response["events"].append(parse(R"({"actor":"DD","description":"Quiet month",)"
                                     R"("blocked_by":"none","causes":[],"background":false,)"
                                     R"("operations":[]})"));
-    return applyDelta({offered, {}}, compileOperations(offered, response, adjacency(), answers),
-                      geography())
-        .state;
+    return {offered, compileOperations(offered, response, adjacency(), answers)};
+}
+static WorldState signTreaty(WorldState w, const char *from, const std::string &actors,
+                             const std::string &terms) {
+    auto [offered, settled] = settlement(w, from, actors, terms);
+    return applyDelta({offered, {}}, settled, geography()).state;
 }
 static Json::Value refs() {
     Json::Value r;
@@ -337,9 +342,13 @@ int main() {
             "region":"A1","status":"under_construction","completes_turn":8,"personnel":8000,
             "longitude":0,"latitude":0,"origin_event":"t4-build"})");
         const auto before = force::uncommittedPersonnel(ceding, "AA");
-        auto cession =
-            ops(ceding, "AA", R"([{"action":"transfer_territory","region":"A1","to":"DD"}])");
-        auto ceded = applyDelta({ceding, {}}, cession, geography()).state;
+        // Under the realism rules land passes to another nation only by a treaty it signs.
+        check(!done(ops(ceding, "AA",
+                        R"([{"action":"transfer_territory","region":"A1","to":"DD"}])")),
+              "A cession to another nation needs its signature");
+        auto [signing, cession] = settlement(ceding, "AA", R"(["AA","DD"])",
+                                             R"([{"action":"cede","region":"A1","to":"DD"}])");
+        auto ceded = applyDelta({signing, {}}, cession, geography()).state;
         check(ceded.entities["harbour"]["actor"] == "DD" &&
                   ceded.entities["harbour"]["completes_turn"] == 9,
               "A ceded region's port passes to its new holder on schedule");
@@ -353,7 +362,7 @@ int main() {
         for (auto &c : stolen.changes)
             if (c["id"] == "harbour")
                 c["after"]["actor"] = "EE";
-        rejects([&] { applyDelta({ceding, {}}, stolen, geography()); },
+        rejects([&] { applyDelta({signing, {}}, stolen, geography()); },
                 "A project passes only to its region's controller");
         auto oldRules = ceding;
         oldRules.engine.clear();
@@ -413,14 +422,6 @@ int main() {
         // A3 is BB's, held by AA.
         auto claim = w;
         claim.conflicts.clear();
-        auto sold = applyDelta({claim, {}},
-                               ops(claim, "BB",
-                                   R"([{"action":"transfer_territory","region":"A3","to":"DD"}])"),
-                               geography())
-                        .state;
-        check(sold.territories["A3"]["owner"] == "DD" &&
-                  sold.territories["A3"]["controller"] == "AA",
-              "A cession of occupied land transfers the claim, not the occupier");
         auto treatySold = signTreaty(claim, "BB", R"(["BB","DD"])",
                                      R"([{"action":"cede","region":"A3","to":"DD"}])");
         check(treatySold.territories["A3"]["owner"] == "DD" &&

@@ -211,8 +211,10 @@ function diplomacyIndex() {
   if (selected) {
     for (const c of Object.values(state?.commitments || {}))
       if (c.status === "open" && c.actors.includes(selected)) c.actors.forEach((a) => relate(a, ALLIANCE_KINDS.has(c.kind) ? "ally" : "partner"));
+    // A war's hostile pairs, when recorded, say who fights whom: a co-belligerent is not an enemy.
     for (const c of Object.values(state?.conflicts || {}))
-      if (c.status === "open" && c.actors.includes(selected)) c.actors.forEach((a) => relate(a, "enemy"));
+      if (c.status === "open" && c.actors.includes(selected))
+        (c.hostile_pairs ? c.hostile_pairs.filter((p) => p.actors.includes(selected)).flatMap((p) => p.actors) : c.actors).forEach((a) => relate(a, "enemy"));
   }
   if (highlight) {
     const item = state?.[highlight.kind === "conflict" ? "conflicts" : "commitments"]?.[highlight.id];
@@ -309,7 +311,7 @@ function renderStats() {
   const lastGdp = typeof last.last_gdp_change === "number" ? `${signed(last.last_gdp_change, Math.abs(last.last_gdp_change).toFixed(2))}% last month` : "";
   if (national?.gdp) {
     const [local, dollars] = national.gdp.split(" (");
-    const wars = national.wars.map((w) => `${w.name} (${w.intensity})`).join(" · ");
+    const wars = national.wars.map((w) => `${w.name}${w.against?.length ? ` against ${w.against.join(", ")}` : ""}${w.ceasefire_with?.length ? `, ceasefire with ${w.ceasefire_with.join(", ")}` : ""} (${w.intensity})`).join(" · ");
     for (const [label, value, detail, wide] of [
       ["GDP" + (national.estimated ? " · estimate" : ""), local, [dollars ? dollars.slice(0, -1) : "", lastGdp].filter(Boolean).join(" · "), true],
       ["population", national.population_text, [lastPopulation, national.displaced ? `${national.displaced.toLocaleString()} displaced` : ""].filter(Boolean).join(" · ")],
@@ -1127,6 +1129,13 @@ function renderDiplomacy() {
     const text = document.createElement("p");
     text.textContent = v.text;
     card.append(head, parties, meta, text);
+    const sides = kind === "conflict" && v.status === "open" ? pairSummary(v) : "";
+    if (sides) {
+      const p = document.createElement("p");
+      p.className = "meta";
+      p.textContent = sides;
+      card.append(p);
+    }
     if (v.terms?.length) card.append(termList(v.terms));
     const regions = document.createElement("div");
     regions.className = "chips";
@@ -1135,6 +1144,18 @@ function renderDiplomacy() {
     card.append(button("Show on map", "show-on-map", () => showOnMap(kind, id)));
     list.append(card);
   }
+}
+// Who fights whom in a war with more than two parties or a partial ceasefire: allies on one side are
+// not enemies, and a ceasefire or peace between two parties pauses only their pair.
+const PAUSING_KINDS = new Set(["ceasefire", "peace_treaty", "non_aggression_pact"]);
+function pairSummary(c) {
+  if (!c.hostile_pairs?.length) return "";
+  const paused = (p) => Object.values(state.commitments || {}).some((k) => k.status === "open" && PAUSING_KINDS.has(k.kind) && p.actors.every((a) => k.actors.includes(a)));
+  const label = (p) => p.actors.map(actorName).join("–");
+  const fighting = c.hostile_pairs.filter((p) => p.status === "active" && !paused(p)).map(label);
+  const truce = c.hostile_pairs.filter((p) => p.status === "active" && paused(p)).map(label);
+  if (c.actors.length <= 2 && !truce.length) return "";
+  return [fighting.length ? `Fighting: ${fighting.join(", ")}` : "", truce.length ? `Ceasefire: ${truce.join(", ")}` : ""].filter(Boolean).join(" · ");
 }
 // Card pieces shared by the Wars & treaties and Events menus.
 function button(text, className, onclick) {

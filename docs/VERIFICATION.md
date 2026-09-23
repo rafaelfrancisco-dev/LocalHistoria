@@ -111,3 +111,15 @@ Each phase had its own gate and commit:
 - **Live model:** see MODELS.md. This is a two-month A/B on a copied save, not a full campaign
   matrix.
 
+## Plan 26 post-implementation audit (2026-09-23)
+
+Full report: [re-audit](audits/2026-09-23-simulation-realism-reaudit.md).
+- **Fresh deterministic evidence:** 17/17 CTest, format, integration with browser, and the original
+  audit probe rerun under the realism lifecycle, where all eight observations are fixed.
+- **Live Qwen3.5-4B evidence:** `world_probe` × 3, plus a six-month Ukraine campaign on a disposable
+  save that replayed identically without inference.
+- **Live-only defects found:** narrative outcomes are blanked (N3), AI nations never sign
+  proposals (N8), and a cession needs no recipient consent (N7).
+- **Fixed the same day:** these and N1, N2, N4–N6. After the fixes: 17/17 CTest (45.2 s),
+  integration with browser, and a rerun of the six-month live campaign that replayed identically
+  (blanked outcomes 37/60 → 4/65). Plan 26 is accepted.

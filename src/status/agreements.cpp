@@ -71,6 +71,10 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
             d["terms"].append(name(t["by"]) + " holds " + region + " while in force");
         else if (t["action"] == "withdraw")
             d["terms"].append(name(t["by"]) + " withdrew from " + region);
+        else if (t["action"] == "grant_access")
+            d["terms"].append(
+                name(t["to"]) + " has military access to " +
+                (t.isMember("region") ? region : std::string("the other parties' land")));
     }
     if (kind == "conflict") {
         d["intensity"] = v.get("intensity", "unknown");

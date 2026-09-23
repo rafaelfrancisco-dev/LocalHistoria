@@ -134,3 +134,23 @@ playing the same two months from one copied save on the new binary and on the pr
 - **Latency:** unchanged (3–14 s per decision, 84–86 s per adjudication).
 - **Outcomes:** month 2 had the same outcomes on both sides, and neither echoed month 1.
 
+The Plan 26 re-audit (23 September 2026) measured both schemas on Qwen3.5-4B. It used a six-month
+Ukraine campaign with identical orders on a disposable save, and `world_probe` × 3:
+
+| | Before the fixes | After |
+|---|---|---|
+| Model events blanked to "No validated change" | 37 of 60 | 4 of 65 |
+| `outcome_kind` / `independent_outcome` given | 0 of 58 (optional) | 57 of 57 (required, after `operations`) |
+| AI answers to treaty proposals | none (acceptances written as prose) | 5 structured answers; 2 AI–AI treaties formed |
+| Player treaty orders that became proposals | 0 of 3 | 1 of 3 (the other two kept as narrated negotiations) |
+| Reform efforts started | 0 | 1 (continued, not restarted, by repeat orders) |
+| Adjudication per month | 104–134 s, 1,887–2,452 output tokens | 120–129 s, 2,010–2,859 tokens; one month hit the output cap and retried (+49 s) |
+| `world_probe` reform (effort started) | 0/3 | 3/3 |
+
+Placing the required field before `operations` made the model label treaty offers "negotiation"
+and then omit the treaty operation. After `operations`, operation choice is unchanged. The output
+allowance per outcome rose from 160 to 192 tokens after the capped month. That change is only a
+ceiling and was not re-measured live. A negotiation outcome keeps its text, so "Ukraine formally
+submits a proposal for a ceasefire" can read like an offer that the engine never recorded; the
+proposals list and the treaty panel show only real offers. Decision schemas that offer proposals now require a
+`responses` object with one boolean per proposal ID.

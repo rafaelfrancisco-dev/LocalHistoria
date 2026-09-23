@@ -61,7 +61,7 @@ One turn is one month. The prompt tells the model to advance large goals by a st
 - **Strength.** Quality is `clamp(sqrt(GDP per capita / 20000), 0.6, 1.4)`. Local active armies plus 20% of uncommitted personnel (30% in an open war/civil war), 30% of combat aircraft × 200, and eligible naval support form attack strength. Defence uses 25%/40% uncommitted personnel, 5% of reserves and 50% aircraft divided across distinct enemies, a 1.5 advantage, and the same naval support. Naval support is 30% of warships × 1,500 where the region is coastal, a port/fleet/port-marked city exists, or the nation's fleet is nearby. Civil war multiplies defence by 0.6; stability below 25 by 0.8. An attacker in a shared conflict at least twelve months old gets ×0.6. Peaceful neighbours are not enemies. Under the plan 26 lifecycle, supply bounds this: the uncommitted-personnel and aircraft shares reach an attack only through a *supplied* region the attacker holds on the target's border, one linked to its *heartland* (its most populous region that it owns and controls) through land it may enter, sea routes, or an ocean basin shared by coasts it may enter, at any distance. An enclave with no friendly way home (Nakhchivan) is cut off; Hawaii, across the Pacific, is not. A nation with no heartland is never cut off. An army in an unsupplied region counts at half strength. Overseas, only troops embarked with a fleet whose routes reach the target count: armies sharing that fleet's region, up to 500 troops per warship. An empty fleet carries no land force. A defender's region cut off from home gets half of its national share.
 - **Tempo.** Attack/defence ratios of at least 1.5 allow two regions; at least 0.75 allows one; below 0.75 allows none. Limits apply per attacker/defender, alongside a global maximum of two regions per actor. Formations are subtracted from uncommitted pools, never counted twice. Open `war` and `border_conflict` fronts also accumulate deterministic pressure at capacity 2: declared medium/high intensity gives `0.25/0.45 × log2(clamp(ratio, 1.5, 8) / 1.5) × jitter` per month. One pressure point takes one reachable region; ordered and autonomous gains share the same ceiling. Capacity 0/1 bleeds pressure instead. Low intensity and open peace agreements prevent autonomous advances. Both sides need inventories. Civil wars and insurgencies remain model-adjudicated because inventory ratios alone do not represent defections or popular support.
 - **Capacity.** Concurrent construction is `max(1, floor(GDP / US$150 billion))`, excluding event sites. Armies reserve 10% of active personnel rounded to 1,000, clamped to 5,000–150,000 and available personnel; fleets reserve 25% of warships rounded to a whole ship, clamped to 1–30 and available ships. Unfinished formations also reserve inventory; inactive units release it. Destroyed units lose their allocation once. Reactivation requires available inventory.
-- **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month.
+- **Annexation.** An owner may cede land. Anyone else must have controlled the region since before this month, so conquest takes two steps: occupy, then annex a later month. Under the plan 26 lifecycle an owner hands land directly only to a new state it founds or to the nation already holding the region; any other nation receives land only through a treaty `cede` term it signs.
 - **Movement.** Armies move one neighboring region per month and fleets up to 1,500 km. Other entities cannot relocate. Only an entity's owner moves it, and never while it is unfinished. Under the plan 26 lifecycle, an army may enter only land its nation holds, land nobody holds, or land whose controller granted it access by an open treaty's `grant_access` term; an alliance alone grants none. Hostile ground must first be taken by `occupy`, earlier in the same month or before. An army may also sail to a coast within a fleet's range when a fleet in its region can lift all of it. A fleet sails only to a coastal region along a sea route, into waters it may use or off an enemy coast; a fleet saved inland may put to sea on a bordering coast. Revoking access strands troops without removing them.
 - **Construction.** `build` needs control of the region (except event sites). It creates `under_construction` entities finishing after: army 2 months, base 3, fleet 4, port 6, city 24. Status changes cannot complete construction or restore destroyed entities. Under the plan 26 lifecycle fleets and ports need a coastal region, and construction follows control. An agreed transfer (a cession, an agreed occupation, its withdrawal or expiry) hands the previous holder's unfinished port, base or city to the new holder on the same schedule, and disbands its unfinished armies and fleets, returning their troops and ships to its pool; a disbanded formation cannot muster on land its owner may not enter. Any other loss of control pauses the project with its remaining months. It keeps its builder and any reserved troops or ships, and resumes when the builder holds the region again. The new controller finishes a paused port, base or city only by building the same kind there, which takes it over and uses one of its construction slots. The owner may abandon a paused project, and an enemy in reach may destroy it. Pauses are engine-owned; no delta may create, alter or complete one.
 - **Event sites.** An `event_site` marks where a notable incident happened. It is active at once with `expires_turn` three months ahead (`eventMapMonths`), and `resolve` makes it `inactive` when that month arrives, without a journal line. A later feasible event renews it for another three months when it involves the site or cites the site's originating event as a cause. Only active event sites carry `expires_turn`; sites saved before expiry existed keep none until an event touches them, so replay is unchanged.
@@ -95,6 +95,38 @@ Clauses that took effect are kept on the treaty as `terms` (a cession records th
 - unanswered, or no longer possible (a party is gone or the amended treaty has ended): the proposal lapses with an event by the proposer.
 
 Only these settlements carry the internal `settle_proposal` operation, so a model cannot answer for the player. Proposals are answered once, only in a later month, and are part of the recorded delta, so replay needs no extra input. Pending proposals appear in each party's decision facts (`treaty_proposals`), and the proposer acts in the month the answer arrives.
+
+### Consent, outcomes and hostile pairs (realism lifecycle)
+
+Under the realism lifecycle (Plan 26 B and C), and as corrected by the
+[re-audit](audits/2026-09-23-simulation-realism-reaudit.md):
+- **Explicit signatures.** Every treaty, amendment or cession between nations is a proposal with
+  immutable terms, a `revision`, `required_signatories`, `answers` and `expires_turn` (12 months;
+  the player still answers the next month). An AI proposer signs its own offer. Every other
+  signature must be an explicit answer to that proposal ID and revision. The player answers with
+  `responses` on `POST /turns`. A reacting AI nation answers in its decision's `responses`
+  object, which its schema requires to hold one boolean per offered proposal: true signs, false
+  declines. Narration, a mention, a refusal or a blocked event conveys nothing. An amendment opens
+  a new revision that needs fresh answers. A settlement whose material terms have become
+  impossible lapses as a whole. The same offer (kind, parties and terms) is not opened again while
+  one awaits answers.
+- **Outcomes without a map change.** Effects come from successful operations or from a supported
+  independent result. The adjudication schema requires `outcome_kind` on every outcome:
+  `reform`, `investment`, `negotiation`, `protest` or `none`. It follows `operations`, so the model
+  writes its operations first; placed before them, a `negotiation` label talked it out of writing
+  the treaty. An effort starts only from an outcome with no successful operation. A reform or investment starts an
+  effort (see below) unless the model rates it a setback. A negotiation keeps its text but moves no economy. A protest can only cost
+  stability. A world event keeps its text and its bounded consequence. An outcome marked `none`
+  with no successful operation reads "No validated change resulted from the proposed action.", and
+  one whose every operation failed reads "The proposed action could not be carried out."
+- **Hostile pairs.** A war records who fights whom (`hostile_pairs`) and each party's own posture
+  (`postures`). A co-belligerent is never an enemy, and a ceasefire, peace treaty or
+  non-aggression pact between two parties pauses only their pair. No single party can end the
+  whole war: `resolve_conflict` needs a settlement covering every remaining pair. Duplicate
+  declarations do not add exposure. Older multi-party wars get a documented fallback
+  (`pair_provenance`). The national status lists a war's enemies as `against` (only the pairs
+  actually fighting) and paused ones as `ceasefire_with`; the Wars & treaties dialog shows who
+  fights whom when a war has more than two parties or a partial ceasefire.
 
 An operation that breaks a limit is dropped on its own. The rest of its event still happens, the event text stays the model's description, and the reasons are kept only in the event's `dropped_operations` (`{action, reason}`) for the audit, never in text that players or later prompts read. The event is saved with `partial: true` when some of its operations (or treaty terms) were dropped, or `failed: true` when every operation was. The Events dialog shows a "partly happened" or "did not happen" badge, and the journal line starts with "Partial · " or "Failed · ". Later prompts read what actually happened: related history, regional history, recent events and chronicle inputs append a short clause built from the dropped actions, such as "Invade Pakistan (In fact: no forces moved.)", or "(In fact: not every region changed hands.)" when some but not all of an event's seizures went through. The saved text, the journal and the narration keep the model's description. Operations that depend on a dropped one (such as handing land to a state that was not created) fail and are dropped too. Only a new state left without territory rolls back its whole event: it is saved as `blocked_by: "infeasible"` and kept out of the journal, narration and later history (related history, regional history and chronicle inputs all skip it).
 
@@ -212,8 +244,10 @@ Status version 4 adds all of this. Turns recorded at 3 or below gain no unrest a
 
 Plan 26 F makes every use of military strength draw on one allocation per month.
 
-- **Engagements.** An actor's engagements are the enemies it is fighting plus neighbours
-  disputing ground with it. A war declared this month counts: the compiler judges seizures with
+- **Engagements.** An actor's engagements are the enemies it is fighting and can meet, plus
+  neighbours disputing ground with it. Two enemies meet when land they hold borders, an active army
+  stands in or next to the other's land, a fleet's routes reach its coast, or a seeded theatre has
+  them fighting; a war declared on a nation nobody can reach claims none of the pool. A war declared this month counts: the compiler judges seizures with
   this month's wars and treaties in force, and the month step reads its forces from the start of
   the month but its wars from after the orders. The national pool (20%, or 30% when mobilised, of
   uncommitted personnel), the air arm and the fleet are divided across every engagement, attacking
@@ -297,8 +331,8 @@ and nothing is borrowed. The coefficients live in `src/status/status_internal.h`
   0.6–1.4): army US$50 million, fleet 100 million, base 150 million, port 300 million, city
   500 million. Construction slots still apply. Projects under way when a campaign moves to these
   rules keep their progress and pay only from then on.
-- **Efforts.** A `reform` or `investment` independent outcome with a positive effect starts an
-  effort (`status.efforts`), priced by C++, not the model. An investment costs 0.6% of annual
+- **Efforts.** A `reform` or `investment` outcome (`outcome_kind`) starts an effort, unless the model
+  rates it a setback for its author (`status.efforts`), priced by C++, not the model. An investment costs 0.6% of annual
   output over 12 months and raises output 1% once, on paid completion. A reform costs 0.3% over 18
   months and raises the stability baseline by 3 points, divided by one plus the number of reforms
   completed in the previous five years, with 2 points of immediate stability on top. Starting one
@@ -312,7 +346,8 @@ and nothing is borrowed. The coefficients live in `src/status/status_internal.h`
   counts once however many treaties link them, so a renamed copy adds nothing. Expiry, withdrawal
   and breach end the same future benefit and keep growth already earned. The seeded treaties are
   the baseline (`status.trade_reference`), because 2026 growth already includes them.
-- **Replacement.** The inventory at the first realism month is the establishment
+- **Replacement.** The inventory at the start of the first realism month, before its losses, is
+  the establishment
   (`military.establishment`). Losses below it open one paid order of each kind (`status.procurement`),
   at most 5% of the establishment each: recruits (US$30,000 each, 6 months), aircraft (US$60
   million, 18 months) and warships (US$600 million, 36 months). Aircraft and warships also take a
@@ -454,7 +489,7 @@ Limitations: conflicts have parties, not sides. Autonomous advances skip pairs j
 
 AI nation decisions, adjudication and narration share campaign context. SQLite indexes events by actor, region, entity and cause; a recursive query retrieves relevant earlier events and their causes. Recent events and older related events accompany current facts and commitments. Real references are marked untrusted and subordinate to fictional state; missing references remain unavailable. Geometry and the full journal are never model inputs.
 
-Every inference reads the context size from `/props` (at least 8,192 tokens, cached for 60 seconds). A request whose byte estimate fits well inside it is sent at once; otherwise the server chat template is applied and its tokenizer counts the tokens. The request reserves 768 output tokens, or for adjudication 768 plus 160 per outcome (bounded to 1,536–4,096) plus a reasoning budget of 256 plus 128 per consequential action (384–768, zero when no action is consequential), and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
+Every inference reads the context size from `/props` (at least 8,192 tokens, cached for 60 seconds). A request whose byte estimate fits well inside it is sent at once; otherwise the server chat template is applied and its tokenizer counts the tokens. The request reserves 768 output tokens, or for adjudication 768 plus 192 per outcome (bounded to 1,536–4,096) plus a reasoning budget of 256 plus 128 per consequential action (384–768, zero when no action is consequential), and 256 safety tokens inside the reported context. Adjudication reasons only when the context holds at least 16,384 tokens. Optional reference excerpts and then lower-ranked historical events are removed until the request fits. Current facts and commitments are never clipped. Exact selected messages, schema, token counts, template, model/build metadata, raw response and latency are saved for diagnosis. Turn snapshots retain original cached source revisions. Replay uses recorded deltas and requires no inference.
 
 ## API additions
 
