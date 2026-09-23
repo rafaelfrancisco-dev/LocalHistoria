@@ -714,7 +714,7 @@ function setAnswers(answers) {
   } catch {}
 }
 function pendingProposals() {
-  return Object.entries(state?.proposals || {}).filter(([, p]) => p.status === "pending" && p.actors.includes(state.player));
+  return Object.entries(state?.proposals || {}).filter(([, p]) => p.status === "pending" && p.actors.includes(state.player) && !p.answers?.[state.player]);
 }
 function renderProposals() {
   const box = $("proposals");
@@ -732,7 +732,7 @@ function renderProposals() {
     const others = p.actors.filter((a) => a !== state.player && a !== p.from).map(actorName);
     const offered = document.createElement("p");
     offered.className = "meta";
-    offered.textContent = `Offered by ${actorName(p.from)}` + (others.length ? `, with ${others.join(", ")}` : "");
+    offered.textContent = `Offered by ${actorName(p.from)} · revision ${p.revision || 1}` + (others.length ? `, with ${others.join(", ")}` : "");
     const terms = document.createElement("p");
     terms.textContent = p.text + (p.months ? ` Lasts ${p.months} month${p.months === 1 ? "" : "s"}.` : p.amends ? "" : " Open-ended.");
     const choice = document.createElement("div");
@@ -778,7 +778,7 @@ $("turn").onclick = protect(async () => {
         .map((a) => (a.targets.length ? { text: a.text.trim(), targets: a.targets } : { text: a.text.trim() })),
     };
     const offered = new Set(pendingProposals().map(([id]) => id));
-    const responses = Object.entries(readAnswers()).filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept }));
+    const responses = Object.entries(readAnswers()).filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept, revision: state.proposals[proposal].revision || 1 }));
     if (responses.length) pending.responses = responses;
     if (readSkipNarration()) pending.narration = false;
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));

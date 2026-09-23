@@ -303,17 +303,35 @@ try {
   await page.locator("#action-0").fill("Strike deep: unreachable-fixture");
   await page.locator("#turn").click();
   await page.waitForFunction(t => state?.turn === t + 1 && !busy, before);
-  await page.waitForFunction(() => [...document.querySelectorAll("#journal p")].some(p => p.textContent.startsWith("Failed · Strike deep")));
+  await page.waitForFunction(() => [...document.querySelectorAll("#journal p")].some(p => p.textContent.startsWith("Failed · The proposed action could not be carried out.")));
   await page.locator("#events-open").click();
   await page.locator("#events").waitFor({ state: "visible" });
   // A failed event changed nothing, so it is not major.
   await page.getByRole("tab", { name: "All events" }).click();
   await page.waitForFunction(() => !document.querySelector("#events-major-label").hidden);
   await page.locator("#events-major").uncheck();
-  await page.locator("#events-search").fill("Strike deep");
-  await page.waitForFunction(() => [...document.querySelectorAll("#events-list .event-card")].some(c => c.textContent.includes("Strike deep") && c.textContent.includes("did not happen")));
+  await page.locator("#events-search").fill("The proposed action could not be carried out");
+  await page.waitForFunction(() => [...document.querySelectorAll("#events-list .event-card")].some(c => c.textContent.includes("The proposed action could not be carried out") && c.textContent.includes("did not happen")));
 
   await page.locator("#events-close").click();
+  // Explicit revision-bound treaty acceptance survives a page reload before submission.
+  const proposalTurn = await page.evaluate(() => state.turn);
+  await page.locator("#action-0").fill("Send Spain a proposal-fixture request");
+  await page.locator("#turn").click();
+  await page.waitForFunction(t => state?.turn === t + 1 && !busy, proposalTurn);
+  await page.locator("#proposals .proposal").waitFor({ state: "visible" });
+  assert.match(await page.locator("#proposals").innerText(), /revision 1/);
+  assert.match(await page.locator("#proposals").innerText(), /Lapses if unanswered/);
+  await page.locator("#proposals").getByRole("button", { name: "Accept", exact: true }).click();
+  await page.reload();
+  await page.waitForFunction(() => state && !busy);
+  assert.equal(await page.locator("#proposals").getByRole("button", { name: "Accept", exact: true }).getAttribute("aria-pressed"), "true");
+  await page.locator("#action-0").fill("Continue routine administration");
+  await page.locator("#turn").click();
+  await page.waitForFunction(t => state?.turn === t + 2 && !busy, proposalTurn);
+  assert.ok(await page.evaluate(() => Object.values(state.proposals).some(p =>
+    p.status === "accepted" && p.revision === 1 && p.answers[state.player]?.accept === true)));
+
   fs.mkdirSync("tests/artifacts", { recursive: true });
   await page.screenshot({
     path: "tests/artifacts/browser.png",

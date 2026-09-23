@@ -31,8 +31,27 @@ Resolution MonthlyStatus::run() {
     // 4c. Rebel ground, on the same tick as conventional momentum so the toll, the displacement and
     // the front drawing treat a seizure by insurgents exactly like any other.
     advanceRebellions();
-    for (auto &id : w.conflicts.getMemberNames())
-        addFront(id);
+    for (auto &id : w.conflicts.getMemberNames()) {
+        if (!realism()) {
+            addFront(id);
+            continue;
+        }
+        auto &c = w.conflicts[id];
+        c["last_month_casualties"] = c["last_month_displaced"] = Int(0);
+        c["affected_regions"] = Json::arrayValue;
+        c["intensity"] = "none";
+        for (const auto &pair : hostilePairs(w, c)) {
+            auto a = pair["actors"][0].asString(), b = pair["actors"][1].asString();
+            if (!fightingPair(w, c, a, b) || !engagedPairs.insert(hostilePairKey(a, b)).second)
+                continue;
+            auto scoped = c;
+            scoped["actors"] = pair["actors"];
+            const char *levels[]{"low", "medium", "high"};
+            int posture = pairPosture(c, a, b);
+            scoped["set_intensity"] = posture < 0 ? "none" : levels[posture];
+            addFront(id, &scoped);
+        }
+    }
 
     // 5. Casualties, displacement and war damage.
     auto current = totals(w);

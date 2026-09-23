@@ -35,6 +35,7 @@ int main(int argc, char **argv) {
         if (argc == 3 && name != argv[2])
             continue;
         WorldState w;
+        w.engine["lifecycle_version"] = 1;
         w.turn = 80;
         w.player = "PT";
         w.actors = parse(R"({"PT":{"name":"Portugal","color":"#338855"},"ES":{"name":"Spain",)"

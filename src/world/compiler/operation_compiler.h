@@ -1,4 +1,5 @@
 #pragma once
+#include "localhistoria/conflicts.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include "world/compiler/helpers.h"
@@ -22,6 +23,9 @@ class OperationCompiler {
     WorldDelta compile(const Json::Value &response, const Json::Value &responses);
 
   private:
+    bool realism() const { return w.engine.get("lifecycle_version", 0).asInt() == 1; }
+    void initializeProposal(Json::Value &) const;
+    int settleExplicitProposals(Json::Value &, const Json::Value &) const;
     struct Touched {
         std::set<std::string> actors, regions, entities, createdHere, conflicts, commitments;
         // What this month makes obvious: parties to a war opened or escalated here (and whoever
@@ -38,7 +42,7 @@ class OperationCompiler {
         // Whether an operation changed the map or a war: such events are major whatever the model
         // calls them.
         bool structural = false;
-        std::vector<Json::Value> seenOps;
+        std::vector<Json::Value> seenOps, successfulOps;
         int failedOps = 0;
         // Why operations were dropped: kept for the audit, never in the event text players and
         // later prompts read.

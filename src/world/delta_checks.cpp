@@ -99,6 +99,54 @@ void checkRegionalChange(const Json::Value &c, const std::string &id, WorldState
                 "Invalid regional demand");
 }
 void checkProposalChange(const Json::Value &c, WorldState &w) {
+    if (w.engine.get("lifecycle_version", 0).asInt() == 1) {
+        const auto &p = c["after"];
+        require(p["actors"].isArray() && p["actors"].size() >= 2 && p["from"].isString() &&
+                    isParty(p, p["from"].asString()) && p["text"].isString() &&
+                    p["text"].asString().size() <= 1000 && p["name"].isString() &&
+                    !p["name"].asString().empty() && validCommitmentKind(p["kind"].asString()) &&
+                    p["terms"].isArray(),
+                "Invalid explicit proposal");
+        int revision = p.get("revision", 1).asInt();
+        require(revision >= 1 && p["answers"].isObject(), "Invalid proposal revision or answers");
+        for (auto &a : p["answers"].getMemberNames()) {
+            const auto &answer = p["answers"][a];
+            require(isParty(p, a) && answer["revision"] == revision && answer["accept"].isBool() &&
+                        answer["turn"].isInt(),
+                    "Invalid proposal signature");
+        }
+        if (c["before"].isNull()) {
+            require(p["status"] == "pending" && p["revision"].isInt() &&
+                        p["required_signatories"] == p["actors"] && p["proposed_turn"] == w.turn &&
+                        p["expires_turn"].isInt() && p["expires_turn"].asInt() > w.turn &&
+                        p["event"] == c["event"],
+                    "Invalid new proposal");
+            for (auto &a : p["answers"].getMemberNames())
+                require(a == p["from"].asString() && a != w.player &&
+                            p["answers"][a]["accept"] == true,
+                        "Only an AI proposer initially signs its offer");
+        } else {
+            auto expected = c["before"];
+            for (auto k : {"status", "answered_turn", "answers", "lapse_reason"}) {
+                if (p.isMember(k))
+                    expected[k] = p[k];
+                else
+                    expected.removeMember(k);
+            }
+            require(expected == p && c["before"]["status"] == "pending" &&
+                        w.turn > p["proposed_turn"].asInt() &&
+                        (p["status"] == "pending" || p["status"] == "accepted" ||
+                         p["status"] == "declined" || p["status"] == "expired"),
+                    "Proposal terms and prior answers are immutable");
+            for (auto &a : c["before"]["answers"].getMemberNames())
+                require(c["before"]["answers"][a] == p["answers"][a], "Signature is immutable");
+        }
+        if (p["status"] == "accepted")
+            for (const auto &a : p["actors"])
+                require(p["answers"][a.asString()]["accept"] == true,
+                        "Every signatory must explicitly accept");
+        return;
+    }
     auto &p = c["after"];
     auto status = p["status"].asString();
     require(p["from"].isString() && p["from"] != w.player && p["actors"].isArray() &&
@@ -269,6 +317,22 @@ void checkAgreements(const Resolution &base, WorldState &w) {
                                 (t["action"] == "end_conflict" || t["action"] == "cede" ||
                                  t["action"] == "occupy" || t["action"] == "withdraw"),
                             "Invalid treaty term");
+            }
+            if (v["hostile_pairs"].isArray()) {
+                std::set<std::string> pairs;
+                for (const auto &pair : v["hostile_pairs"]) {
+                    require(pair["actors"].isArray() && pair["actors"].size() == 2 &&
+                                pair["actors"][0].isString() && pair["actors"][1].isString(),
+                            "Invalid hostile pair");
+                    auto a = pair["actors"][0].asString(), b = pair["actors"][1].asString();
+                    require(a < b && isParty(v, a) && isParty(v, b) &&
+                                pairs.insert(a + ":" + b).second &&
+                                (pair["status"] == "active" || pair["status"] == "settled"),
+                            "Invalid hostile relationship");
+                }
+                for (const auto &a : v["postures"].getMemberNames())
+                    require(isParty(v, a) && validIntensity(v["postures"][a].asString()),
+                            "Invalid participant posture");
             }
             for (auto k : {"intensity", "set_intensity"})
                 require(!v.isMember(k) || (v[k].isString() && validIntensity(v[k].asString())),

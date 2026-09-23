@@ -31,13 +31,18 @@ Int MonthlyStatus::kill(const std::string &region, Int count) {
 }
 void MonthlyStatus::warToll(const Front &f, std::map<std::string, Totals> &current) {
     auto &c = w.conflicts[f.id];
-    c["intensity"] = f.intensity < 0    ? "none"
-                     : f.intensity == 0 ? "low"
-                     : f.intensity == 1 ? "medium"
-                                        : "high";
-    c["affected_regions"] = Json::arrayValue;
+    int intensity = realism() ? std::max(level(c.get("intensity", "none").asString()), f.intensity)
+                              : f.intensity;
+    c["intensity"] = intensity < 0    ? "none"
+                     : intensity == 0 ? "low"
+                     : intensity == 1 ? "medium"
+                                      : "high";
+    if (!realism())
+        c["affected_regions"] = Json::arrayValue;
     for (auto &region : f.regions)
-        c["affected_regions"].append(region);
+        if (std::find(c["affected_regions"].begin(), c["affected_regions"].end(),
+                      Json::Value(region)) == c["affected_regions"].end())
+            c["affected_regions"].append(region);
     if (f.intensity < 0 || f.regions.empty()) {
         c["last_month_casualties"] = c["last_month_displaced"] = Int(0);
         return;
@@ -65,8 +70,8 @@ void MonthlyStatus::warToll(const Front &f, std::map<std::string, Totals> &curre
                                  (1 - rate::partyGdpDrag[f.intensity] * multiplier)));
     c["casualties"] = integer(c, "casualties") + deaths;
     c["displaced"] = integer(c, "displaced") + displaced;
-    c["last_month_casualties"] = deaths;
-    c["last_month_displaced"] = displaced;
+    c["last_month_casualties"] = (realism() ? integer(c, "last_month_casualties") : 0) + deaths;
+    c["last_month_displaced"] = (realism() ? integer(c, "last_month_displaced") : 0) + displaced;
     std::string where;
     for (size_t i = 0; i < f.regions.size() && i < 4; ++i)
         where += (i ? ", " : "") + cT[f.regions[i]]["name"].asString();
@@ -82,8 +87,10 @@ Int MonthlyStatus::partyLosses(const Front &f, const std::string &p,
                                std::map<std::string, Totals> &current, Int affectedPopulation,
                                double multiplier, const std::string &kind) {
     auto pool = std::max(double(current[p].population), 0.25 * double(affectedPopulation));
-    auto front = double(f.regions.size()) * rate::militaryPerFrontRegion[f.intensity] * multiplier *
-                 jitter(w, f.id + ":military:" + p);
+    auto front =
+        double(f.regions.size()) * rate::militaryPerFrontRegion[f.intensity] * multiplier *
+        jitter(w, (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
+                      ":military:" + p);
     auto losses = Int(std::llround(std::min(front, rate::militaryPopulationCap * pool)));
     const auto &m = static_cast<const WorldState &>(forceStart).actors[p]["status"]["military"];
     if (m.isObject()) {
@@ -99,9 +106,12 @@ Int MonthlyStatus::partyLosses(const Front &f, const std::string &p,
         // forces.
         if (affected.empty())
             affected = f.regions;
-        losses = Int(std::llround(force::committedPersonnel(forceStart, adjacency, p, affected) *
-                                  deathRate[f.intensity] * multiplier *
-                                  jitter(forceStart, f.id + ":military:" + p)));
+        losses = Int(std::llround(
+            force::committedPersonnel(forceStart, adjacency, p, affected) * deathRate[f.intensity] *
+            multiplier *
+            jitter(forceStart,
+                   (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
+                       ":military:" + p)));
         auto available = integer(w.actors[p]["status"]["military"], "active") +
                          integer(w.actors[p]["status"]["military"], "reserve");
         losses = std::min(losses, std::max<Int>(0, available - militaryLosses[p]));
@@ -147,12 +157,20 @@ void MonthlyStatus::displace(const Front &f, const std::string &region, double m
                              Int &deaths, Int &displaced) {
     auto &t = T[region];
     auto population = double(integer(t, "population"));
-    deaths += kill(region, Int(std::llround(population * rate::civilian[f.intensity] * multiplier *
-                                            jitter(w, f.id + ":civilian:" + region))));
+    deaths += kill(
+        region,
+        Int(std::llround(
+            population * rate::civilian[f.intensity] * multiplier *
+            jitter(w, (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
+                          ":civilian:" + region))));
     auto remaining = double(integer(t, "population"));
-    auto outflow = Int(std::llround(remaining * (rate::displacement[f.intensity] * multiplier *
-                                                     jitter(w, f.id + ":displacement:" + region) +
-                                                 seizedShare(region, remaining))));
+    auto outflow = Int(std::llround(
+        remaining *
+        (rate::displacement[f.intensity] * multiplier *
+             jitter(w,
+                    (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
+                        ":displacement:" + region) +
+         seizedShare(region, remaining))));
     if (outflow <= 0)
         return;
     auto owner = cT[region]["owner"].asString();

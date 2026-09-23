@@ -31,7 +31,8 @@ WorldDelta OperationCompiler::compile(const Json::Value &response, const Json::V
         all.append(e);
     }
     collectNames();
-    collectConsent(response);
+    if (!realism())
+        collectConsent(response);
     int position = -1;
     for (auto &e : all)
         // Only the settlements C++ wrote may carry settle_proposal; a model cannot answer for the
@@ -49,6 +50,8 @@ WorldDelta OperationCompiler::compile(const Json::Value &response, const Json::V
 // Last month's treaty offers to the player are settled first, as the month opens: accepted,
 // declined, or lapsed unanswered.
 int OperationCompiler::settleProposals(Json::Value &all, const Json::Value &responses) const {
+    if (realism())
+        return settleExplicitProposals(all, responses);
     int settlements = 0;
     for (auto &pid : w.proposals.getMemberNames()) {
         auto &p = w.proposals[pid];
@@ -217,6 +220,7 @@ void OperationCompiler::runOperation(EventScope &s, OpScope &op) {
     try {
         apply(s, op);
         pending.commit();
+        s.successfulOps.push_back(op.o);
     } catch (const Infeasible &x) {
         pending.rollback();
         restore(std::move(before));

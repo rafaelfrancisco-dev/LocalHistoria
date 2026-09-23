@@ -7,6 +7,13 @@ Json::Value OperationCompiler::applyTerms(EventScope &s, const Json::Value &term
                                           const std::vector<std::string> &members,
                                           const std::string &why) {
     Json::Value done(Json::arrayValue);
+    if (realism()) {
+        if (!terms.isArray() || treatyTerms(terms) != terms)
+            throw Infeasible("invalid material treaty terms");
+        for (const auto &t : terms)
+            done.append(applyTerm(s, t, members, why));
+        return done;
+    }
     for (auto &t : treatyTerms(terms)) {
         try {
             done.append(applyTerm(s, t, members, why));
@@ -38,6 +45,29 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
         auto c = pending.current("conflict", w.conflicts, cid);
         if (!c.isObject() || !isOpen(c))
             throw Infeasible("no such open conflict");
+        if (realism()) {
+            auto pairs = hostilePairs(w, c);
+            bool covered = false, remaining = false;
+            for (auto &pair : pairs) {
+                if (party(pair["actors"][0].asString()) && party(pair["actors"][1].asString())) {
+                    pair["status"] = "settled";
+                    covered = true;
+                }
+                remaining = remaining || pair["status"] != "settled";
+            }
+            if (!covered)
+                throw Infeasible("settlement covers no hostile pair");
+            auto &v = pending.touch("conflict", cid, w.conflicts[cid], s.id, why);
+            v["hostile_pairs"] = pairs;
+            if (!remaining) {
+                v["status"] = "resolved";
+                v["ended_turn"] = w.turn;
+                v["intensity"] = "none";
+            }
+            s.conflicts.insert(cid);
+            kept["conflict"] = cid;
+            return kept;
+        }
         for (auto &a : c["actors"])
             if (!party(a.asString()))
                 throw Infeasible("every side must sign to end " + displayName(w, "conflict", cid));
@@ -88,6 +118,10 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
 // Parties to a treaty signed, amended or answered here, and whether anyone must still agree.
 void OperationCompiler::consent(const EventScope &s, const std::vector<std::string> &members,
                                 bool &proposal) {
+    if (realism()) {
+        proposal = true;
+        return;
+    }
     for (auto &m : members)
         if (m != s.ev && !s.createdHere.contains(m) && !consenting[m].contains(s.ev)) {
             if (m == w.player) {
@@ -99,6 +133,10 @@ void OperationCompiler::consent(const EventScope &s, const std::vector<std::stri
         }
 }
 void OperationCompiler::awaiting(EventScope &s) const {
+    if (realism()) {
+        s.text = "A treaty proposal was recorded; it awaits explicit signatures to its terms.";
+        return;
+    }
     auto awaits = " It awaits " + w.actors[w.player]["name"].asString() + "'s answer.";
     if (s.text.find(awaits) == std::string::npos)
         s.text += awaits;

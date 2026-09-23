@@ -36,6 +36,8 @@ double MonthlyStatus::seizedShare(const std::string &region, double population) 
 // Two parties of the same conflict who also share an open truce or pact are not fighting each
 // other: a conflict records parties, not sides, so co-belligerents appear opposed without this.
 bool MonthlyStatus::atPeace(const std::string &a, const std::string &b) const {
+    if (realism())
+        return !fighting(w, a, b);
     static const std::set<std::string> peaceful{"ceasefire",    "peace_treaty",        "alliance",
                                                 "defence_pact", "non_aggression_pact", "union"};
     for (const auto &k : static_cast<const Json::Value &>(w.commitments)) {
@@ -57,11 +59,28 @@ bool MonthlyStatus::atPeace(const std::string &a, const std::string &b) const {
 void MonthlyStatus::advanceFronts() {
     if (version < frontMomentumVersion || !hasMilitary(forceStart))
         return;
-    for (auto &id : w.conflicts.getMemberNames())
-        advanceConflict(id);
+    std::set<std::string> seen;
+    for (auto &id : w.conflicts.getMemberNames()) {
+        if (!realism()) {
+            advanceConflict(id);
+            continue;
+        }
+        const auto &c = w.conflicts[id];
+        for (const auto &pair : hostilePairs(w, c)) {
+            auto a = pair["actors"][0].asString(), b = pair["actors"][1].asString();
+            if (!fightingPair(w, c, a, b) || !seen.insert(hostilePairKey(a, b)).second)
+                continue;
+            auto scoped = c;
+            scoped["actors"] = pair["actors"];
+            const char *levels[]{"low", "medium", "high"};
+            int posture = pairPosture(c, a, b);
+            scoped["set_intensity"] = posture < 0 ? "none" : levels[posture];
+            advanceConflict(id, &scoped);
+        }
+    }
 }
-void MonthlyStatus::advanceConflict(const std::string &id) {
-    const Json::Value &c = w.conflicts[id];
+void MonthlyStatus::advanceConflict(const std::string &id, const Json::Value *pair) {
+    const Json::Value &c = pair ? *pair : w.conflicts[id];
     if (!isOpen(c))
         return;
     // Only conventional war moves on a balance of forces. An insurgency or a civil war turns on
@@ -142,7 +161,8 @@ double MonthlyStatus::accrue(const std::string &id, const std::string &attacker,
            rate::pressureGain[declared] *
                std::log2(std::clamp(axis.ratio, rate::pressureFloor, rate::pressureRatioCap) /
                          rate::pressureFloor) *
-               jitter(forceStart, id + ":pressure:" + attacker);
+               jitter(forceStart, (realism() ? hostilePairKey(attacker, defender) : id) +
+                                      ":pressure:" + attacker);
 }
 // Spends banked pressure on one region. Returns true when ground changed hands, so the caller can
 // look for a second; `held` is debited in place.
@@ -175,8 +195,8 @@ bool MonthlyStatus::takeGround(const std::string &id, const std::string &attacke
                         axis.region});
     return true;
 }
-void MonthlyStatus::addFront(const std::string &id) {
-    const Json::Value &c = w.conflicts[id];
+void MonthlyStatus::addFront(const std::string &id, const Json::Value *pair) {
+    const Json::Value &c = pair ? *pair : w.conflicts[id];
     if (!isOpen(c))
         return;
     Front f{id, {}, {}, -1, false};
@@ -261,6 +281,8 @@ void MonthlyStatus::addFront(const std::string &id) {
     // Months since ground last changed hands between these parties. A war neither side can move is
     // the normal state of most real wars, and it is what gives them a reason to talk.
     int stalled = groundChanged ? 0 : integer(c, "static_months") + 1;
+    if (realism())
+        ceasefire = false; // The pair was filtered by the shared relationship helper.
     if (ceasefire)
         f.intensity = -1;
     else if (f.fighting)

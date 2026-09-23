@@ -147,6 +147,7 @@ def seed(db, codes):
             resolved['started_turn'] = month_offset(item['started'])
             if kind == 'conflicts':
                 resolved['intensity'] = item['intensity']
+                if 'hostile_pairs' in item: resolved['hostile_pairs'] = item['hostile_pairs']
                 resolved['occupied'] = {a: [region(p) for p in pairs] for a, pairs in item['occupied'].items()}
                 resolved['affected_regions'] = [region(p) for p in item['affected']]
                 resolved['entities'] = [dict(e, region=region(e['region'])) for e in item.get('entities', [])]

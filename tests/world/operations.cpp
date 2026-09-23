@@ -189,9 +189,11 @@ void WorldTests::operations() {
     auto invasion = applyDelta(opsBase, far, geo);
     check(invasion.state.conflicts.size() == 1 && far.events[0]["conflicts"].size() == 1,
           "A successful invasion creates and links a war without a model declaration");
-    auto continued = compileOperations(invasion.state,
+    auto continued = compileOperations(
+        invasion.state,
         parse(R"({"events":[{"description":"Advance","actor":"old-state","blocked_by":"none",
-        "causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]}]})"), adjacency);
+        "causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]}]})"),
+        adjacency);
     check(applyDelta(invasion, continued, geo).state.conflicts.size() == 1,
           "Further occupation reuses the existing war");
     auto blitz = compile(

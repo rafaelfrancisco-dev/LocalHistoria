@@ -1,4 +1,4 @@
-#include "localhistoria/status.h"
+#include "localhistoria/lifecycle.h"
 #include <fstream>
 #include <iostream>
 using namespace lh;
@@ -25,25 +25,11 @@ int main(int argc, char **argv) {
                     single.append(action);
                     parseOrders(single);
                 }
-            // Saves that predate national status were seeded from frozen inputs on their first
-            // later month.
-            if (turn["reference"].isMember("status_seed"))
-                seedStatus(world, decodeSeed(turn["reference"]["status_seed"]), false);
-            if (turn["reference"].isMember("military_seed"))
-                seedMilitary(world, decodeSeed(turn["reference"]["military_seed"]));
-            if (turn["reference"].isMember("government_seed"))
-                seedGovernment(world, decodeSeed(turn["reference"]["government_seed"]));
-            auto result = resolve(world);
+            auto result = beginTurn(world, turn["reference"]);
             WorldDelta delta;
-            if (turn["reference"].isMember("delta")) {
+            if (turn["reference"].isMember("delta"))
                 delta = parseDelta(turn["reference"]["delta"]);
-                result = applyDelta(result, delta, input["geography"]);
-            }
-            // Each turn replays under the rules it was played with: later status versions add
-            // monthly consequences that a month saved without them never had.
-            if (turn["reference"].isMember("status_version"))
-                result = applyMonthlyStatus(result, delta, adjacency,
-                                            turn["reference"]["status_version"].asInt());
+            result = finishTurn(result, delta, adjacency, input["geography"], turn["reference"]);
             if (encode(result.state) != encode(decode(turn["state"])) ||
                 encode(result.events) != turn["events"])
                 throw std::runtime_error("Replay mismatch at turn " +

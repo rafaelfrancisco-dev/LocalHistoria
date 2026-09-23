@@ -10,6 +10,16 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
               R"("properties":{"actions":{"type":"array","maxItems":3,"items":{"type":"object",)"
               R"("additionalProperties":false,"required":["text"],)"
               R"("properties":{"text":{"type":"string","minLength":1,"maxLength":300}}}}}})");
+    const bool proposals = c.facts["treaty_proposals"].isObject() &&
+                           !c.facts["treaty_proposals"].empty() &&
+                           c.facts["initiative_type"] != "independent_regional";
+    if (proposals) {
+        schema["properties"]["responses"] = parse(R"({"type":"array","maxItems":8,"items":{
+          "type":"object","additionalProperties":false,"required":["proposal","revision","accept"],
+          "properties":{"proposal":{"type":"string"},"revision":{"type":"integer","minimum":1},
+          "accept":{"type":"boolean"}}}})");
+    }
+    Json::Value answers(Json::arrayValue);
     int count = c.facts.get("action_count", 3).asInt();
     schema["properties"]["actions"]["maxItems"] = count;
     bool independent = c.facts.get("initiative_type", "reactive") != "reactive";
@@ -17,7 +27,9 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         schema["properties"]["actions"]["minItems"] = count;
     static const std::string instruction =
         "You represent the actor specified by initiative_type in this fictional monthly sandbox. "
-        "Obey action_count. For independent_regional you represent only regional_identity, not its "
+        "Obey action_count. Answer pending treaty_proposals with responses containing the exact "
+        "proposal ID, revision, and accept boolean; prose conveys no signature. For "
+        "independent_regional you represent only regional_identity, not its "
         "governing nation: act on what is actually contested between the region and its capital or "
         "its neighbours, and on what region_situation shows it is living through - revenue and "
         "resources, autonomy, borders, displaced people, garrisons, war spillover, or a demand the "
@@ -40,9 +52,24 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         "name.";
     auto ask = [&](const std::string &extra) {
         auto j = completion(input, schema, instruction + extra, 0, 0.7, "decide", c.actor);
-        if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"actions"} ||
-            !j["actions"].isArray())
+        if (!j.isObject() || !j["actions"].isArray())
             throw ValidationError("Invalid decision shape");
+        for (auto &key : j.getMemberNames())
+            if (key != "actions" && !(proposals && key == "responses"))
+                throw ValidationError("Invalid decision field");
+        answers = Json::arrayValue;
+        std::set<std::string> seen;
+        if (j.isMember("responses") && (!j["responses"].isArray() || j["responses"].size() > 8))
+            throw ValidationError("Invalid proposal answers");
+        for (auto answer : j["responses"]) {
+            auto id = answer["proposal"].asString();
+            const auto &p = c.facts["treaty_proposals"][id];
+            if (!p.isObject() || answer["revision"] != p["revision"] ||
+                !answer["accept"].isBool() || !seen.insert(id).second)
+                throw ValidationError("Invalid proposal answer revision");
+            answer["actor"] = c.actor;
+            answers.append(answer);
+        }
         auto o = parseOrders(j["actions"]);
         validate(w, c.actor, o);
         if (o.size() > size_t(count) || (independent && o.size() != size_t(count)))
@@ -59,7 +86,7 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
                     "does about something at stake for it this month.");
         } catch (const ValidationError &) {
         }
-    return {o, "Local model"};
+    return {o, "Local model", answers};
 }
 std::string LocalProvider::chronicle(const Json::Value &input, const std::string &actor) {
     auto j = completion(
@@ -152,6 +179,8 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "war-weary nations face unrest, desertion and failed reforms; a nation fighting a "
         "high-intensity war has little to spare. Elections, opposition parties and legislatures "
         "exist only where a nation's government has them. "
+        "independent_outcome identifies a separate reform, investment, negotiation or protest; "
+        "effects require that supported independent result. Operations derive consequences in C++. "
         "effects: economic and stability consequences of the event, only for nations it clearly "
         "affects; never invent numbers, the game computes them and corrects wars, seizures and "
         "treaties. Omit effects unless something changes; a world_event must list at least one. "
@@ -166,8 +195,8 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "withdrawal) an existing war; a ceasefire or peace treaty is add_commitment with that "
         "kind, and resolve_conflict only when the war has actually ended. A conflict whose front "
         "reads as a stalemate is a plausible reason for a party to open talks or accept terms. "
-        "Only a party can open, escalate, end or sign; a treaty needs every party's own action "
-        "this month to mention the partner; nations only build for themselves. "
+        "Treaties become proposals requiring explicit signatures to their revision. Names and "
+        "prose never authorize signatures; nations only build for themselves. "
         "Treaties: months is how long one lasts (0 = open-ended); terms are what signing changes "
         "at once: end_conflict (a peace treaty ends that war), cede (its owner hands a region to "
         "another party), occupy (its owner lets another party hold a region while the treaty "

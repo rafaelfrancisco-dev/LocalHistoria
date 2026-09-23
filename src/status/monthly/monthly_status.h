@@ -1,4 +1,5 @@
 #pragma once
+#include "localhistoria/conflicts.h"
 #include "status/status_internal.h"
 #include <map>
 #include <set>
@@ -19,6 +20,7 @@ class MonthlyStatus {
     Resolution run();
 
   private:
+    bool realism() const { return base.lifecycleVersion == 1; }
     void freezeForceInputs();
     void accountDestroyed();
     const Json::Value &ownerStatus(const Json::Value &t) const;
@@ -39,13 +41,14 @@ class MonthlyStatus {
     };
     bool atPeace(const std::string &a, const std::string &b) const;
     void advanceFronts();
-    void advanceConflict(const std::string &id);
+    void advanceConflict(const std::string &id, const Json::Value *pair = nullptr);
     Axis bestAxis(const std::string &attacker, const std::string &defender) const;
     double accrue(const std::string &id, const std::string &attacker, const std::string &defender,
                   int declared) const;
     bool takeGround(const std::string &id, const std::string &attacker, const std::string &defender,
                     double &held);
-    void addFront(const std::string &id);
+    void addFront(const std::string &id, const Json::Value *pair = nullptr);
+    std::set<std::string> engagedPairs;
     // 5
     Int move(const std::string &from, const std::string &to, Int count);
     Int kill(const std::string &region, Int count);

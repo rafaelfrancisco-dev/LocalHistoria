@@ -1,4 +1,5 @@
 #include "localhistoria/simulation.h"
+#include "localhistoria/lifecycle.h"
 #include "localhistoria/status.h"
 #include <algorithm>
 #include <cctype>
@@ -88,6 +89,8 @@ Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t 
 }
 Json::Value encode(const WorldState &w) {
     Json::Value j;
+    if (!w.engine.empty())
+        j["engine"] = w.engine;
     j["campaign_id"] = w.campaignId;
     j["actors"] = w.actors;
     j["territories"] = w.territories;
@@ -103,6 +106,11 @@ Json::Value encode(const WorldState &w) {
 }
 WorldState decode(const Json::Value &j) {
     WorldState w;
+    if (j.isMember("engine")) {
+        if (!j["engine"].isObject())
+            throw ValidationError("Invalid engine accounting");
+        w.engine = j["engine"];
+    }
     w.campaignId = j["campaign_id"].asString();
     for (auto key : {"actors", "territories", "entities", "conflicts", "commitments"})
         if (!j[key].isNull() && !j[key].isObject())
@@ -195,10 +203,17 @@ void validate(const WorldState &w, const std::string &a, const TurnOrders &o) {
                 throw ValidationError("Unknown action target: " + t);
     }
 }
-Resolution resolve(const WorldState &w) {
+Resolution resolve(const WorldState &w, int lifecycleVersion) {
+    switch (lifecycleVersion) {
+    case legacyLifecycleVersion:
+    case realismLifecycleVersion:
+        break;
+    default:
+        throw ValidationError("Unsupported lifecycle version");
+    }
     if (w.turn >= 12000)
         throw ValidationError("Campaign turn limit reached");
-    Resolution r{w, {}};
+    Resolution r{w, {}, lifecycleVersion};
     r.state.turn++;
     // Treaties end when their term runs out; occupations they allowed end with them.
     for (auto &id : r.state.commitments.getMemberNames()) {
@@ -301,7 +316,12 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         o["name"] = p["name"];
         o["kind"] = p["kind"];
         o["text"] = p["text"];
-        f["treaty_proposals"][id] = o;
+        o["revision"] = p.get("revision", 1);
+        o["terms"] = p["terms"];
+        o["signatures"] = p.get("answers", Json::Value(Json::objectValue));
+        o["expires_turn"] = p.get("expires_turn", p["proposed_turn"].asInt() + 1);
+        if (!p["answers"].isMember(a))
+            f["treaty_proposals"][id] = o;
     }
     // Wars an ally or defence partner is fighting without this nation: what its commitments may
     // call on it to weigh.

@@ -293,6 +293,9 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     defs["effect"]["properties"]["stability"] = effect;
     event["properties"]["effects"] = parse(R"({"type":"array","maxItems":3})");
     event["properties"]["effects"]["items"] = ref("effect");
+    if (w.engine.get("lifecycle_version", 0).asInt() == 1)
+        event["properties"]["independent_outcome"] = parse(
+            R"({"type":"string","enum":["none","reform","investment","negotiation","protest"]})");
     if (causes.empty())
         event["properties"]["causes"]["maxItems"] = 0;
     else

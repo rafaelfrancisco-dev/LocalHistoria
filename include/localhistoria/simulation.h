@@ -16,6 +16,8 @@ struct WorldState {
     Json::Value actors{Json::objectValue}, territories{Json::objectValue},
         entities{Json::objectValue}, conflicts{Json::objectValue}, commitments{Json::objectValue};
     Json::Value regionalPolitics{Json::objectValue}, activity{Json::objectValue};
+    // Optional engine-owned accounting; absent legacy state must round-trip unchanged.
+    Json::Value engine{Json::objectValue};
     // Treaties an AI nation offered the player, keyed by the commitment ID reserved for them;
     // answered the next month.
     Json::Value proposals{Json::objectValue};
@@ -38,6 +40,7 @@ struct CountryContext {
 struct Resolution {
     WorldState state;
     std::vector<ResolvedEvent> events;
+    int lifecycleVersion = 0; // Explicit per-turn rules, never inferred from saved accounting.
 };
 constexpr size_t maxActions = 8, maxTargets = 4, maxActionBytes = 500;
 // Months an event stays on the map, and an event site stays active, unless a later related event
@@ -51,7 +54,7 @@ TurnOrders parseOrders(const Json::Value &);
 void validate(const WorldState &, const std::string &, const TurnOrders &);
 // Advances one month: construction that is due completes and expired event sites fade; everything
 // else is adjudicated.
-Resolution resolve(const WorldState &);
+Resolution resolve(const WorldState &, int lifecycleVersion = 0);
 CountryContext context(const WorldState &, const std::string &, const Json::Value &,
                        const Json::Value &);
 // A reference cut at word boundaries: the introduction keeps its start and the history its most

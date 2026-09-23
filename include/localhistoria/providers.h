@@ -11,6 +11,7 @@ Json::Value httpJson(const std::string &, const std::string &, const Json::Value
 struct Decision {
     TurnOrders orders;
     std::string status;
+    Json::Value responses{Json::arrayValue};
 };
 class DecisionProvider {
   public:

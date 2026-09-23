@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "status/status_internal.h"
 #include <algorithm>
 #include <climits>
@@ -11,8 +12,13 @@ const Json::Value &inventory(const WorldState &w, const std::string &a) {
 }
 bool mobilised(const WorldState &w, const std::string &a) {
     for (const auto &c : w.conflicts)
-        if (isOpen(c) && (c["kind"] == "war" || c["kind"] == "civil_war") && isParty(c, a))
-            return true;
+        if (isOpen(c) && (c["kind"] == "war" || c["kind"] == "civil_war") && isParty(c, a)) {
+            if (!realismRules(w))
+                return true;
+            for (const auto &p : c["actors"])
+                if (fightingPair(w, c, a, p.asString()))
+                    return true;
+        }
     return false;
 }
 int uncommitted(const WorldState &w, const std::string &a, const char *kind, const char *field,
@@ -61,7 +67,7 @@ int fronts(const WorldState &w, const Adjacency &adj, const std::string &a) {
     for (const auto &c : w.conflicts)
         if (isOpen(c) && isParty(c, a))
             for (const auto &p : c["actors"])
-                if (p != a)
+                if (p != a && (!realismRules(w) || fightingPair(w, c, a, p.asString())))
                     enemies.insert(p.asString());
     // Neighbours are not enemies simply because they share a peaceful border.
     for (const auto &[r, neighbours] : adj) {

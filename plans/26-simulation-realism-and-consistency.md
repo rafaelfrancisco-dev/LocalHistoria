@@ -1,6 +1,16 @@
 # 26 · Simulation realism and consistency
 
-**Status: planned — not implemented.** Drafted 2026-09-22.
+**Status: implementation in progress — unpublished.** Drafted 2026-09-22.
+
+2026-09-23: Phases A, B and C gates passed — 16 CTest cases (adding `consent` and
+`conflicts`), legacy v0/v2/v3/v4 and mixed-version state/event replay, the disposable
+HTTP integration suite, the browser run and a server restart, and `make format-check`.
+Lifecycle version 1 is reserved for this complete unpublished release; monthly status
+version 4 remains unchanged for legacy turns. No campaign save was modified.
+Phase C fixed a latent defect found by the browser gate: `buildEvent` named
+`event["effects"]` on a failed event, and jsoncpp's non-const `operator[]` inserted a
+null member that `checkDelta` then rejected, failing the whole month instead of the
+event. Next: Phase D (access, sea routes, captured construction).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -454,9 +464,9 @@ phase gates above are intended to catch those risks before further features are 
 
 ## Implementation checklist
 
-- [ ] A — Legacy fixtures, complete lifecycle versioning, and deterministic migrations.
-- [ ] B — Explicit proposal consent and outcome-grounded effects.
-- [ ] C — Hostile pairs, scoped peace/intensity, and conflict deduplication.
+- [x] A — Legacy fixtures, complete lifecycle versioning, and deterministic migrations.
+- [x] B — Explicit proposal consent and outcome-grounded effects.
+- [x] C — Hostile pairs, scoped peace/intensity, and conflict deduplication.
 - [ ] D — Valid access/sea routes, supply bounds, and captured construction.
 - [ ] E — Persistent conquest consequences and local resistance.
 - [ ] F — Conserved force allocations and fractional, exposure-based attrition.

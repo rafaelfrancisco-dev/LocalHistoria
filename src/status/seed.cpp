@@ -165,6 +165,10 @@ void seedStatus(WorldState &w, const StatusSeed &seed, bool worldEvents) {
         v["status"] = "open";
         v["set_intensity"] = v["intensity"] = c["intensity"];
         v["theatre"] = c["affected_regions"];
+        if (c["hostile_pairs"].isArray()) {
+            v["hostile_pairs"] = c["hostile_pairs"];
+            v["pair_provenance"] = "scenario";
+        }
         v["casualties"] = v["displaced"] = Int(0);
         for (auto &occupier : c["occupied"].getMemberNames())
             for (auto &r : c["occupied"][occupier])

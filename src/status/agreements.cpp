@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/politics.h"
 #include "status/status_internal.h"
 #include <algorithm>
@@ -39,6 +40,13 @@ Json::Value describeAgreement(const WorldState &w, const std::string &kind, cons
         d["party_names"] = Json::arrayValue;
         for (auto &a : v["actors"])
             d["party_names"].append(w.actors[a.asString()].get("name", a));
+    }
+    if (kind == "conflict" && realismRules(w)) {
+        d["hostile_pairs"] = hostilePairs(w, v);
+        for (auto &pair : d["hostile_pairs"])
+            pair["fighting"] =
+                fightingPair(w, v, pair["actors"][0].asString(), pair["actors"][1].asString());
+        d["postures"] = v["postures"];
     }
     d["status"] = v["status"];
     d["text"] = v["text"];

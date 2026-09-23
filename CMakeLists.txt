@@ -6,13 +6,13 @@ find_package(SQLite3 REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_library(historia_core src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
+add_library(historia_core src/core/lifecycle.cpp src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
   src/world/delta.cpp src/world/delta_checks.cpp src/world/geometry.cpp src/world/schema.cpp
   src/world/compiler/compiler.cpp src/world/compiler/helpers.cpp src/world/compiler/identity_ops.cpp
-  src/world/compiler/treaty_ops.cpp src/world/compiler/treaty_terms.cpp
+  src/world/compiler/treaty_ops.cpp src/world/compiler/treaty_terms.cpp src/world/compiler/proposals.cpp
   src/world/compiler/force_ops.cpp src/world/compiler/territory_ops.cpp
   src/world/compiler/events.cpp
-  src/status/helpers.cpp src/status/force.cpp src/status/seed.cpp src/status/national.cpp
+  src/status/helpers.cpp src/status/conflicts.cpp src/status/force.cpp src/status/seed.cpp src/status/national.cpp
   src/status/agreements.cpp src/status/regimes.cpp src/status/monthly/monthly_status.cpp
   src/status/monthly/fronts.cpp src/status/monthly/casualties.cpp src/status/monthly/recovery.cpp
   src/status/monthly/unrest.cpp src/status/monthly/rebellion.cpp)
@@ -69,3 +69,23 @@ add_test(NAME military COMMAND military_tests)
 add_executable(turn_tests tests/turn_tests.cpp)
 target_link_libraries(turn_tests PRIVATE historia_services)
 add_test(NAME turn COMMAND turn_tests)
+
+foreach(version 0 2 3 4)
+  add_test(NAME legacy_replay_v${version} COMMAND replay_verify
+    ${CMAKE_SOURCE_DIR}/tests/fixtures/legacy-lifecycle-v${version}.json)
+endforeach()
+add_executable(lifecycle_tests tests/lifecycle_tests.cpp)
+target_link_libraries(lifecycle_tests PRIVATE historia_core)
+target_compile_definitions(lifecycle_tests PRIVATE FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+add_test(NAME lifecycle COMMAND lifecycle_tests)
+set_tests_properties(lifecycle PROPERTIES FIXTURES_SETUP mixed_lifecycle)
+add_test(NAME mixed_replay COMMAND replay_verify ${CMAKE_BINARY_DIR}/mixed-lifecycle-export.json)
+set_tests_properties(mixed_replay PROPERTIES FIXTURES_REQUIRED mixed_lifecycle)
+add_executable(consent_tests tests/consent_tests.cpp)
+target_link_libraries(consent_tests PRIVATE historia_core)
+target_compile_definitions(consent_tests PRIVATE FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+add_test(NAME consent COMMAND consent_tests)
+add_executable(conflict_tests tests/conflict_tests.cpp)
+target_link_libraries(conflict_tests PRIVATE historia_core)
+target_compile_definitions(conflict_tests PRIVATE FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+add_test(NAME conflicts COMMAND conflict_tests)

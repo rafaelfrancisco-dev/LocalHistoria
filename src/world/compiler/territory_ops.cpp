@@ -3,6 +3,8 @@
 namespace lh::detail {
 // At war since before this month, or declared earlier in this month's outcomes.
 bool OperationCompiler::atWar(const std::string &a, const std::string &b) const {
+    if (realism())
+        return lh::fighting(allocatedWorld(), a, b);
     auto fighting = [&](const Json::Value &c) {
         return isOpen(c) && isParty(c, a) && isParty(c, b);
     };

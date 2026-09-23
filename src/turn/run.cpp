@@ -1,3 +1,4 @@
+#include "localhistoria/lifecycle.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include "localhistoria/turn.h"
@@ -114,7 +115,10 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             c.facts["initiative_type"] = "reactive";
             c.facts["action_count"] = reactiveCounts.at(a);
             c.facts["player_actions"] = encode(orders);
-            intentions[a] = provider.decide(w, c).orders;
+            auto decision = provider.decide(w, c);
+            intentions[a] = decision.orders;
+            for (const auto &answer : decision.responses)
+                turnRefs["proposal_responses"].append(answer);
             // Flushed as it lands so the client can show it before the month is
             // adjudicated.
             {
@@ -127,6 +131,8 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             auto slot = allocations[n];
             auto a = slot["actor"].asString(), r = slot["region"].asString();
             auto decision = provider.decide(w, turnIndependent[n]);
+            for (const auto &answer : decision.responses)
+                turnRefs["proposal_responses"].append(answer);
             {
                 std::lock_guard l(mutex);
                 store.recordInference(id, provider.takeAudit());
@@ -142,7 +148,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                 independent.append(slot);
             }
         }
-        auto result = resolve(w);
+        auto result = beginTurn(w, turnRefs);
         auto adjudication = adjudicationInput(result.state, turnContexts, intentions, adjacency);
         // Attach trusted slot attribution by matching each appended action
         // once.
@@ -168,8 +174,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             std::lock_guard l(mutex);
             store.recordInference(id, provider.takeAudit());
         }
-        result = applyDelta(result, delta, geography);
-        result = applyMonthlyStatus(result, delta, adjacency);
+        result = finishTurn(result, delta, adjacency, geography, turnRefs);
         auto frozen = turnRefs;
         frozen["delta"] = encode(delta);
         frozen["contexts"] = adjudication;

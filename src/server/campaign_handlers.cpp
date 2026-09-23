@@ -191,12 +191,15 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     if (b["responses"].size() > 8)
         throw ValidationError("Too many proposal responses");
     for (auto &r : b["responses"]) {
-        if (!r.isObject() || r.getMemberNames() != std::vector<std::string>{"accept", "proposal"} ||
-            !r["accept"].isBool() || !r["proposal"].isString())
+        if (!r.isObject() ||
+            r.getMemberNames() != std::vector<std::string>{"accept", "proposal", "revision"} ||
+            !r["accept"].isBool() || !r["proposal"].isString() || !r["revision"].isInt())
             throw ValidationError("Invalid proposal response");
         auto pid = r["proposal"].asString();
         if (!w.proposals.isMember(pid) || w.proposals[pid]["status"] != "pending" ||
-            !answered.insert(pid).second)
+            !isParty(w.proposals[pid], w.player) ||
+            w.proposals[pid].get("revision", 1) != r["revision"] ||
+            w.proposals[pid]["answers"].isMember(w.player) || !answered.insert(pid).second)
             throw ValidationError("No pending proposal " + pid);
     }
     auto job = s.store.submit(b["expected_turn"].asInt(), b["idempotency_key"].asString(), payload);
@@ -204,7 +207,6 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     auto plan = s.turns.plan(w, orders);
     plan.narrate = b.get("narration", true).asBool();
     auto &refs = plan.refs;
-    refs["status_version"] = statusVersion;
     if (b.isMember("responses"))
         refs["proposal_responses"] = b["responses"];
     if (backfill)

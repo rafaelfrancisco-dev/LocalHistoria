@@ -32,7 +32,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
    for i,e in zip(value['intentions'],result['events']):
     if proposing and i['actor']!='PT' and not i.get('regional_actor'):
      e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','months':6,'name':'Fixture Accord','terms':[],'text':'Tariffs cut'}];proposing=False
-    if 'railway' in i['action']:e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
+    if 'trade talks' in i['action']:e['independent_outcome']='negotiation'
+    if 'railway' in i['action']:e['independent_outcome']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
     if 'war-fixture' in i['action']:
@@ -134,7 +135,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==1
-   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and all(e.startswith(o['text']) for e,o in zip(events[:2],payload['orders'])),events
+   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and events[0]=='No validated change resulted from the proposed action.' and events[1].startswith(payload['orders'][1]['text']),events
    tolls=[e['text'] for e in journal if e['action']=='war_toll'];assert any(t.startswith('Russo-Ukrainian War (high intensity): about ') for t in tolls),tolls
    assert current['conflicts']['c0-1']['casualties']>0 and current['territories'] != w['territories']
    s.get('turns',order(w,'stale-turn',[]),409)
@@ -148,11 +149,15 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    j=s.get('turns',dict(order(current,'third-turn',[{'text':'proposal-fixture: hold talks'}]),narration=False),202);assert s.poll(j['id'])['status']=='complete'
    month=s.get('campaign')['journal'][0];assert month['narration_fallback'] in (1,'1',True) and 'fictional administration' not in month['narration'],month['narration']
    current=s.get('campaign')['state'];offers=[k for k,p in current['proposals'].items() if p['status']=='pending'];assert len(offers)==1 and offers[0] not in current['commitments'],current['proposals']
-   s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True}]),409)
-   j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True}]),202);accepted_job=s.poll(j['id']);assert accepted_job['status']=='complete',accepted_job
+   s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True,'revision':1}]),409)
+   j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True,'revision':1}]),202);accepted_job=s.poll(j['id']);assert accepted_job['status']=='complete',accepted_job
    current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord' and current['commitments'][offers[0]]['expires_turn']==current['turn']+6,current['commitments']
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
+   assert 'engine' not in export['initial_state']
+   assert export['turns'][0]['reference']['lifecycle_migration']=={'from':0,'to':1}
+   assert all(t['reference']['lifecycle_version']==1 and t['state']['engine']['lifecycle_version']==1 for t in export['turns'])
+   assert all('lifecycle_migration' not in t['reference'] for t in export['turns'][1:])
    replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)
    legacy_initial=json.loads(json.dumps(export['initial_state']))
    for key in ('regional_politics','activity'):legacy_initial.pop(key,None)

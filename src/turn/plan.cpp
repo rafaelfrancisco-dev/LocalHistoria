@@ -1,3 +1,4 @@
+#include "localhistoria/lifecycle.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
 #include "localhistoria/turn.h"
@@ -9,7 +10,7 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
     auto &store = d.store;
     auto &reference = d.reference;
     auto &references = d.references;
-    Json::Value refs(Json::objectValue);
+    auto refs = lifecycleReference(w);
     auto mentions = mentioned(w, w.player, orders);
     // AI nations that act this month: those the player addresses first, then ongoing
     // disputes and one rotating neighbor.

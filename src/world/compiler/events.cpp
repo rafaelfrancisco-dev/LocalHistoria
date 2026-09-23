@@ -74,8 +74,24 @@ void OperationCompiler::buildEvent(EventScope &s) {
         if (e.isMember(k))
             event[k] = e[k];
     // Only something that happened has consequences.
-    if (happened)
+    if (happened && (!realism() || !failed || s.e.get("independent_outcome", "none") != "none"))
         settleEffects(s, event);
+    if (realism() && failed) {
+        // get(): naming a missing member would insert a null "effects" the delta rejects.
+        if (!event.get("effects", Json::arrayValue).empty()) {
+            event.removeMember("failed");
+            event["partial"] = true;
+            event["text"] = "The independent " + s.e["independent_outcome"].asString() +
+                            " proceeded; the proposed operations could not be carried out.";
+        } else
+            event["text"] = "The proposed action could not be carried out.";
+    } else if (realism() && happened && !s.dropped.empty())
+        event["text"] = "Only part of the proposed action was carried out; see accepted changes.";
+    if (realism() && happened && !failed && s.successfulOps.empty() &&
+        s.e.get("independent_outcome", "none") == "none") {
+        event["text"] = "No validated change resulted from the proposed action.";
+        event["major"] = false;
+    }
     event["identity_changes"] = Json::arrayValue;
     for (const auto &c : pending)
         if (c.kind == "actor" && c.event == s.id && c.after["flag_revision"].isUInt() &&
@@ -113,13 +129,17 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     // does not move a country's economy.
     bool inert = !s.regional.empty();
     if (inert)
-        for (const auto &o : s.e["operations"]) {
+        for (const auto &o : (realism() ? s.successfulOps : s.seenOps)) {
             if (!o["demand"].asString().empty() ||
                 (o["relations"].isString() &&
                  o["relations"] != regionalState(w, s.regional)["relations"]))
                 inert = false;
         }
-    if (!inert && s.e["effects"].isArray())
+    auto independent = s.e.get("independent_outcome", "none").asString();
+    bool supportedIndependent =
+        s.regional.empty() && (independent == "reform" || independent == "investment" ||
+                               independent == "negotiation" || independent == "protest");
+    if (!inert && (!realism() || supportedIndependent) && s.e["effects"].isArray())
         for (auto &x : s.e["effects"]) {
             if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
                 !x["economy"].isString() || !x["stability"].isString())
@@ -129,6 +149,18 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
             if (!known(a) || !validEffect(economy) || !validEffect(stability) ||
                 (economy == "none" && stability == "none") || find(a) != effects.end())
                 continue;
+            if (realism()) {
+                // An independently represented domestic or diplomatic result only affects its
+                // author; operations supply their own deterministic consequences below.
+                if (a != s.ev)
+                    continue;
+                if (independent == "negotiation")
+                    economy = stability = "none";
+                if (independent == "protest") {
+                    economy = "none";
+                    stability = "decline";
+                }
+            }
             effects.push_back({a, economy, stability, false});
         }
     auto entry = [&](const std::string &a) -> Effect & {
