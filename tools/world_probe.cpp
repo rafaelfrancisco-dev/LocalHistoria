@@ -4,6 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <tuple>
 using namespace lh;
 // Real-model scenarios on a four-region map: West and North (PT), East (ES, borders West) and
 // Interior (ES, borders only East).
@@ -18,6 +19,16 @@ int main(int argc, char **argv) {
                         {"region-north", {"region-west"}},
                         {"region-east", {"region-west", "region-interior"}},
                         {"region-interior", {"region-east"}}};
+    // Coasts: West, North and East share a sea; Madeira (naval scenarios only) lies 900 km out.
+    for (auto [a, b, km] : std::initializer_list<std::tuple<const char *, const char *, int>>{
+             {"region-west", "region-north", 600},
+             {"region-west", "region-east", 800},
+             {"region-north", "region-east", 1000},
+             {"region-west", "region-isle", 900},
+             {"region-north", "region-isle", 1200}}) {
+        adjacency.sea[a][b] = km;
+        adjacency.sea[b][a] = km;
+    }
     const std::vector<std::pair<std::string, std::pair<std::string, std::string>>> scenarios{
         {"construction", {"PT", "Build a port in West."}},
         {"conflict", {"ES", "Send the army across the border to occupy West."}},
@@ -30,7 +41,11 @@ int main(int argc, char **argv) {
         {"invasion", {"PT", "Invade Spain."}},
         {"finish_invasion", {"PT", "Finish the invasion of Spain to avoid the war stalling."}},
         {"capital_push", {"PT", "Drive straight through to Spain's capital to topple the regime."}},
-        {"treaty_consent", {"ES", "Sign a defence pact with Portugal."}}};
+        {"treaty_consent", {"ES", "Sign a defence pact with Portugal."}},
+        {"access_treaty",
+         {"PT", "Offer Spain a treaty granting our forces military access to Spanish territory."}},
+        {"sea_move", {"PT", "Sail the Portuguese Fleet to Madeira."}},
+        {"overseas_landing", {"PT", "Ship the Portuguese Army to Madeira with the fleet."}}};
     for (auto &[name, intention] : scenarios) {
         if (argc == 3 && name != argv[2])
             continue;
@@ -75,6 +90,21 @@ int main(int argc, char **argv) {
         }
         if (name == "weak_raid")
             w.territories["region-east"]["name"] = "Galicia";
+        const bool naval = name == "sea_move" || name == "overseas_landing";
+        for (auto r : {"region-west", "region-north", "region-east"})
+            w.territories[r]["coastal"] = true;
+        if (naval) {
+            w.territories["region-isle"] =
+                parse(R"({"name":"Madeira","owner":"PT","controller":"PT","coastal":true,)"
+                      R"("initial_affiliation":"PT","longitude":-16,"latitude":2,)"
+                      R"("population":250000,"gdp_usd":6000000000})");
+            w.entities = parse(
+                R"({"pt-fleet":{"name":"Portuguese Fleet","kind":"fleet","actor":"PT",)"
+                R"("region":"region-west","status":"active","ships":7,"longitude":1,"latitude":1,)"
+                R"("origin_event":"t0-seed"},"pt-army":{"name":"Portuguese Army","kind":"army",)"
+                R"("actor":"PT","region":"region-west","status":"active","personnel":3000,)"
+                R"("longitude":1,"latitude":1,"origin_event":"t0-seed"}})");
+        }
         Json::Value geo;
         geo["region-west"] =
             parse(R"({"type":"Polygon","coordinates":[[[0,0],[5,0],[5,5],[0,5],[0,0]]]})");
@@ -84,6 +114,8 @@ int main(int argc, char **argv) {
             parse(R"({"type":"Polygon","coordinates":[[[10,0],[15,0],[15,5],[10,5],[10,0]]]})");
         geo["region-interior"] =
             parse(R"({"type":"Polygon","coordinates":[[[20,0],[25,0],[25,5],[20,5],[20,0]]]})");
+        geo["region-isle"] = parse(
+            R"({"type":"Polygon","coordinates":[[[-18,0],[-14,0],[-14,4],[-18,4],[-18,0]]]})");
         if (name == "long_history")
             w.commitments = parse(
                 R"({"treaty-1":{"actors":["PT","ES"],"status":"open",)"
@@ -143,6 +175,15 @@ int main(int argc, char **argv) {
             // proposal awaiting Portugal's answer, no treaty.
             if (name == "treaty_consent")
                 expected = s.commitments.empty() && s.proposals.size() == 1;
+            if (name == "access_treaty") {
+                for (auto &p : s.proposals)
+                    for (auto &t : p["terms"])
+                        expected = expected || (t["action"] == "grant_access" && t["to"] == "PT");
+            }
+            if (name == "sea_move")
+                expected = s.entities["pt-fleet"]["region"] == "region-isle";
+            if (name == "overseas_landing")
+                expected = s.entities["pt-army"]["region"] == "region-isle";
             row["expected_outcome"] = expected;
         } catch (const std::exception &e) {
             row["valid"] = false;

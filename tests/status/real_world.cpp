@@ -61,6 +61,37 @@ void realWorldTests() {
     auto ua = nationalStatus(world, "UA");
     check(ua["occupied_regions"].asInt() == 3 && ua["wars"][0]["name"] == "Russo-Ukrainian War",
           "Ukraine: " + dump(ua));
+    {
+        // Supply under the plan 26 rules, on the real map: by land or across one ocean to the
+        // heartland, however far, but never out of an enclave with no friendly way home.
+        auto supplyWorld = world;
+        supplyWorld.engine["lifecycle_version"] = 1;
+        auto sea = realAdjacency;
+        for (auto &r : reference.query("SELECT a,b,km FROM sea_routes"))
+            sea.sea[r["a"].asString()][r["b"].asString()] = r["km"].asInt();
+        for (auto &r : reference.query("SELECT region,basin FROM sea_basins ORDER BY region")) {
+            sea.basins[r["region"].asString()].insert(r["basin"].asInt());
+            sea.basinRegions[r["basin"].asInt()].push_back(r["region"].asString());
+        }
+        auto id = [&](const char *name, const char *code) {
+            for (auto &t : supplyWorld.territories.getMemberNames())
+                if (supplyWorld.territories[t]["name"] == name &&
+                    supplyWorld.territories[t]["initial_affiliation"] == code)
+                    return t;
+            throw std::runtime_error(std::string("No region ") + name);
+        };
+        for (auto [name, code, actor] :
+             std::initializer_list<std::tuple<const char *, const char *, const char *>>{
+                 {"Kaliningrad", "RU", "RU"},
+                 {"Hawaii", "US", "US"},
+                 {"Alaska", "US", "US"},
+                 {"Autonomous Republic of Crimea", "UA", "RU"},
+                 {"Gilan", "IR", "IR"}})
+            check(supplied(supplyWorld, sea, actor, id(name, code)),
+                  std::string(name) + " is supplied");
+        check(!supplied(supplyWorld, sea, "AZ", id("Nakhchivan Autonomous Republic", "AZ")),
+              "Nakhchivan has no friendly way home");
+    }
     // Every political system classifies, and the seeded values are the real ones.
     check(nationalStatus(world, "PT")["government"] == "Semi-presidential republic" &&
               nationalStatus(world, "KP")["government"] == "One-party state" &&

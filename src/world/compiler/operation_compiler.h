@@ -104,6 +104,9 @@ class OperationCompiler {
     void opBuild(EventScope &s, OpScope &op);
     void allocateForce(const std::string &builder, const std::string &kind, Json::Value &v) const;
     void opEntity(EventScope &s, OpScope &op);
+    // Applies handOverProject to every project in a region whose control passes by agreement.
+    void handOver(EventScope &s, const std::string &region, const std::string &from,
+                  const std::string &to, const std::string &why);
     void checkPassage(const std::string &eid, const std::string &region) const;
     void moveEntity(EventScope &s, const OpScope &op, const std::string &eid, Json::Value &v,
                     const std::string &owner);

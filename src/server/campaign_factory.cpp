@@ -27,6 +27,11 @@ Adjacency loadAdjacency(Store &reference) {
         while (in >> to >> km)
             routes[to] = km;
     }
+    if (!reference.query("SELECT name FROM sqlite_master WHERE name='sea_basins'").empty())
+        for (auto &r : reference.query("SELECT region, basin FROM sea_basins ORDER BY region")) {
+            adjacency.basins[r["region"].asString()].insert(r["basin"].asInt());
+            adjacency.basinRegions[r["basin"].asInt()].push_back(r["region"].asString());
+        }
     for (auto &r : reference.query("SELECT revision FROM sea_route_meta"))
         adjacency.seaRevision = r["revision"].asString();
     return adjacency;

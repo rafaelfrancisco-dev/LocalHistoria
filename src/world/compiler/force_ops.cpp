@@ -202,6 +202,11 @@ void OperationCompiler::setEntityStatus(EventScope &s, OpScope &op, const std::s
     if (ev != owner && status != "active" && w.actors[ev]["status"]["military"].isObject() &&
         force::assaultCapacity(w, adjacency, ev, owner, entity["region"].asString()) < 1)
         throw Infeasible("too weak to defeat this formation");
+    // A formation disbanded when its ground changed hands does not muster again on foreign soil.
+    if (realism() && status == "active" && v["status"] == "inactive" &&
+        !mayEnter(allocatedWorld(), owner, entity["region"].asString()))
+        throw Infeasible(entity["name"].asString() + " cannot muster where " +
+                         w.actors[owner]["name"].asString() + " has no access");
     if (status == "active" && v["status"] == "inactive" &&
         w.actors[owner]["status"]["military"].isObject()) {
         auto allocated = allocatedWorld();

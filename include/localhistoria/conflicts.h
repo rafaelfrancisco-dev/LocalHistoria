@@ -14,8 +14,11 @@ std::string hostilePairKey(const std::string &, const std::string &);
 // Peaceful entry: land the actor controls, land nobody holds, or land whose controller granted it
 // military access in an open treaty. An alliance by itself grants no basing or transit.
 bool mayEnter(const WorldState &, const std::string &actor, const std::string &region);
-// Whether a region links back to the actor's own land (owned and controlled) through land it may
-// enter and the sea routes between such coasts. An actor with no such land is never cut off.
+// An actor's most populous region that it both owns and controls (residual slivers excepted, ties
+// by ID), or "" if it has none.
+std::string heartland(const WorldState &, const std::string &actor);
+// Whether a region links back to the actor's heartland through land it may enter, sea routes, or an
+// ocean basin shared by coasts it may enter. An actor with no heartland is never cut off.
 bool supplied(const WorldState &, const Adjacency &, const std::string &actor,
               const std::string &region);
 } // namespace lh

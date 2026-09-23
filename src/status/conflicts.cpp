@@ -1,6 +1,7 @@
 #include "localhistoria/conflicts.h"
 #include <algorithm>
 #include <deque>
+#include <map>
 namespace lh {
 bool realismRules(const WorldState &w) { return w.engine.get("lifecycle_version", 0).asInt() == 1; }
 std::string hostilePairKey(const std::string &a, const std::string &b) {
@@ -85,25 +86,58 @@ bool mayEnter(const WorldState &w, const std::string &a, const std::string &regi
                     return true;
     return false;
 }
+std::string heartland(const WorldState &w, const std::string &a) {
+    std::string best;
+    Json::Int64 people = -1;
+    for (const auto &id : w.territories.getMemberNames()) {
+        const auto &t = w.territories[id];
+        if (t["owner"] != a || t["controller"] != a || t["kind"] == "residual")
+            continue;
+        auto n = t.get("population", 0).asInt64();
+        if (n > people) {
+            best = id;
+            people = n;
+        }
+    }
+    return best;
+}
 bool supplied(const WorldState &w, const Adjacency &adj, const std::string &a,
               const std::string &region) {
-    auto home = [&](const std::string &id) {
-        const auto &t = w.territories[id];
-        return t["owner"] == a && t["controller"] == a;
-    };
     if (!w.territories.isMember(region) || !mayEnter(w, a, region))
         return false;
+    auto home = heartland(w, a);
+    if (home.empty())
+        return true;
+    // mayEnter, with the treaties read once: a basin can open well over a thousand coasts.
+    std::set<std::string> hosts;
+    std::map<std::string, std::set<std::string>> hostsHere;
+    for (const auto &k : w.commitments)
+        if (isOpen(k) && isParty(k, a))
+            for (const auto &term : k["terms"])
+                if (term["action"] == "grant_access" && term["to"] == a)
+                    for (const auto &p : k["actors"])
+                        (term.isMember("region") ? hostsHere[term["region"].asString()] : hosts)
+                            .insert(p.asString());
+    auto enterable = [&](const Json::Value &t, const std::string &id) {
+        auto holder = t["controller"].asString();
+        auto here = hostsHere.find(id);
+        return holder.empty() || holder == a || hosts.contains(holder) ||
+               (here != hostsHere.end() && here->second.contains(holder));
+    };
     std::set<std::string> seen{region};
+    std::set<int> crossed;
     std::deque<std::string> queue{region};
     auto visit = [&](const std::string &n) {
-        if (w.territories.isMember(n) && w.territories[n]["kind"] != "residual" &&
-            mayEnter(w, a, n) && seen.insert(n).second)
+        if (!w.territories.isMember(n))
+            return;
+        const auto &t = w.territories[n];
+        if (t["kind"] != "residual" && enterable(t, n) && seen.insert(n).second)
             queue.push_back(n);
     };
     while (!queue.empty()) {
         auto id = queue.front();
         queue.pop_front();
-        if (home(id))
+        if (id == home)
             return true;
         if (auto at = adj.find(id); at != adj.end())
             for (const auto &n : at->second)
@@ -111,11 +145,14 @@ bool supplied(const WorldState &w, const Adjacency &adj, const std::string &a,
         if (auto at = adj.sea.find(id); at != adj.sea.end())
             for (const auto &[n, km] : at->second)
                 visit(n);
+        // A coast opens every other coast on its waters it may use, once per body of water.
+        if (auto at = adj.basins.find(id); at != adj.basins.end())
+            for (int b : at->second)
+                if (crossed.insert(b).second)
+                    for (const auto &n : adj.basinRegions.at(b))
+                        visit(n);
     }
-    for (const auto &id : w.territories.getMemberNames())
-        if (home(id))
-            return false;
-    return true;
+    return false;
 }
 bool fighting(const WorldState &w, const std::string &a, const std::string &b) {
     for (const auto &c : w.conflicts)

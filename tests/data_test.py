@@ -95,3 +95,15 @@ assert sea(('Gilan','IR'),('Atyrau Region','KZ')) and not sea(('Gilan','IR'),('K
 assert not sea(('Atyrau Region','KZ'),odesa) and not sea(('Mersin','TR'),('Samsun','TR'))
 assert not sea(('California','US'),('Hawaii','US'))
 print(f'Sea routes passed: {len(routes)//2} symmetric coastal routes, straits, canals and enclosed seas')
+# Routes round capes through offshore waypoints: Cabo da Roca once split Portugal's coast in two.
+assert sea(('Galicia','ES'),('LISBOA','PT')) and sea(('Galicia','ES'),('Andalucía','ES'))
+# Ocean basins: supply crosses any distance of one body of water, never between two.
+basin={}
+for r,b in db.execute('SELECT region,basin FROM sea_basins'):basin.setdefault(r,set()).add(b)
+coastal={r for r, in db.execute('SELECT id FROM regions WHERE coastal=1')}
+assert coastal<=set(basin) and set(basin)<=coastal,len(coastal^set(basin))
+same=lambda a,b:bool(basin[region(*a)]&basin[region(*b)])
+assert same(('California','US'),('Hawaii','US')) and same(('Kaliningrad','RU'),('Krasnodar Krai','RU'))
+assert same(('Galicia','ES'),('Crete','GR')) and same(('Tokyo','JP'),('Alaska','US'))
+assert same(('Gilan','IR'),('Atyrau Region','KZ')) and not same(('Gilan','IR'),('Krasnodar Krai','RU'))
+print(f"Ocean basins passed: {len(set().union(*basin.values()))} bodies of water; one world ocean, the Caspian apart")

@@ -103,3 +103,23 @@ The optional **Qwen3.5-9B** profile uses the same command with `-hf unsloth/Qwen
 Before every request, the adapter checks the server's context capacity via `/props` (cached for 60 seconds). If the request is well inside the context (a byte estimate of about 3.2 bytes per token, plus the output reserve, at most 80% of it), it is sent at once. Otherwise the adapter renders the chat template with `/apply-template`, counts tokens with `/tokenize` and trims optional reference and history material until the request fits. The audit records the server's own prompt token count (`usage.prompt_tokens`) when it reports one, and `prompt_tokens_estimated` when the tokenizer was skipped.
 
 Military context is deterministic: national status includes a readable inventory, uncommitted troops, field formations and a strength label. Region `within_reach_of` strings retain the actor code and add effective attack/defence strength and a zero/one/two-region limit. A `too weak` entry requires a failed, aborted or symbolic outcome. Entity facts carry personnel/ships; the model never selects formation sizes or casualty numbers.
+
+## Measured prompt changes
+
+Plan 26 phase D added two short glosses to the adjudication instructions: the `grant_access` treaty
+clause, and armies sailing with a fleet in their region while fleets sail up to 1,500 km of sea. The
+adjudication block is sensitive to added text on the 4B model, so both were A/B tested on 23
+September 2026 against the previous prompt, with Qwen3.5-4B, identical binaries except
+`prompts.cpp`, and three `world_probe` runs per scenario:
+
+| Scenario | New prompt | Previous prompt |
+|---|---|---|
+| `access_treaty` (proposal with a `grant_access` term) | 2/3 | 0/3 |
+| `sea_move` (fleet to an island) | 3/3 | 3/3 |
+| `overseas_landing` (army sails with the fleet) | 3/3 | 2/3 |
+| `conflict`, `treaty_consent`, `invasion` (regression) | 2/3, 2/3, 3/3 | 2/3, 2/3, 3/3 |
+
+Latency was the same (17–22 s per scenario). Two months played from one copied save on each prompt
+showed no echo of the previous month: each month's events answered that month's orders. Both
+prompts still often narrate a treaty offer or acceptance without a treaty operation, so the engine
+reports "No validated change resulted from the proposed action".

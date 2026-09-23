@@ -230,6 +230,12 @@ void checkEntities(const Resolution &base, WorldState &w, const Json::Value &geo
                     "A paused project resumes only with its region or by a takeover");
             require(before["status"] != "under_construction" || e["status"] != "active",
                     "Construction completes only on schedule");
+            // A project changes hands only to whoever holds its region: by takeover or agreement.
+            require(before["status"] != "under_construction" || e["actor"] == before["actor"] ||
+                        e["status"] != "under_construction" ||
+                        std::as_const(w.territories)[e["region"].asString()]["controller"] ==
+                            e["actor"],
+                    "A project passes only to its region's controller");
             require(e["status"] == "under_construction"
                         ? (paused.isObject() && !e.isMember("completes_turn")) ||
                               (!e.isMember("paused") && e["completes_turn"].isInt() &&

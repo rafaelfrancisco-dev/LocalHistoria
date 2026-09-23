@@ -2,6 +2,27 @@
 #include "localhistoria/conflicts.h"
 #include <algorithm>
 namespace lh {
+Json::Value handOverProject(const Json::Value &e, const std::string &from, const std::string &to,
+                            int turn) {
+    if (e["status"] != "under_construction" || e["actor"] != from || from == to || to.empty())
+        return Json::nullValue;
+    auto next = e;
+    auto kind = e["kind"].asString();
+    if (kind == "army" || kind == "fleet") {
+        next["status"] = "inactive";
+        next.removeMember("completes_turn");
+        next.removeMember("paused");
+        return next;
+    }
+    if (kind != "port" && kind != "base" && kind != "city")
+        return Json::nullValue;
+    next["actor"] = to;
+    if (e["paused"].isObject()) {
+        next["completes_turn"] = turn + e["paused"]["remaining_months"].asInt();
+        next.removeMember("paused");
+    }
+    return next;
+}
 void reconcileProjects(WorldState &w, std::vector<ResolvedEvent> &events) {
     for (auto &id : w.entities.getMemberNames()) {
         auto &e = w.entities[id];

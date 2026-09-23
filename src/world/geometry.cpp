@@ -152,6 +152,10 @@ Json::Value encodeSeaRoutes(const Adjacency &adjacency) {
         for (const auto &[to, km] : routes)
             if (from < to)
                 j["routes"][from][to] = km;
+    j["basins"] = Json::objectValue;
+    for (const auto &[region, basins] : adjacency.basins)
+        for (int b : basins)
+            j["basins"][region].append(b);
     return j;
 }
 void decodeSeaRoutes(Adjacency &adjacency, const Json::Value &j) {
@@ -163,6 +167,11 @@ void decodeSeaRoutes(Adjacency &adjacency, const Json::Value &j) {
             int km = j["routes"][from][to].asInt();
             adjacency.sea[from][to] = km;
             adjacency.sea[to][from] = km;
+        }
+    for (const auto &region : j["basins"].getMemberNames())
+        for (const auto &b : j["basins"][region]) {
+            adjacency.basins[region].insert(b.asInt());
+            adjacency.basinRegions[b.asInt()].push_back(region);
         }
 }
 bool reaches(const WorldState &w, const Adjacency &adjacency, const std::string &a,

@@ -19,7 +19,8 @@ template <class F> static void rejects(F action, const char *message) {
 }
 // AA's home A1 (coast) and A2 (inland); BB, its enemy, holds B1 (coast) and B2, and AA holds A3,
 // a pocket of BB's land surrounded by BB. DD is a neutral neighbour (N1 coast, N2 inland). EE holds
-// an island I1 800 km off A1, and F1 is a coast 2,000 km away by sea.
+// an island I1 800 km off A1, and F1 is a coast 2,000 km away by sea. AA also owns A4, an enclave
+// inside BB; A5, a distant island on the same ocean; and A6, a coast on a separate inland sea.
 struct Region {
     const char *id, *actor;
     bool coastal;
@@ -28,7 +29,8 @@ struct Region {
 static const Region regions[]{
     {"A1", "AA", true, 0},   {"A2", "AA", false, 2}, {"A3", "BB", false, 4},
     {"B1", "BB", true, 6},   {"B2", "BB", false, 8}, {"N1", "DD", true, 10},
-    {"N2", "DD", false, 12}, {"I1", "EE", true, 14}, {"F1", "EE", true, 16}};
+    {"N2", "DD", false, 12}, {"I1", "EE", true, 14}, {"F1", "EE", true, 16},
+    {"A4", "AA", false, 18}, {"A5", "AA", true, 20}, {"A6", "AA", true, 22}};
 static Json::Value geography() {
     Json::Value g;
     for (const auto &r : regions) {
@@ -48,7 +50,7 @@ static Json::Value geography() {
 static Adjacency adjacency() {
     Adjacency adj{
         {"A1", {"A2", "B1", "N1"}}, {"A2", {"A1"}},       {"A3", {"B2"}}, {"B1", {"A1", "B2"}},
-        {"B2", {"B1", "A3"}},       {"N1", {"A1", "N2"}}, {"N2", {"N1"}}};
+        {"B2", {"B1", "A3", "A4"}}, {"N1", {"A1", "N2"}}, {"N2", {"N1"}}, {"A4", {"B2"}}};
     auto route = [&](const char *a, const char *b, int km) {
         adj.sea[a][b] = km;
         adj.sea[b][a] = km;
@@ -58,6 +60,12 @@ static Adjacency adjacency() {
     route("A1", "I1", 800);
     route("B1", "I1", 900);
     route("A1", "F1", 2000);
+    for (auto r : {"A1", "B1", "N1", "I1", "F1", "A5"}) {
+        adj.basins[r].insert(0);
+        adj.basinRegions[0].push_back(r);
+    }
+    adj.basins["A6"].insert(1);
+    adj.basinRegions[1].push_back("A6");
     adj.seaRevision = "fixture-1";
     return adj;
 }
@@ -213,6 +221,10 @@ int main() {
               "An occupied pocket is cut off; home is supplied");
         auto cut = force::committedForce(enclave, adj, "AA", "B2", false);
         check(cut["land"].asDouble() == 20000 * 0.5, "Isolated army at half, no pool");
+        check(!supplied(w, adj, "AA", "A4"), "An owned enclave with no link home is cut off");
+        check(supplied(w, adj, "AA", "A5") && !supplied(w, adj, "AA", "A6"),
+              "An island on the home ocean is supplied at any distance; another sea is not");
+        check(heartland(w, "AA") == "A1", "The heartland is the most populous home region");
         check(supplied(allied, adj, "AA", "N1") && !supplied(w, adj, "AA", "N1"),
               "Access land is supplied; neutral land is not");
         // Revoked access strands troops but does not delete them.
@@ -281,6 +293,67 @@ int main() {
                   afterTakeover.entities["dock"]["completes_turn"] == next.state.turn + 3 &&
                   afterTakeover.entities.size() == held.entities.size(),
               "The new controller completes a captured project only by taking it over");
+        // Agreed transfers hand civilian works over and disband unfinished formations.
+        auto ceding = w;
+        ceding.entities["harbour"] = parse(R"({"name":"Harbour","actor":"AA","kind":"port",
+            "region":"A1","status":"under_construction","completes_turn":9,
+            "longitude":0,"latitude":0,"origin_event":"t4-build"})");
+        ceding.entities["levy"] = parse(R"({"name":"Levy","actor":"AA","kind":"army",
+            "region":"A1","status":"under_construction","completes_turn":8,"personnel":8000,
+            "longitude":0,"latitude":0,"origin_event":"t4-build"})");
+        const auto before = force::uncommittedPersonnel(ceding, "AA");
+        auto cession =
+            ops(ceding, "AA", R"([{"action":"transfer_territory","region":"A1","to":"DD"}])");
+        auto ceded = applyDelta({ceding, {}}, cession, geography()).state;
+        check(ceded.entities["harbour"]["actor"] == "DD" &&
+                  ceded.entities["harbour"]["completes_turn"] == 9,
+              "A ceded region's port passes to its new holder on schedule");
+        check(ceded.entities["levy"]["status"] == "inactive" &&
+                  force::uncommittedPersonnel(ceded, "AA") == before + 8000,
+              "A ceded region's recruits are disbanded back to the pool");
+        check(!done(ops(ceded, "AA",
+                        R"([{"action":"set_entity_status","entity":"levy","status":"active"}])")),
+              "A disbanded formation cannot muster on foreign soil");
+        auto stolen = cession;
+        for (auto &c : stolen.changes)
+            if (c["id"] == "harbour")
+                c["after"]["actor"] = "EE";
+        rejects([&] { applyDelta({ceding, {}}, stolen, geography()); },
+                "A project passes only to its region's controller");
+        auto oldRules = ceding;
+        oldRules.engine.clear();
+        auto oldCeded =
+            applyDelta(
+                {oldRules, {}},
+                ops(oldRules, "AA", R"([{"action":"transfer_territory","region":"A1","to":"DD"}])"),
+                geography())
+                .state;
+        check(oldCeded.entities["harbour"]["actor"] == "AA" &&
+                  oldCeded.entities["levy"]["status"] == "under_construction",
+              "Legacy cession leaves projects alone");
+        // When an agreed occupation expires, the occupier's works stay and its recruits disband.
+        auto leased = w;
+        leased.territories["A2"]["controller"] = "DD";
+        leased.commitments["lease"] = parse(R"({"name":"Lease","text":"Lease","status":"open",
+            "kind":"other","actors":["AA","DD"],"expires_turn":6,
+            "terms":[{"action":"occupy","region":"A2","by":"DD"}]})");
+        leased.entities["depot"] = parse(R"({"name":"Depot","actor":"DD","kind":"base",
+            "region":"A2","status":"under_construction","completes_turn":8,
+            "longitude":2,"latitude":0,"origin_event":"t4-build"})");
+        leased.entities["garrison"] = parse(R"({"name":"Garrison","actor":"DD","kind":"army",
+            "region":"A2","status":"under_construction","completes_turn":7,"personnel":5000,
+            "longitude":2,"latitude":0,"origin_event":"t4-build"})");
+        auto expired = beginTurn(leased, refs());
+        check(expired.state.territories["A2"]["controller"] == "AA" &&
+                  expired.state.entities["depot"]["actor"] == "AA" &&
+                  expired.state.entities["depot"]["completes_turn"] == 8 &&
+                  expired.state.entities["garrison"]["status"] == "inactive",
+              "An expired agreed occupation hands works back and disbands recruits");
+        int handed = 0;
+        for (const auto &e : expired.events)
+            handed +=
+                e.action == "construction_transferred" || e.action == "construction_disbanded";
+        check(handed == 2, "Handovers are reported");
         // Recapture resumes with the same remaining months.
         auto freed = held;
         freed.territories["A2"]["controller"] = "AA";

@@ -102,6 +102,8 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
         auto &v = pending.touch("territory", r, w.territories[r], s.id, why);
         v["owner"] = to;
         v["controller"] = to;
+        if (realism())
+            handOver(s, r, controller, to, why);
         kept["from"] = owner;
         kept["to"] = to;
         s.actors.insert(to);
@@ -111,12 +113,16 @@ Json::Value OperationCompiler::applyTerm(EventScope &s, const Json::Value &t,
             throw Infeasible("an agreed occupation of " + place +
                              " needs its owner and the occupier as parties");
         pending.touch("territory", r, w.territories[r], s.id, why)["controller"] = by;
+        if (realism())
+            handOver(s, r, controller, by, why);
         kept["by"] = by;
         s.actors.insert(by);
     } else if (clause == "withdraw") {
         if (!party(controller) || !party(owner) || controller == owner)
             throw Infeasible("no party occupies " + place);
         pending.touch("territory", r, w.territories[r], s.id, why)["controller"] = owner;
+        if (realism())
+            handOver(s, r, controller, owner, why);
         kept["by"] = controller;
     } else
         throw Infeasible("unknown term " + clause);
@@ -161,6 +167,8 @@ void OperationCompiler::ending(EventScope &s, const Json::Value &treaty, const s
             if (now["controller"] == t["by"] && now["owner"] != t["by"]) {
                 pending.touch("territory", r, w.territories[r], s.id, why)["controller"] =
                     now["owner"];
+                if (realism())
+                    handOver(s, r, t["by"].asString(), now["owner"].asString(), why);
                 s.regions.insert(r);
             }
         }

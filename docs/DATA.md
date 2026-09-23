@@ -37,17 +37,22 @@ Confirm exact source provenance before redistributing the supplied geography or 
 - `world_seed`: the 2026 world, with region names resolved to IDs. An unresolved name fails the import.
 - `military_stats`: one row per actor, plus the non-state parties. Observation years are kept separately from the curated scenario year.
 
-`tools/sea_routes.py` writes the coastal-route graph as two tables of its own, from the region
+`tools/sea_routes.py` writes the coastal-route graph as three tables of its own, from the region
 geometry already imported and the land outline in `countries.geojson`; it never rebuilds geometry
 and takes a few minutes (`make data/.sea-routes`).
 
 - `sea_routes`: for each coastal region, every coastal region a fleet can reach within 1,500 km,
   with the route length in whole kilometres. Anchor points are placed along each region's own
-  shoreline, one per degree cell, and linked by straight hops of at most 400 km that stay clear of
-  land eroded by about 9 km. Erosion opens straits up to about 18 km wide (Gibraltar, the Bosporus
+  shoreline, one per degree cell, plus a mesh of offshore waypoints (water on a half-degree grid
+  within about 160 km of land, so routes can round capes such as Cabo da Roca), all linked by
+  straight hops of at most 400 km that stay clear of land eroded by about 9 km. Erosion opens straits up to about 18 km wide (Gibraltar, the Bosporus
   and Dardanelles, the Oresund, Kerch) and isthmuses as narrow (Corinth, Perekop); the Suez,
   Panama and Kiel canals are added explicitly. A fleet in a region on two seas can sail from
   either, but no route crosses a region to reach the other sea. The graph is symmetric.
+- `sea_basins`: the bodies of water a supply line may cross at any distance. They are the hop
+  graph's components, with each smaller one joined to another along the shortest straight line
+  that clears land. The world ocean is one basin, so Hawaii shares California's; the Caspian finds
+  no such line and stays apart. A few lakes and channels inside single regions form their own.
 - `sea_route_meta`: one content revision. Each month records it in its references; a replay
   export carries the graph, and replay refuses a different one.
 

@@ -1,7 +1,9 @@
 #pragma once
+#include "localhistoria/conflicts.h"
 #include "localhistoria/status.h"
 #include "localhistoria/store.h"
 #include <iostream>
+#include <tuple>
 using namespace lh;
 inline void check(bool b, const std::string &what) {
     if (!b)

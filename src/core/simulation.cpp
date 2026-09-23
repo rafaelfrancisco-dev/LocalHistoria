@@ -234,6 +234,25 @@ Resolution resolve(const WorldState &w, int lifecycleVersion) {
                 continue;
             territory["controller"] = territory["owner"];
             auto by = t["by"].asString();
+            // The occupier's unfinished works leave with it, as in an agreed withdrawal.
+            if (lifecycleVersion == realismLifecycleVersion)
+                for (auto &eid : r.state.entities.getMemberNames()) {
+                    auto &e = r.state.entities[eid];
+                    if (e["region"] != region)
+                        continue;
+                    auto next = handOverProject(e, by, territory["owner"].asString(), r.state.turn);
+                    if (next.isNull())
+                        continue;
+                    bool disbanded = next["status"] == "inactive";
+                    e = next;
+                    r.events.push_back(
+                        {by, disbanded ? "construction_disbanded" : "construction_transferred", eid,
+                         e["name"].asString() + " (" + e["kind"].asString() + ") in " +
+                             territory["name"].asString() +
+                             (disbanded ? " was disbanded as the occupation ended."
+                                        : " passed to its new holder as the occupation ended."),
+                         region});
+                }
             text +=
                 " " +
                 (r.state.hasActor(by) ? std::as_const(r.state.actors)[by]["name"].asString() : by) +

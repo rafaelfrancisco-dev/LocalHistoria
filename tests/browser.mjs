@@ -265,8 +265,8 @@ try {
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
   await page.evaluate(()=>{entityLayers.getLayers().find(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")).openPopup();});
-  // Ceding the region halts Portugal's unfinished port: its builder no longer controls the ground.
-  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port · port · Portugal · construction halted: 6 months of work left/);
+  // Ceding the region hands Portugal's unfinished port to Spain on the same schedule.
+  assert.match(await page.locator(".leaflet-popup-content").innerText(),/Fixture port · port · Spain · under construction until/);
   await page.reload();
   await page.waitForFunction(id=>state?.territories[id]?.owner==="ES"&&state.entities["e3-fixture-port"],rid);
   assert.equal(await page.evaluate(()=>state.entities["e3-fixture-port"].origin_event),"t3-fixture");

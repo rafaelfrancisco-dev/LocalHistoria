@@ -1,3 +1,4 @@
+#include "localhistoria/lifecycle.h"
 #include "world/compiler/operation_compiler.h"
 #include <algorithm>
 namespace lh::detail {
@@ -70,6 +71,30 @@ void OperationCompiler::transfer(EventScope &s, const OpScope &op, const std::st
     }
     t["owner"] = to;
     t["controller"] = to;
+    // Ceded or handed-back land takes its unfinished civilian works with it.
+    if (realism() && (cession || returned))
+        handOver(s, r, controller, to, op.why);
+}
+void OperationCompiler::handOver(EventScope &s, const std::string &region, const std::string &from,
+                                 const std::string &to, const std::string &why) {
+    std::set<std::string> ids;
+    for (const auto &id : w.entities.getMemberNames())
+        ids.insert(id);
+    for (const auto &p : pending)
+        if (p.kind == "entity")
+            ids.insert(p.id);
+    for (const auto &id : ids) {
+        auto e = pending.current("entity", w.entities, id);
+        if (e["region"] != region)
+            continue;
+        auto next = handOverProject(e, from, to, w.turn);
+        if (next.isNull())
+            continue;
+        pending.touch("entity", id, w.entities[id], s.id, why) = next;
+        s.entities.insert(id);
+        s.actors.insert(from);
+        s.actors.insert(to);
+    }
 }
 void OperationCompiler::occupy(EventScope &s, OpScope &op, const std::string &r, Json::Value &t,
                                const std::string &owner, const std::string &controller) {

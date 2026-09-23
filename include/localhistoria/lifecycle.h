@@ -14,6 +14,13 @@ LifecycleRules lifecycleRules(const Json::Value &reference);
 // with its remaining months, keeping its builder and any reserved troops or ships; it resumes when
 // the builder holds the region again. Realism lifecycle only; run wherever control may have moved.
 void reconcileProjects(WorldState &, std::vector<ResolvedEvent> &events);
+// What an agreed change of control (a cession, an agreed occupation, its withdrawal or expiry) does
+// to one of the previous holder's unfinished projects in that region: a port, base or city passes
+// to the new holder on its schedule, while an army or fleet is disbanded, returning its reserved
+// troops or ships. Returns null when the entity is not such a project. Hostile capture instead
+// pauses.
+Json::Value handOverProject(const Json::Value &entity, const std::string &from,
+                            const std::string &to, int turn);
 Json::Value lifecycleReference(const WorldState &);
 // Both functions operate on copies. Only Store::commit publishes migration or monthly work.
 Resolution beginTurn(const WorldState &, const Json::Value &reference);

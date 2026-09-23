@@ -18,17 +18,26 @@ exports that now carry the sea graph, and a 36-month run of the seeded world who
 trajectories match the pre-D build exactly. Known limits, by design for this pass:
 - The sea graph is region-grained: a region on two seas (Colombia's Chocó) lets a fleet based
   there use either, and erosion opens isthmuses under about 18 km (Corinth, Perekop).
-- Land a nation owns is always its own supply base, so enclaves and distant possessions are
-  never cut off; supply ignores naval interdiction; carrier aviation is not modelled.
+- Supply ignores naval interdiction; carrier aviation is not modelled.
 - Embarkation is the explicit co-location of an army and a fleet, capped at 500 troops per
   warship; there is no separate embark operation. Access is national in scope.
-- Every loss of control pauses a builder's project, consensual cession included: the land's new
-  controller finishes it only by an explicit takeover. A takeover costs a construction slot; its
-  resource cost arrives with H. A paused military
+- A takeover of a captured project costs a construction slot; its resource cost arrives with H. A paused military
   project can be abandoned (releasing its reservation) or destroyed, not evacuated.
 - `committedPersonnel`, used for seizure displacement, still uses the old pool; F replaces it.
-- The adjudication prompt gained two clause glosses (`grant_access`, sea movement); their
-  effect on the live model is not yet measured.
+
+2026-09-23: Phase D follow-up resolved the three decisions left open above.
+- Agreed transfers (cession, agreed occupation, withdrawal, expiry) hand the previous holder's
+  unfinished port, base or city to the new holder on schedule and disband its unfinished
+  armies and fleets back to its pool; only hostile loss of control pauses.
+- Supply traces to the heartland (most populous owned-and-controlled region) by land, sea
+  routes, or an ocean basin (`sea_basins`, 16 bodies of water: one world ocean, the Caspian
+  apart). Nakhchivan is cut off; Kaliningrad, Hawaii, Alaska and Russian-held Crimea are not.
+  Offshore waypoints now let routes round capes; before them Cabo da Roca split Portugal's
+  coast, so Galicia had no route to Lisboa. The 36-month seeded world is unchanged; the search
+  costs about 0.25 s per simulated month on the real map.
+- The two prompt glosses were A/B tested on the live model and kept (`docs/MODELS.md`): better
+  on access treaties and sealift, equal on regressions, no echo in two played months. Both
+  prompts often narrate treaties without a treaty operation, a Phase J concern.
 Next: Phase E (persistent conquest consequences and local resistance).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the

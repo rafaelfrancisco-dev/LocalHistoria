@@ -14,6 +14,9 @@ Resolution applyDelta(const Resolution &, const WorldDelta &, const Json::Value 
 struct Adjacency : std::map<std::string, std::set<std::string>> {
     using std::map<std::string, std::set<std::string>>::map;
     std::map<std::string, std::map<std::string, int>> sea;
+    // Bodies of water a supply line crosses at any distance, and the coastal regions on each.
+    std::map<std::string, std::set<int>> basins;
+    std::map<int, std::vector<std::string>> basinRegions;
     std::string seaRevision;
 };
 // A fleet's monthly allowance, and the troops one major warship can conservatively carry.

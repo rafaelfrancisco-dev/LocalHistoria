@@ -1,3 +1,4 @@
+#include "localhistoria/conflicts.h"
 #include "localhistoria/store.h"
 #include "localhistoria/world.h"
 #include <algorithm>
@@ -84,18 +85,14 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                            "ON e.id=l.event WHERE l.kind='causes' AND " +
                            happened + " GROUP BY l.target"))
         cited[row["target"].asString()] = row["turn"].asInt();
-    // Where an event without places happened: the acting nation's most populous region.
-    std::map<std::string, std::string> heartland;
-    for (auto &id : w.territories.getMemberNames()) {
-        auto &t = w.territories[id];
-        auto owner = t["owner"].asString();
-        if (t["kind"] == "residual" || owner != t["controller"].asString() ||
-            !t["latitude"].isNumeric())
-            continue;
-        if (!heartland.contains(owner) ||
-            t["population"].asInt64() > w.territories[heartland[owner]]["population"].asInt64())
-            heartland[owner] = id;
-    }
+    // Where an event without places happened: the acting nation's heartland, looked up once.
+    std::map<std::string, std::string> heartlands;
+    auto home = [&](const std::string &actor) -> const std::string & {
+        auto at = heartlands.find(actor);
+        if (at == heartlands.end())
+            at = heartlands.emplace(actor, lh::heartland(w, actor)).first;
+        return at->second;
+    };
     Json::Value months(Json::arrayValue);
     for (auto &row : query("SELECT turn,events FROM turns ORDER BY turn DESC")) {
         int turn = row["turn"].asInt();
@@ -176,7 +173,8 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                 } else if (w.hasActor(target) && target != x["actor"].asString())
                     item["actors"].append(target);
             } else if (action == "completion" || action == "construction_paused" ||
-                       action == "construction_resumed") {
+                       action == "construction_resumed" || action == "construction_transferred" ||
+                       action == "construction_disbanded") {
                 item["category"] = "construction";
                 // A finished city is years of work; units, bases and ports are routine, and so is
                 // work halting or resuming as the front moves.
@@ -214,8 +212,8 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
                 place(w.territories[r.asString()]);
             for (auto &e : item["entities"])
                 place(w.entities[e.asString()]);
-            if (item["location"].empty() && heartland.contains(x["actor"].asString()))
-                place(w.territories[heartland[x["actor"].asString()]]);
+            if (item["location"].empty() && !home(x["actor"].asString()).empty())
+                place(w.territories[home(x["actor"].asString())]);
             month["items"].append(item);
         }
         months.append(month);
