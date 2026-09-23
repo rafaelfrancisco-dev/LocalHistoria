@@ -113,7 +113,8 @@ void WorldTests::movement() {
     refused["events"][0]["blocked_by"] = "treaty-9";
     refused["events"][0]["operations"] = Json::arrayValue;
     auto denied = compileOperations(treaty.state, refused, adjacency);
-    check(denied.events[0]["blocked_by"] == "treaty-9" && denied.changes.size() == 1,
+    check(denied.events[0]["blocked_by"] == "treaty-9" && denied.changes.size() == 2 &&
+              denied.events[0]["conflicts"].empty() && denied.events[1]["conflicts"].size() == 1,
           "Commitment block");
     auto broken = ops;
     broken["events"][0]["blocked_by"] = "treaty-9";

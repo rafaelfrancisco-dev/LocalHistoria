@@ -105,6 +105,24 @@ try {
     const lines = countryBorders.getLayers().reduce((n, g) => n + g.getLayers().length, 0);
     return { mode: mapMode, seams, portugal, shown: map.hasLayer(countryBorders), lines: lines > 0 };
   }), { mode: "countries", seams: 0, portugal: "#c5a96e", shown: true, lines: true });
+  // Country view keeps occupation outlines above the seamless country fills.
+  assert.ok(await page.evaluate(() => countryBorders.getLayers().some(g =>
+    g.getLayers().some(l => l.options.dashArray === "4 3" &&
+      l.options.color === state.actors.RU.color && l.getLatLngs().length > 0))),
+    "Russian occupations have visible dashed outlines in country view");
+  assert.ok(await page.evaluate(() => {
+    const regions = [...regionById.values()].filter(l => l.feature.properties.owner === "PY").slice(0, 2);
+    const previous = regions.map(l => l.feature.properties.controller);
+    regions.forEach(l => { l.feature.properties.controller = "BR"; });
+    countryBordersKey = null;
+    renderCountryBorders();
+    const visible = countryBorders.getLayers().some(g => g.getLayers().some(l =>
+      l.options.dashArray === "4 3" && l.options.color === state.actors.BR.color && l.getLatLngs().length > 0));
+    regions.forEach((l, i) => { l.feature.properties.controller = previous[i]; });
+    countryBordersKey = null;
+    renderCountryBorders();
+    return regions.length === 2 && visible;
+  }), "Brazil's occupation of two Paraguayan provinces is outlined in country view");
   await page.getByRole("button", { name: "Political" }).click();
   assert.equal(await page.evaluate(() => map.hasLayer(countryBorders)), false);
   // Overlay toggles in the map-mode bar replace Leaflet's layer chooser.

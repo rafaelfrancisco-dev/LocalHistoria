@@ -889,10 +889,18 @@ function renderCountryBorders() {
     const border = (a, b) => a === b || owner(a) !== owner(b);
     const player = (a, b) => owner(a) === state.player || owner(b) === state.player;
     const line = (filter, style) => L.geoJSON(topojson.mesh(regionTopology, obj, filter), { interactive: false, style: () => style });
+    const occupiers = new Set([...regionById.values()]
+      .map(l => l.feature.properties)
+      .filter(p => p.controller && p.controller !== p.owner)
+      .map(p => p.controller));
     countryBorders = L.layerGroup([
       line((a, b) => border(a, b) && !player(a, b), { color: "#1f2a2f", weight: 1.2, opacity: 0.9 }),
-      line((a, b) => a !== b && owner(a) === owner(b) && controller(a) !== controller(b), { color: "#1f2a2f", weight: 1, dashArray: "3 3", opacity: 0.9 }),
       line((a, b) => border(a, b) && player(a, b), { color: "#dcbb7b", weight: 2 }),
+      // Draw the occupied area's perimeter last, including coasts and national borders.
+      ...[...occupiers].map(occupier => {
+        const held = g => controller(g) === occupier && controller(g) !== owner(g);
+        return line((a, b) => a === b ? held(a) : held(a) !== held(b), { color: state.actors[occupier]?.color || "#fff", weight: 2.5, dashArray: "4 3", opacity: 1 });
+      }),
     ]);
     countryBordersKey = key;
   }

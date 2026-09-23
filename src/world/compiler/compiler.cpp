@@ -181,6 +181,21 @@ void OperationCompiler::runOperations(EventScope &s) {
             if (!land)
                 throw Infeasible("a new state needs territory");
         }
+        // A successful seizure starts hostilities even when the model omitted open_conflict.
+        // Wait until explicit operations finish so a declaration in this event is reused.
+        for (const auto &owner : s.seizedOwners) {
+            if (atWar(s.ev, owner))
+                continue;
+            Json::Value declaration;
+            declaration["actors"].append(s.ev);
+            declaration["actors"].append(owner);
+            declaration["kind"] = "war";
+            declaration["text"] = s.text;
+            OpScope war(declaration);
+            war.name = "open_conflict";
+            war.why = "War begun by territorial seizure: " + s.text.substr(0, 300);
+            opOpen(s, war);
+        }
         pending.commit();
     } catch (const Infeasible &x) {
         pending.rollback();

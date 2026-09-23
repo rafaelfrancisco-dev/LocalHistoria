@@ -160,7 +160,7 @@ void WorldTests::operations() {
               seceded.state.territories["west"]["controller"] == "neighbor",
           "Secession and bordering occupation");
     check(seceded.state.entities["e1-harbor"]["origin_event"] == "t1-west-secedes" &&
-              seceded.state.entities.size() == 1 && seceded.state.conflicts.size() == 1,
+              seceded.state.entities.size() == 1 && seceded.state.conflicts.size() == 2,
           "Deduplicated construction");
     check(seceded.state.entities["e1-harbor"]["status"] == "under_construction" &&
               seceded.state.entities["e1-harbor"]["completes_turn"] ==
@@ -186,6 +186,14 @@ void WorldTests::operations() {
     check(far.events[0]["partial"] == true && !far.events[0].isMember("failed") &&
               droppedClause(far.events[0]) == " (In fact: not every region changed hands.)",
           ("A partly dropped event is partial: " + dump(far.events[0])).c_str());
+    auto invasion = applyDelta(opsBase, far, geo);
+    check(invasion.state.conflicts.size() == 1 && far.events[0]["conflicts"].size() == 1,
+          "A successful invasion creates and links a war without a model declaration");
+    auto continued = compileOperations(invasion.state,
+        parse(R"({"events":[{"description":"Advance","actor":"old-state","blocked_by":"none",
+        "causes":[],"operations":[{"action":"occupy","region":"hills","by":"old-state"}]}]})"), adjacency);
+    check(applyDelta(invasion, continued, geo).state.conflicts.size() == 1,
+          "Further occupation reuses the existing war");
     auto blitz = compile(
         R"({"events":[{"description":"Blitz","actor":"old-state","blocked_by":"none",)"
         R"("background":false,"causes":[],"operations":[{"action":"occupy",)"
@@ -234,7 +242,7 @@ void WorldTests::operations() {
                 R"("background":false,"causes":[],"operations":[{"action":"occupy",)"
                 R"("region":"west","by":"neighbor"},{"action":"transfer_territory",)"
                 R"("region":"west","to":"neighbor"}]}]})");
-    check(overreach.changes.size() == 1 && overreach.changes[0]["id"] == "west" &&
+    check(overreach.changes.size() == 2 && overreach.changes[0]["id"] == "west" &&
               overreach.changes[0]["after"]["controller"] == "neighbor" &&
               overreach.changes[0]["after"]["owner"] == "old-state" &&
               overreach.changes[0]["rationale"].asString().find("transfer_territory") ==
