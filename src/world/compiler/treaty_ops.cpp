@@ -119,15 +119,16 @@ void OperationCompiler::propose(EventScope &s, OpScope &op, Json::Value v, const
     if (realism()) {
         // The same offer already awaiting answers is not made twice: a nation that means to accept
         // it answers it, and a second copy would only wait beside the first.
-        std::set<std::string> parties;
-        for (const auto &a : v["actors"])
-            parties.insert(a.asString());
+        auto partySet = [](const Json::Value &actors) {
+            std::set<std::string> out;
+            for (const auto &a : actors)
+                out.insert(a.asString());
+            return out;
+        };
+        const auto parties = partySet(v["actors"]);
         auto same = [&](const Json::Value &p) {
-            std::set<std::string> others;
-            for (const auto &a : p["actors"])
-                others.insert(a.asString());
-            return p["status"] == "pending" && p["kind"] == v["kind"] && others == parties &&
-                   p["terms"] == v["terms"];
+            return p["status"] == "pending" && p["kind"] == v["kind"] && p["terms"] == v["terms"] &&
+                   partySet(p["actors"]) == parties;
         };
         for (const auto &p : w.proposals)
             if (same(p))

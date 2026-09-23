@@ -143,8 +143,6 @@ static void access(WorldState &w, const char *grantor, const char *kind = "defen
     k["actors"].append(grantor);
     k["terms"] = parse(R"([{"action":"grant_access","to":"AA"}])");
 }
-// Offers a treaty from `from` to the other parties, then signs it in the next month with every
-// party accepting. Returns the month after signing.
 // A treaty offered by `from` and signed the next month by every party: the state it was offered
 // in and the delta that settles it (empty when the offer was refused outright).
 static std::pair<WorldState, WorldDelta>

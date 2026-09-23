@@ -1,6 +1,7 @@
 #include "localhistoria/providers.h"
 #include "localhistoria/status.h"
 #include "localhistoria/turn.h"
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -164,11 +165,9 @@ int main(int argc, char **argv) {
             }
             // A reform changes no map and starts an effort the month step prices and pays for.
             if (name == "reform") {
-                expected = delta.changes.empty() && !delta.events.empty();
-                bool effort = false;
-                for (auto &e : delta.events)
-                    effort = effort || e.isMember("effort");
-                expected = expected && effort;
+                expected = delta.changes.empty() && !delta.events.empty() &&
+                           std::any_of(delta.events.begin(), delta.events.end(),
+                                       [](const Json::Value &e) { return e.isMember("effort"); });
             }
             if (name == "overreach" || name == "weak_raid")
                 expected = s.territories["region-interior"]["controller"] == "ES" &&

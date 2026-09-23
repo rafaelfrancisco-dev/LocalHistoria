@@ -1150,10 +1150,13 @@ function renderDiplomacy() {
 const PAUSING_KINDS = new Set(["ceasefire", "peace_treaty", "non_aggression_pact"]);
 function pairSummary(c) {
   if (!c.hostile_pairs?.length) return "";
-  const paused = (p) => Object.values(state.commitments || {}).some((k) => k.status === "open" && PAUSING_KINDS.has(k.kind) && p.actors.every((a) => k.actors.includes(a)));
+  const pauses = Object.values(state.commitments || {}).filter((k) => k.status === "open" && PAUSING_KINDS.has(k.kind));
   const label = (p) => p.actors.map(actorName).join("–");
-  const fighting = c.hostile_pairs.filter((p) => p.status === "active" && !paused(p)).map(label);
-  const truce = c.hostile_pairs.filter((p) => p.status === "active" && paused(p)).map(label);
+  const fighting = [], truce = [];
+  for (const p of c.hostile_pairs) {
+    if (p.status !== "active") continue;
+    (pauses.some((k) => p.actors.every((a) => k.actors.includes(a))) ? truce : fighting).push(label(p));
+  }
   if (c.actors.length <= 2 && !truce.length) return "";
   return [fighting.length ? `Fighting: ${fighting.join(", ")}` : "", truce.length ? `Ceasefire: ${truce.join(", ")}` : ""].filter(Boolean).join(" · ");
 }

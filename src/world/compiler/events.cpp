@@ -143,6 +143,14 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                 inert = false;
         }
     auto independent = s.e.get("outcome_kind", "none").asString();
+    auto effortOpen = [&](const std::string &a) {
+        return std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
+               efforts.contains(a + ":" + independent);
+    };
+    auto startEffort = [&](const std::string &a) {
+        efforts.insert(a + ":" + independent);
+        event["effort"] = independent;
+    };
     // A world event is an unplanned development whose consequence is the point of it, bounded like
     // any other effect.
     bool supportedIndependent =
@@ -175,18 +183,13 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                 // month; asking again continues the effort already under way and earns nothing.
                 if ((independent == "reform" || independent == "investment") &&
                     s.successfulOps.empty() && (rank(economy) > 2 || rank(stability) > 2)) {
-                    auto key = a + ":" + independent;
-                    bool open =
-                        std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
-                        efforts.contains(key);
+                    bool open = effortOpen(a);
                     if (rank(economy) > 2)
                         economy = "none";
                     if (open && rank(stability) > 2)
                         stability = "none";
-                    if (!open) {
-                        efforts.insert(key);
-                        event["effort"] = independent;
-                    }
+                    if (!open)
+                        startEffort(a);
                     if (economy == "none" && stability == "none")
                         continue;
                 }
@@ -197,20 +200,15 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     // unless it judged the attempt a setback for its author.
     if (realism() && !inert && supportedIndependent && s.successfulOps.empty() &&
         (independent == "reform" || independent == "investment") && !event.isMember("effort")) {
+        auto worse = [](const Json::Value &v) {
+            return validEffect(v.asString()) && rank(v.asString()) < 2;
+        };
         bool setback = false;
         for (const auto &x : s.e.get("effects", Json::Value(Json::arrayValue)))
-            setback =
-                setback ||
-                (x.isObject() && actorRef(x["actor"].asString()) == s.ev &&
-                 ((validEffect(x["economy"].asString()) && rank(x["economy"].asString()) < 2) ||
-                  (validEffect(x["stability"].asString()) && rank(x["stability"].asString()) < 2)));
-        auto key = s.ev + ":" + independent;
-        bool open = std::as_const(w.actors)[s.ev]["status"]["efforts"].isMember(independent) ||
-                    efforts.contains(key);
-        if (!open && !setback) {
-            efforts.insert(key);
-            event["effort"] = independent;
-        }
+            setback = setback || (x.isObject() && actorRef(x["actor"].asString()) == s.ev &&
+                                  (worse(x["economy"]) || worse(x["stability"])));
+        if (!setback && !effortOpen(s.ev))
+            startEffort(s.ev);
     }
     auto entry = [&](const std::string &a) -> Effect & {
         auto f = find(a);
