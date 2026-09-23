@@ -323,7 +323,7 @@ function renderStats() {
       // actions near the top.
       ...(last.implementation && !phone.matches ? [["implementation", `${usd(last.implementation.allowance_usd)}/month`, implementationDetail(last)]] : []),
       ...(military ? [
-        ["Active troops" + (military.estimated ? " · estimate" : ""), military.active.toLocaleString(), `${military.uncommitted_personnel.toLocaleString()} uncommitted`],
+        ["Active troops" + (military.estimated ? " · estimate" : ""), military.active.toLocaleString(), [`${military.uncommitted_personnel.toLocaleString()} uncommitted`, national.forces].filter(Boolean).join(" · ")],
         ["Reserve", military.reserve.toLocaleString(), "Available for mobilisation"],
         ["Warships", military.ships.toLocaleString(), `${military.uncommitted_ships.toLocaleString()} uncommitted`],
         ["Combat aircraft", military.aircraft.toLocaleString(), "National air support"],

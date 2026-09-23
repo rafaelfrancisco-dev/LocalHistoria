@@ -123,3 +123,14 @@ Latency was the same (17–22 s per scenario). Two months played from one copied
 showed no echo of the previous month: each month's events answered that month's orders. Both
 prompts still often narrate a treaty offer or acceptance without a treaty operation, so the engine
 reports "No validated change resulted from the proposed action".
+
+Plan 26 phase J added facts, not instructions: the nation's `implementation` line, a `forces`
+exhaustion phrase once it matters, and `conquests` for annexed land still held by force. The
+adjudication instructions are unchanged. It was measured on 23 September 2026 with Qwen3.5-4B by
+playing the same two months from one copied save on the new binary and on the previous commit:
+
+- **Prompt size:** the month-2 decision prompts, the first to carry the new line, grew by 19–74
+  tokens (1–4%).
+- **Latency:** unchanged (3–14 s per decision, 84–86 s per adjudication).
+- **Outcomes:** month 2 had the same outcomes on both sides, and neither echoed month 1.
+

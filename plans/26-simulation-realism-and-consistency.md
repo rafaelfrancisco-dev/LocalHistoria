@@ -158,7 +158,24 @@ v0/v2/v3/v4 replays, and `make format-check`.
 - **Real world.** Fronts, toll and displacement over 36 months match Phase H exactly.
 - **Known limits.** There is no real area or terrain data. The defender has no exhaustion penalty
   (entrenchment). The front weights only apply beyond 12 regions.
-Next: Phase J (timely decisions and visible rules).
+
+2026-09-23: Phase J gate passed. There are 17 CTest cases. `politics` gains the fair-reaction
+checks, and `turn` the retry check. Also passing: the HTTP integration suite with browser, restart
+and replay, the legacy replays, and `make format-check`.
+- **Scheduling.** Reactive nations are ranked by urgency: treaty answers, then the player's
+  enemies, then crises, then other wars, then named nations, then other linked nations. Within a
+  class the least recently served goes first. The four-nation cap and the independent slots are
+  unchanged. The choice is saved per month (`monthly_reactions`); a retry naming the same nations
+  reuses it, and it records service for rotation.
+- **Facts.** The shared national status gains `implementation` and `forces`; context gains
+  `conquests`. Engine accounting (`establishment`, `peace_months`, `exhaustion`, `arrears`,
+  `displacement`, `control`) is kept out of every prompt. The UI shows implementation (desktop row,
+  phone tooltip), displacement hosts, control and exhaustion.
+- **Measured.** Month-2 decision prompts grew 19–74 tokens (1–4%), latency was unchanged, and there
+  was no echo in a two-month A/B on a copied save.
+- **Known limits.** The live-model check is two played months, not the full matrix of final
+  verification step 6. Returns are shown per region, not summarised in the journal. Adjudication
+  instructions were not trimmed further.
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -621,7 +638,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] G — Origin–host displacement and actual return migration.
 - [x] H — Paid progress, recurring trade, replacement, and demobilization.
 - [x] I — Evidence-based combat pacing and exhaustion.
-- [ ] J — Fair urgent reactions, accurate presentation, and complete verification.
+- [x] J — Fair urgent reactions, accurate presentation, and complete verification.
 - [ ] Post-implementation audit — every original finding and phase checked against fresh evidence;
       unresolved items recorded explicitly.
 

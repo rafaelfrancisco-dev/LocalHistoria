@@ -1,4 +1,5 @@
 #include "localhistoria/simulation.h"
+#include "localhistoria/conflicts.h"
 #include "localhistoria/lifecycle.h"
 #include "localhistoria/status.h"
 #include <algorithm>
@@ -300,9 +301,17 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
     f["occupying"] = Json::objectValue;
     for (auto &id : w.territories.getMemberNames()) {
         auto &t = w.territories[id];
-        if (t["owner"] == a && t["controller"] == a)
+        if (t["owner"] == a && t["controller"] == a) {
             f["territories"][id] = t["name"];
-        else if (t["owner"] == a) {
+            // Annexed by force and not yet integrated: it still resists and yields less.
+            const auto &held =
+                realismRules(w) ? hostileControl(w, id) : Json::Value::nullSingleton();
+            if (held.isObject())
+                f["conquests"][id] =
+                    t["name"].asString() + ": taken from " +
+                    w.actors[held["claimant"].asString()].get("name", held["claimant"]).asString() +
+                    ", " + std::to_string(int(held["integration"].asDouble())) + "% integrated";
+        } else if (t["owner"] == a) {
             f["occupied_by_others"][id]["name"] = t["name"];
             f["occupied_by_others"][id]["controller"] = t["controller"];
         } else if (t["controller"] == a) {

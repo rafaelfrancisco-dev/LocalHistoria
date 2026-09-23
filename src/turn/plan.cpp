@@ -19,10 +19,6 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
     // AI nations that act this month: those the player addresses first, then ongoing
     // disputes and one rotating neighbor.
     std::vector<std::string> candidates(mentions.actors.begin(), mentions.actors.end());
-    // A nation whose treaty offer is answered this month reacts to the answer.
-    for (auto &p : w.proposals)
-        if (p["status"] == "pending")
-            candidates.insert(candidates.begin(), p["from"].asString());
     // Large blocs (NATO, the EU) would otherwise fill every month with the same
     // alphabetical members.
     auto engaged = [&](const Json::Value &v) { return isOpen(v) && isParty(v, w.player); };
@@ -72,11 +68,41 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
         auto names = w.actors.getMemberNames();
         candidates.push_back(names[w.turn % names.size()]);
     }
+    // Urgent decisions first (treaty answers, the player's enemies, crises, other wars), then
+    // routine ones; within each, whoever has waited longest. The month's choice is kept, so a
+    // cancelled or retried turn naming the same nations asks the same ones.
     std::set<std::string> actors;
-    for (auto &a : candidates)
-        if (a != w.player && w.hasActor(a) && actors.size() < maxAiActors)
+    auto month = std::to_string(w.turn + 1);
+    Json::Value named(Json::arrayValue);
+    for (const auto &a : mentions.actors)
+        named.append(a);
+    auto kept = store.query("SELECT actors FROM monthly_reactions WHERE campaign=? AND month=?",
+                            {w.campaignId, month});
+    auto saved = kept.empty() ? Json::Value() : parse(kept[0]["actors"].asString());
+    if (!kept.empty() && saved["named"] == named) {
+        for (const auto &a : saved["actors"])
+            if (w.hasActor(a.asString()) && a != w.player)
+                actors.insert(a.asString());
+    } else {
+        std::map<std::string, int> lastService;
+        for (auto &row : store.query("SELECT month,actors FROM monthly_reactions WHERE campaign=? "
+                                     "AND month<? ORDER BY month",
+                                     {w.campaignId, month})) {
+            auto served = parse(row["actors"].asString());
+            for (const auto &a : served["actors"])
+                lastService[a.asString()] = std::stoi(row["month"].asString());
+        }
+        Json::Value chosen;
+        chosen["named"] = named;
+        chosen["actors"] = Json::arrayValue;
+        for (auto &a : selectReactive(reactiveCandidates(w, candidates, mentions.actors),
+                                      lastService, w.turn + 1, maxAiActors)) {
             actors.insert(a);
-    actors.erase(w.player);
+            chosen["actors"].append(a);
+        }
+        store.execute("INSERT OR REPLACE INTO monthly_reactions VALUES(?,?,?)",
+                      {w.campaignId, month, dump(chosen)});
+    }
     // One action each; two for nations the player named or is fighting, the only ones
     // whose month usually matters.
     std::map<std::string, int> reactiveCounts;

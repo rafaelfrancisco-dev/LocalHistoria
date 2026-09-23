@@ -85,6 +85,13 @@ int main() {
             plan = runner.plan(decode(store.campaign()), orders);
         }
         check(plan.actors == std::set<std::string>{"ES"}, "Spain, named by the player, reacts");
+        {
+            std::lock_guard lock(mutex);
+            auto retried = runner.plan(decode(store.campaign()), orders);
+            check(retried.actors == plan.actors &&
+                      store.query("SELECT actors FROM monthly_reactions").size() == 1,
+                  "A retried month asks the same nations");
+        }
         bool situated = false;
         for (auto &c : plan.independentContexts)
             if (c.facts["initiative_type"] == "independent_regional")

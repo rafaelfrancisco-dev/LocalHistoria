@@ -1,4 +1,5 @@
 #include "localhistoria/politics.h"
+#include "localhistoria/conflicts.h"
 #include <algorithm>
 #include <cstdio>
 namespace lh {
@@ -294,5 +295,81 @@ Json::Value regionalState(const WorldState &w, const std::string &r) {
     p["relations"] = "neutral";
     p["supporting_events"] = Json::arrayValue;
     return p;
+}
+std::vector<ReactiveCandidate> reactiveCandidates(const WorldState &w,
+                                                  const std::vector<std::string> &linked,
+                                                  const std::set<std::string> &mentioned) {
+    std::map<std::string, ReactiveCandidate> out;
+    auto consider = [&](const std::string &a, int urgency, int age, int order) {
+        if (a == w.player || !w.hasActor(a))
+            return;
+        auto [it, fresh] = out.try_emplace(a, ReactiveCandidate{a, urgency, age, order});
+        auto &c = it->second;
+        if (!fresh && (urgency < c.urgency || (urgency == c.urgency && age > c.age))) {
+            c.urgency = urgency;
+            c.age = age;
+        }
+        c.order = std::min(c.order, order);
+    };
+    const int late = int(linked.size());
+    // Treaty answers: every nation party to a pending proposal that has not signed, and an author
+    // reacting to the player's answer.
+    for (const auto &p : w.proposals) {
+        if (p["status"] != "pending")
+            continue;
+        int age = w.turn - p.get("proposed_turn", w.turn).asInt();
+        const auto &answers = p["answers"];
+        for (const auto &a : p["actors"])
+            if (!answers.isObject() || !answers.isMember(a.asString()) || a == p["from"])
+                consider(a.asString(), 0, age, late);
+        consider(p["from"].asString(), 0, age, late);
+    }
+    for (size_t i = 0; i < linked.size(); ++i) {
+        const auto &a = linked[i];
+        if (!w.hasActor(a) || a == w.player)
+            continue;
+        const auto &status = w.actors[a]["status"];
+        int urgency = mentioned.contains(a) ? 4 : 5;
+        bool war = false, rising = false;
+        for (const auto &c : w.conflicts) {
+            if (!isOpen(c) || !isParty(c, a))
+                continue;
+            for (const auto &p : c["actors"])
+                war = war || (p != a && fightingPair(w, c, a, p.asString()));
+            rising =
+                rising || ((c["kind"] == "civil_war" || c["kind"] == "insurgency") &&
+                           c["started_turn"].isInt() && w.turn - c["started_turn"].asInt() <= 3);
+        }
+        if (fighting(w, w.player, a))
+            urgency = 1;
+        else if (status.get("collapse_months", 0).asInt() > 0 ||
+                 status.get("stability", 50).asDouble() < 20 || rising)
+            urgency = 2;
+        else if (war)
+            urgency = 3;
+        consider(a, urgency, 0, int(i));
+    }
+    std::vector<ReactiveCandidate> list;
+    for (auto &[a, c] : out)
+        list.push_back(c);
+    return list;
+}
+std::vector<std::string> selectReactive(const std::vector<ReactiveCandidate> &candidates,
+                                        const std::map<std::string, int> &lastService, int turn,
+                                        size_t cap) {
+    auto served = [&](const std::string &a) {
+        auto it = lastService.find(a);
+        return it == lastService.end() ? -1 : std::min(it->second, turn);
+    };
+    auto ranked = candidates;
+    std::stable_sort(ranked.begin(), ranked.end(), [&](const auto &x, const auto &y) {
+        return std::make_tuple(x.urgency, -x.age, served(x.actor), x.order, x.actor) <
+               std::make_tuple(y.urgency, -y.age, served(y.actor), y.order, y.actor);
+    });
+    std::vector<std::string> out;
+    for (const auto &c : ranked)
+        if (out.size() < cap)
+            out.push_back(c.actor);
+    return out;
 }
 } // namespace lh

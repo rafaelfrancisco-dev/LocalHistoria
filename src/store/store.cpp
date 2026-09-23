@@ -20,6 +20,10 @@ Store::Store(const std::string &p, bool readOnly) {
     sql("CREATE TABLE IF NOT EXISTS chronicles(actor TEXT PRIMARY KEY,document TEXT);");
     sql("CREATE TABLE IF NOT EXISTS monthly_allocations(campaign TEXT,month INTEGER,slots "
         "TEXT,PRIMARY KEY(campaign,month));");
+    // The nations asked to react each month: kept so a retried month asks the same ones, and read
+    // back for how long each has waited.
+    sql("CREATE TABLE IF NOT EXISTS monthly_reactions(campaign TEXT,month INTEGER,actors "
+        "TEXT,PRIMARY KEY(campaign,month));");
     sql("CREATE TABLE IF NOT EXISTS event_links(event TEXT,kind TEXT,target TEXT,PRIMARY "
         "KEY(event,kind,target)); CREATE INDEX IF NOT EXISTS event_target ON "
         "event_links(kind,target); CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,turn "
@@ -104,7 +108,8 @@ void Store::create(const WorldState &w, bool replace) {
     try {
         eventLogCache.reset();
         sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
-            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM event_links; "
+            "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM "
+            "monthly_reactions; DELETE FROM event_links; "
             "DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
         execute("INSERT INTO campaign VALUES(1,?)", {dump(encode(w))});
         execute("INSERT INTO initial_world VALUES(1,?)", {dump(encode(w))});

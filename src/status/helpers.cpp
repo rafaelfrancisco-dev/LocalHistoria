@@ -151,11 +151,42 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
         s["available"] = false;
     if (status["military"].isObject()) {
         s["military"] = status["military"];
+        // Engine accounting stays out of the inventory; exhaustion is described below.
+        for (auto k : {"establishment", "peace_months", "exhaustion"})
+            s["military"].removeMember(k);
         s["military"]["uncommitted_personnel"] = force::uncommittedPersonnel(w, a);
         s["military"]["uncommitted_ships"] = force::uncommittedShips(w, a);
         s["military"]["label"] = force::militaryLabel(w, a);
         s["military_text"] = force::militarySummary(w, a);
         s["military_spend_usd"] = status["military_spend_usd"];
+        // Realism: how worn its forces are, in words, once it matters.
+        double worn = number(status["military"], "exhaustion");
+        if (worn >= 0.25)
+            s["forces"] = std::string(worn >= 0.75  ? "exhausted"
+                                      : worn >= 0.5 ? "worn down"
+                                                    : "strained") +
+                          " by sustained fighting";
+    }
+    // Realism: what this month's implementation allowance could pay for, in one line.
+    if (status["implementation"].isObject()) {
+        const auto &i = status["implementation"];
+        auto money = [](double usd) {
+            char b[48];
+            if (usd >= 1e9)
+                snprintf(b, sizeof b, "US$%.1f billion", usd / 1e9);
+            else
+                snprintf(b, sizeof b, "US$%.0f million", usd / 1e6);
+            return std::string(b);
+        };
+        std::string text = money(number(i, "allowance_usd")) + " a month for projects, " +
+                           money(number(i, "committed_usd")) + " committed";
+        if (integer(i, "stalled") > 0)
+            text += "; " + std::to_string(integer(i, "stalled")) + " underfunded";
+        for (const auto &k : status["efforts"].getMemberNames())
+            text += "; " + k + " under way";
+        if (status["procurement"].isObject() && !status["procurement"].empty())
+            text += "; replacing losses";
+        s["implementation"] = text;
     }
     s["wars"] = Json::arrayValue;
     for (auto &id : w.conflicts.getMemberNames()) {

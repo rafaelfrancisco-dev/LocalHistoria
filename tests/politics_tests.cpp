@@ -396,8 +396,57 @@ int main() {
         check(reference["available"].asBool() && reference["regional_wikidata"] == "Q123" &&
                   reference["revision"] == 42,
               "Verified regional reference cached provenance");
+        // Plan 26 J: urgent reactions cannot be crowded out by name mentions, a finite backlog of
+        // urgent nations is served in turn, and a proposal's recipient answers.
+        {
+            WorldState u;
+            u.player = "PL";
+            u.turn = 10;
+            u.engine["lifecycle_version"] = 1;
+            for (auto a :
+                 {"PL", "EN", "M1", "M2", "M3", "M4", "U1", "U2", "U3", "U4", "U5", "U6", "TR"})
+                u.actors[a]["name"] = a;
+            u.conflicts["war"] = parse(R"({"kind":"war","status":"open","actors":["PL","EN"],
+                "started_turn":2,"hostile_pairs":[{"actors":["EN","PL"],"status":"active"}],
+                "postures":{"PL":"high","EN":"high"}})");
+            std::set<std::string> named{"M1", "M2", "M3", "M4"};
+            std::vector<std::string> linked{"M1", "M2", "M3", "M4", "EN"};
+            std::map<std::string, int> served;
+            for (int month = 11; month < 17; ++month) {
+                auto chosen =
+                    selectReactive(reactiveCandidates(u, linked, named), served, month, 4);
+                check(std::find(chosen.begin(), chosen.end(), "EN") != chosen.end(),
+                      "Name mentions never crowd out the nation fighting the player");
+                for (auto &a : chosen)
+                    served[a] = month;
+            }
+            // Six nations in crisis, four places a month: all six are served within two months.
+            auto crises = u;
+            crises.conflicts.clear();
+            std::vector<std::string> urgent{"U1", "U2", "U3", "U4", "U5", "U6"};
+            for (auto &a : urgent)
+                crises.actors[a]["status"]["stability"] = 10;
+            std::map<std::string, int> last;
+            std::set<std::string> reached;
+            for (int month = 11; month < 13; ++month)
+                for (auto &a :
+                     selectReactive(reactiveCandidates(crises, urgent, {}), last, month, 4)) {
+                    last[a] = month;
+                    reached.insert(a);
+                }
+            check(reached.size() == 6, "A finite urgent backlog is served within bounded months");
+            // A proposal's recipient owes an answer and outranks a war and every mention.
+            auto offered = u;
+            offered.proposals["k1"] = parse(R"({"status":"pending","from":"PL","proposed_turn":9,
+                "actors":["PL","TR"],"answers":{"PL":{"accept":true}}})");
+            auto chosen = selectReactive(reactiveCandidates(offered, linked, named), {}, 11, 4);
+            check(chosen.front() == "TR" && chosen[1] == "EN",
+                  "A pending treaty answer is served first, then the enemy");
+            check(selectReactive(reactiveCandidates(offered, linked, named), {}, 11, 4) == chosen,
+                  "Selection is deterministic");
+        }
         std::cout << "Independent scheduler, regional authority/history, identities, safe flags, "
-                     "rollback, reload and reference mocks passed\n";
+                     "rollback, reload, reference mocks and fair reactions passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << "\n";
         return 1;

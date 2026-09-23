@@ -92,3 +92,22 @@ only for actors with actions, and transfer recipients retain validated ID syntax
 states can receive land. Details and prose-quality limits are in EVOLVING_WORLD.md.
 
 Live twelve-month Brazil campaign evidence will be recorded here after completion.
+
+## Plan 26 phases G–J (2026-09-23)
+
+Each phase had its own gate and commit:
+- **Tests:** 17 CTest suites, `make format-check`, and `python3 tests/integration.py` (HTTP,
+  browser, 8 turns replayed identically without inference, restart).
+- **Legacy replays:** the v0/v2/v3/v4 replays run inside CTest.
+- **Real-world probe:** a scratch 36-month idle run of the seeded 2026 world under the realism
+  lifecycle. Front lines were identical before and after every phase.
+- **Deterministic scenarios** (`tests/status/`):
+  - displacement ledger conservation, returns, and reload;
+  - allowance competition, efforts, trade, replacement and demobilisation;
+  - exhaustion, capture effort, whole-front weighting and renamed fronts over 24–36 months.
+- **Scheduling** (`tests/politics_tests.cpp`, `tests/turn_tests.cpp`): mentions never crowd out
+  the enemy, a finite urgent backlog is served within two months, treaty answers come first, and a
+  retried month asks the same nations.
+- **Live model:** see MODELS.md. This is a two-month A/B on a copied save, not a full campaign
+  matrix.
+
