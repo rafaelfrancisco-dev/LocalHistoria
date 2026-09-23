@@ -137,7 +137,28 @@ browser, restart and replay, the legacy v0/v2/v3/v4 replays, and `make format-ch
 - **Known limits.** There is no maintenance drag on growth. Procurement only replaces losses;
   deliberate expansion is not modelled. Efforts are one per category per nation; the model cannot
   name a specific reform target. Implementation facts reach the UI but not prompts yet (Phase J).
-Next: Phase I (pacing from exposure and exhaustion).
+
+2026-09-23: Phase I gate passed. There are 17 CTest cases; `status` gains the pacing scenarios over
+24–36 months. Also passing: the HTTP integration suite with browser, restart and replay, the legacy
+v0/v2/v3/v4 replays, and `make format-check`.
+- **Exhaustion.** It replaces the month-12 attack cliff. It rises with intensity, losses and cut-off
+  armies, and recovers in proportion to itself: fastest in peace, faster with funded replacement.
+  The largest monthly change in attacking strength is under 6%. Seeded year-old wars start at 0.8,
+  the old multiplier, so their fronts carry on unchanged.
+- **One threshold.** Ordered and automatic seizures both need 1.5 × capture effort, share the
+  two-a-month budget and the same capacity per defender, and an order spends banked pressure.
+- **Capture effort** uses extent (median neighbour spacing), population and distance from the
+  heartland, documented as proxies, not terrain.
+- **Whole front.** All regions are simulated, weighted by exposure beyond 12. The reported list is
+  bounded and ordered by exposure; IDs only break exact ties. Renamed fixtures agree within 15%.
+- **Superseded calibration.** Orders used to take ground at 0.75:1 (capacity 1 was "limited, 1
+  region"). The access fixture's second-front test now uses 500,000 troops instead of 250,000, and
+  its interiors are a degree apart instead of two, because 440 km neighbour spacing is three times
+  the real median.
+- **Real world.** Fronts, toll and displacement over 36 months match Phase H exactly.
+- **Known limits.** There is no real area or terrain data. The defender has no exhaustion penalty
+  (entrenchment). The front weights only apply beyond 12 regions.
+Next: Phase J (timely decisions and visible rules).
 
 Follows completed plans 19 and 21–25. Addresses all fourteen findings in the
 [simulation realism audit](../docs/audits/2026-09-22-simulation-realism.md).
@@ -599,7 +620,7 @@ phase gates above are intended to catch those risks before further features are 
 - [x] F — Conserved force allocations and fractional, exposure-based attrition.
 - [x] G — Origin–host displacement and actual return migration.
 - [x] H — Paid progress, recurring trade, replacement, and demobilization.
-- [ ] I — Evidence-based combat pacing and exhaustion.
+- [x] I — Evidence-based combat pacing and exhaustion.
 - [ ] J — Fair urgent reactions, accurate presentation, and complete verification.
 - [ ] Post-implementation audit — every original finding and phase checked against fresh evidence;
       unresolved items recorded explicitly.

@@ -78,6 +78,9 @@ Resolution MonthlyStatus::run() {
     // orders deliver on paid completion, and a long peace returns excess troops to the reserve.
     if (realism())
         implementation();
+    // 5d. Exhaustion from this month's fighting and losses, and recovery from rest and replacement.
+    if (realism())
+        exhaustionStep();
 
     // 6. Displaced people return home once their region is calm and back under its owner's control.
     returnDisplaced();

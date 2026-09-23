@@ -48,4 +48,7 @@ void recordControl(WorldState &, bool migrating);
 // Displacement from before the origin-host ledger existed: an outstanding count with no recorded
 // host is kept as a balance of unknown whereabouts, never assigned a host or returned. Idempotent.
 void recordDisplacement(WorldState &);
+// Exhaustion for nations that have none recorded: those already fighting a war a year old or more
+// start where the old anniversary multiplier left them, everyone else fresh. Idempotent.
+void recordExhaustion(WorldState &);
 } // namespace lh

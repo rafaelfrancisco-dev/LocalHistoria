@@ -339,6 +339,50 @@ and Myanmar now replace their losses in batches, so their armies hold roughly st
 shrinking by about 10%. Russia orders replacement aircraft and a warship; Ukraine orders aircraft.
 Mobilisation stays affordable for every belligerent.
 
+### Pacing: exhaustion, capture effort and the whole front (realism lifecycle)
+
+Under the realism lifecycle (Plan 26 I), pacing follows from the accounting above rather than from
+calendar cut-offs.
+
+- **Exhaustion** replaces the old rule that cut attacking strength to 60% on a war's first
+  anniversary. Each nation's `military.exhaustion` (0–1) lowers attacking strength by up to half.
+  Each month it rises by 0.005 / 0.012 / 0.02 for the intensity fought at, by 5 × the share of
+  active personnel lost, and by 0.01 while any army is cut off from home. It recovers by a share of
+  itself: 3% a month while fighting, 6% with replacement fully funded, 10% in peace (a half-life of
+  about seven months). With Russia's losses it settles near 0.8, which is exactly the old
+  multiplier. A new war reaches it gradually instead of in one step. Nations already a year into a
+  war when a campaign moves to these rules start at 0.8.
+- **One seizure threshold.** Orders and momentum meet the same bar: an attack/defence ratio of
+  1.5 × the region's capture effort. One region a month at that ratio, two at twice it, and at most
+  two a month in all. An order no longer takes ground at the old 0.75:1. An ordered seizure also
+  spends one region's worth of the progress momentum had banked against that enemy.
+- **Capture effort** multiplies three proxies, none of which is terrain:
+  - **Extent:** `sqrt(extent / 150 km)`, clamped to 0.6–2.0. Extent is the median distance from the
+    region's interior to its neighbours'. The map has no areas; the seeded median is 136 km,
+    Donetsk 187, Texas 691.
+  - **Population:** `(population / 1 million)^0.1`, clamped to 0.7–1.4.
+  - **Supply distance:** up to +50% for targets more than 1,500 km from the attacker's heartland.
+
+  Donetsk comes to about 1.3 for Russia; a small city district to about 0.7.
+- **The whole front.** A front is simulated over all its regions. Up to 12 regions each bear the
+  full toll as before. A longer front shares that total across every region by exposure (one plus
+  its enemy-held neighbours, plus two where ground changed hands), so no region is dropped
+  because of its ID. A conflict still reports at most 12 regions, the most exposed first.
+
+Measured on deterministic fixtures (`tests/status/pacing.cpp`, a 20-pair border):
+- **Smooth wear:** a new high-intensity war reaches exhaustion 0.53 in two years. No month
+  changes attacking strength by more than 6%. Seven months of peace halve it.
+- **Parity:** three years at 1:1 move no ground and cost 173,000 lives.
+- **Superiority:** at 5:1 the attacker takes 8 regions in year one, 6 in year two and 19 in three
+  years, never more than two a month.
+- **Renaming:** renaming every region changes the toll by less than 15%, and every front region
+  bears a share.
+- **Effort:** a small district needs 0.72 and a vast region 2.55.
+
+On the real world, 36 idle months take and lose the same regions, with the same Russo-Ukrainian
+toll and displacement: its front has at most 12 regions, so every region still counts fully.
+Russia's and Ukraine's exhaustion stay between 0.80 and 0.84.
+
 ### Conquest and resistance (realism lifecycle)
 
 Under the realism lifecycle (Plan 26 E), a region held by force carries an engine-owned `control`

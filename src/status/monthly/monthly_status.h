@@ -11,6 +11,12 @@ struct Front {
     std::vector<std::string> regions;
     int intensity;
     bool fighting;
+    // Realism: how much of the front's toll and flight each region bears (1 = fully).
+    std::map<std::string, double> weight;
+    double of(const std::string &region) const {
+        auto at = weight.find(region);
+        return at == weight.end() ? 1.0 : at->second;
+    }
 };
 // One month of applyMonthlyStatus: each numbered step is a method over the shared month state.
 class MonthlyStatus {
@@ -48,6 +54,9 @@ class MonthlyStatus {
     bool takeGround(const std::string &id, const std::string &attacker, const std::string &defender,
                     double &held);
     void addFront(const std::string &id, const Json::Value *pair = nullptr);
+    void weighFront(Front &f) const;
+    // 5d (realism): how worn down each nation's forces are.
+    void exhaustionStep();
     std::set<std::string> engagedPairs;
     // 5
     Int move(const std::string &from, const std::string &to, Int count);
@@ -136,6 +145,8 @@ class MonthlyStatus {
     std::set<std::string> mobilising;
     std::map<std::string, double> effectGdp, effectStability;
     std::set<std::string> seized;
+    // Seizures this month's orders made, as opposed to momentum.
+    std::set<std::string> ordered;
     std::map<std::string, std::pair<std::string, std::string>>
         seizedBy; // region -> (new controller, previous controller)
     std::vector<Front> fronts;

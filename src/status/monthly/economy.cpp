@@ -345,4 +345,38 @@ void MonthlyStatus::recover(const std::string &a) {
                         cActors[a]["name"].asString() + " returned " + grouped(released) +
                             " troops to the reserve."});
 }
+// Exhaustion rises with the intensity a nation fights at, the share of its active personnel lost
+// this month and any army cut off from home, and recovers in proportion to itself: slowly while it
+// fights, faster when replacement is fully funded, fastest in peace.
+void MonthlyStatus::exhaustionStep() {
+    const auto &start = static_cast<const WorldState &>(forceStart);
+    for (const auto &a : w.actors.getMemberNames()) {
+        const auto &cm = cActors[a]["status"]["military"];
+        if (!cm.isObject())
+            continue;
+        int intensity = -1;
+        for (const auto &f : fronts)
+            if (f.parties.contains(a) && !f.regions.empty())
+                intensity = std::max(intensity, f.intensity);
+        double e = std::clamp(number(cm, "exhaustion"), 0.0, 1.0), rise = 0, recovery;
+        if (intensity >= 0) {
+            double active = std::max(1.0, number(start.actors[a]["status"]["military"], "active"));
+            rise =
+                rate::exhaustionOps[intensity] + rate::exhaustionLosses * personnelLoss[a] / active;
+            for (auto it = start.entities.begin(); it != start.entities.end(); ++it)
+                if ((*it)["actor"] == a && (*it)["kind"] == "army" && (*it)["status"] == "active" &&
+                    !supplied(start, adjacency, a, (*it)["region"].asString())) {
+                    rise += rate::exhaustionIsolated;
+                    break;
+                }
+            bool funded = cActors[a]["status"]["implementation"]["stalled"].asInt() == 0;
+            recovery = rate::recoveryFighting + (funded ? 1.0 : 0.5) * rate::recoveryFunded;
+        } else
+            recovery = rate::recoveryPeace;
+        double next = std::clamp(e + rise - recovery * e, 0.0, 1.0);
+        next = std::round(next * 1e4) / 1e4;
+        if (next > 0 || cm.isMember("exhaustion"))
+            w.actors[a]["status"]["military"]["exhaustion"] = next;
+    }
+}
 } // namespace lh::detail

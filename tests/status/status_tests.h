@@ -32,3 +32,5 @@ void forceTests();
 void displacementTests();
 // Plan 26 H: the implementation allowance, efforts, trade and military replacement.
 void economyTests();
+// Plan 26 I: exhaustion, capture effort and exposure-weighted fronts over 24-60 months.
+void pacingTests();

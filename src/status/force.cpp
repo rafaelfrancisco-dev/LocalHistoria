@@ -279,10 +279,65 @@ Json::Value committedForce(const WorldState &w, const Adjacency &adj, const std:
     out["cp"] = cp;
     return out;
 }
+namespace {
+double km(const Json::Value &a, const Json::Value &b) {
+    constexpr double rad = 3.14159265358979323846 / 180;
+    double p1 = number(a, "latitude") * rad, p2 = number(b, "latitude") * rad;
+    double dl = (number(b, "longitude") - number(a, "longitude")) * rad;
+    double h = std::pow(std::sin((p2 - p1) / 2), 2) +
+               std::cos(p1) * std::cos(p2) * std::pow(std::sin(dl / 2), 2);
+    return 12742 * std::asin(std::sqrt(std::min(1.0, h)));
+}
+} // namespace
+double captureEffort(const WorldState &w, const Adjacency &adj, const std::string &a,
+                     const std::string &region) {
+    const auto &t = w.territories[region];
+    std::vector<double> spacing;
+    if (auto at = adj.find(region); at != adj.end())
+        for (const auto &n : at->second) {
+            const auto &other = w.territories[n];
+            if (other.isMember("longitude") && t.isMember("longitude"))
+                spacing.push_back(km(t, other));
+        }
+    double extent = rate::effortExtentKm;
+    if (!spacing.empty()) {
+        std::sort(spacing.begin(), spacing.end());
+        size_t mid = spacing.size() / 2;
+        extent = spacing.size() % 2 ? spacing[mid] : (spacing[mid - 1] + spacing[mid]) / 2;
+    }
+    double size = std::clamp(std::sqrt(extent / rate::effortExtentKm), 0.6, 2.0);
+    double people = number(t, "population");
+    double crowd = people > 0 ? std::clamp(std::pow(people / 1e6, 0.1), 0.7, 1.4) : 1.0;
+    double reach = 1;
+    auto home = heartland(w, a);
+    if (!home.empty() && t.isMember("longitude"))
+        reach += std::clamp((km(w.territories[home], t) - rate::effortSupplyKm) /
+                                rate::effortSupplyScaleKm,
+                            0.0, 0.5);
+    return size * crowd * reach;
+}
+double exhaustionFactor(const WorldState &w, const std::string &a) {
+    return 1 - rate::exhaustionCap * std::clamp(number(inventory(w, a), "exhaustion"), 0.0, 1.0);
+}
 Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
                     const std::string &d, const std::string &r) {
     double attack = committedForce(w, adj, a, r, false, d)["cp"].asDouble();
     double defend = committedForce(w, adj, d, r, true, a)["cp"].asDouble();
+    // Under the realism rules one threshold decides every seizure, ordered or not: decisive
+    // superiority scaled by the effort the region takes, and worn down by exhaustion rather than by
+    // a war's first anniversary.
+    if (realismRules(w)) {
+        attack *= exhaustionFactor(w, a);
+        double required = rate::pressureFloor * captureEffort(w, adj, a, r);
+        double ratio = defend > 0 ? attack / defend : attack > 0 ? rate::pressureRatioCap : 0;
+        Json::Value out;
+        out["attack"] = attack;
+        out["defend"] = defend;
+        out["required"] = required;
+        out["ratio"] = ratio / required * rate::pressureFloor;
+        out["capacity"] = attack <= 0 ? 0 : ratio >= 2 * required ? 2 : ratio >= required ? 1 : 0;
+        return out;
+    }
     for (const auto &c : w.conflicts)
         if (isOpen(c) && isParty(c, a) && isParty(c, d) && c["started_turn"].isInt() &&
             w.turn - c["started_turn"].asInt() >= 12) {

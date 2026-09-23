@@ -118,6 +118,7 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
         // Occupations older than the control history are recorded as found, never given an age.
         recordControl(w, true);
         recordDisplacement(w);
+        recordExhaustion(w);
     }
     return resolve(w, rules.lifecycle);
 }

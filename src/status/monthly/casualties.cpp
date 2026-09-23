@@ -93,10 +93,14 @@ void MonthlyStatus::warToll(const Front &f, std::map<std::string, Totals> &curre
                                       : "high";
     if (!realism())
         c["affected_regions"] = Json::arrayValue;
+    // Under the realism rules the conflict reports its most exposed regions; the whole front is
+    // simulated.
+    size_t shown = 0;
     for (auto &region : f.regions)
-        if (std::find(c["affected_regions"].begin(), c["affected_regions"].end(),
-                      Json::Value(region)) == c["affected_regions"].end())
-            c["affected_regions"].append(region);
+        if (!realism() || shown++ < rate::maxAffected)
+            if (std::find(c["affected_regions"].begin(), c["affected_regions"].end(),
+                          Json::Value(region)) == c["affected_regions"].end())
+                c["affected_regions"].append(region);
     if (f.intensity < 0 || f.regions.empty()) {
         c["last_month_casualties"] = c["last_month_displaced"] = Int(0);
         return;
@@ -116,7 +120,7 @@ void MonthlyStatus::warToll(const Front &f, std::map<std::string, Totals> &curre
     for (auto &region : f.regions)
         T[region]["gdp_usd"] =
             Int(std::llround(double(integer(cT[region], "gdp_usd")) *
-                             (1 - rate::frontGdpLoss[f.intensity] * multiplier)));
+                             (1 - rate::frontGdpLoss[f.intensity] * multiplier * f.of(region))));
     for (auto &id : regionIds)
         if (f.parties.contains(cT[id]["owner"].asString()))
             T[id]["gdp_usd"] =
@@ -304,13 +308,13 @@ void MonthlyStatus::displace(const Front &f, const std::string &region, double m
     deaths += kill(
         region,
         Int(std::llround(
-            population * rate::civilian[f.intensity] * multiplier *
+            population * rate::civilian[f.intensity] * multiplier * f.of(region) *
             jitter(w, (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
                           ":civilian:" + region))));
     auto remaining = double(integer(t, "population"));
     auto outflow = Int(std::llround(
         remaining *
-        (rate::displacement[f.intensity] * multiplier *
+        (rate::displacement[f.intensity] * multiplier * f.of(region) *
              jitter(w,
                     (realism() ? hostilePairKey(*f.parties.begin(), *f.parties.rbegin()) : f.id) +
                         ":displacement:" + region) +

@@ -8,6 +8,7 @@ void MonthlyStatus::collectSeized() {
             seized.insert(c["id"].asString());
             seizedBy[c["id"].asString()] = {c["after"]["controller"].asString(),
                                             c["before"]["controller"].asString()};
+            ordered.insert(c["id"].asString());
         }
     }
 }
@@ -113,6 +114,24 @@ void MonthlyStatus::advanceConflict(const std::string &id, const Json::Value *pa
                 opponent = defender;
             }
         }
+        // Under the realism rules an ordered seizure spends the same progress momentum banks: one
+        // region's worth for each region this attacker's orders took from this conflict's parties.
+        if (realism()) {
+            int spent = 0;
+            for (const auto &region : ordered) {
+                const auto &[taker, loser] = seizedBy.at(region);
+                spent += taker == attacker && parties.contains(loser);
+            }
+            if (spent) {
+                auto &pressure = w.conflicts[id]["pressure"];
+                double left = std::max(0.0, pressure.get(attacker, 0.0).asDouble() -
+                                                spent * rate::pressureTake);
+                if (left > 0)
+                    pressure[attacker] = left;
+                else
+                    pressure.removeMember(attacker);
+            }
+        }
         double held = opponent.empty()
                           ? std::max(0.0, c["pressure"].get(attacker, 0.0).asDouble() -
                                               rate::pressureGain[declared] * rate::pressureDecay)
@@ -143,6 +162,9 @@ MonthlyStatus::Axis MonthlyStatus::bestAxis(const std::string &attacker,
         auto f = force::assault(forceStart, adjacency, attacker, defender, region);
         double attack = f["attack"].asDouble(), defend = f["defend"].asDouble();
         double ratio = defend > 0 ? attack / defend : (attack > 0 ? rate::pressureRatioCap : 0);
+        // The realism ratio is already scaled by the region's capture effort.
+        if (realism())
+            ratio = f["ratio"].asDouble();
         if (best.region.empty() || ratio > best.ratio)
             best = {region, ratio, f["capacity"].asInt()};
     }
@@ -155,7 +177,9 @@ double MonthlyStatus::accrue(const std::string &id, const std::string &attacker,
     auto axis = bestAxis(attacker, defender);
     // Below decisive superiority a front does not move at all, and a repelled attacker bleeds off
     // what it banked rather than hoarding it until the day it finally wins a skirmish.
-    if (axis.region.empty() || axis.capacity < 2)
+    // The realism threshold is the one every seizure uses: capacity 1, decisive superiority for
+    // this region's effort.
+    if (axis.region.empty() || axis.capacity < (realism() ? 1 : 2))
         return std::max(0.0, held - rate::pressureGain[declared] * rate::pressureDecay);
     return held +
            rate::pressureGain[declared] *
@@ -179,7 +203,8 @@ bool MonthlyStatus::takeGround(const std::string &id, const std::string &attacke
             against += sides.second == defender;
         }
     auto axis = bestAxis(attacker, defender);
-    if (total >= 2 || axis.region.empty() || axis.capacity < 2 || against >= axis.capacity)
+    if (total >= 2 || axis.region.empty() || axis.capacity < (realism() ? 1 : 2) ||
+        against >= axis.capacity)
         return false;
     held -= rate::pressureTake;
     // Control only: taking ground never transfers ownership, so conquest still needs the
@@ -199,7 +224,7 @@ void MonthlyStatus::addFront(const std::string &id, const Json::Value *pair) {
     const Json::Value &c = pair ? *pair : w.conflicts[id];
     if (!isOpen(c))
         return;
-    Front f{id, {}, {}, -1, false};
+    Front f{id, {}, {}, -1, false, {}};
     for (auto &a : c["actors"])
         f.parties.insert(a.asString());
     auto add = [&](const std::string &region) {
@@ -265,7 +290,9 @@ void MonthlyStatus::addFront(const std::string &id, const Json::Value *pair) {
     }
     for (auto &region : border)
         add(region);
-    if (f.regions.size() > rate::maxAffected)
+    if (realism())
+        weighFront(f);
+    else if (f.regions.size() > rate::maxAffected)
         f.regions.resize(rate::maxAffected);
     bool ceasefire = false;
     for (const auto &k : static_cast<const Json::Value &>(w.commitments)) {
@@ -305,5 +332,37 @@ void MonthlyStatus::addFront(const std::string &id, const Json::Value *pair) {
         w.conflicts[id]["static_months"] = stalled;
     allAffected.insert(f.regions.begin(), f.regions.end());
     fronts.push_back(f);
+}
+// Realism: the whole front is fought over, each region by how exposed it is. A front of up to
+// maxAffected regions weighs each fully, as before; a longer one shares the same total exposure
+// across all its regions in proportion to how many enemy-held neighbours each faces, with a region
+// that changed hands counting most. The regions are ordered most exposed first, stable IDs breaking
+// only exact ties, so the bounded list a conflict reports is the heart of the front rather than
+// whatever sorts first.
+void MonthlyStatus::weighFront(Front &f) const {
+    std::map<std::string, double> exposure;
+    double total = 0;
+    for (const auto &region : f.regions) {
+        double e = 1;
+        auto holder = cT[region]["controller"].asString();
+        if (auto at = adjacency.find(region); at != adjacency.end())
+            for (const auto &n : at->second) {
+                auto q = cT[n]["controller"].asString();
+                e += q != holder && f.parties.contains(q) && f.parties.contains(holder);
+            }
+        if (seized.contains(region))
+            e += 2;
+        exposure[region] = e;
+        total += e;
+    }
+    std::stable_sort(f.regions.begin(), f.regions.end(),
+                     [&](const std::string &x, const std::string &y) {
+                         return exposure[x] != exposure[y] ? exposure[x] > exposure[y] : x < y;
+                     });
+    for (const auto &region : f.regions)
+        f.weight[region] =
+            f.regions.size() <= rate::maxAffected
+                ? 1.0
+                : std::min(1.0, double(rate::maxAffected) * exposure[region] / total);
 }
 } // namespace lh::detail

@@ -103,4 +103,18 @@ void recordDisplacement(WorldState &w) {
             w.territories[id]["displacement"]["unknown"] = outstanding;
     }
 }
+void recordExhaustion(WorldState &w) {
+    for (const auto &a : w.actors.getMemberNames()) {
+        const auto &m = std::as_const(w.actors)[a]["status"]["military"];
+        if (!m.isObject() || m.isMember("exhaustion"))
+            continue;
+        bool worn = false;
+        for (const auto &c : std::as_const(w.conflicts))
+            if (isOpen(c) && isParty(c, a) && c["started_turn"].isInt() &&
+                w.turn - c["started_turn"].asInt() >= 12)
+                for (const auto &p : c["actors"])
+                    worn = worn || (p != a && fightingPair(w, c, a, p.asString()));
+        w.actors[a]["status"]["military"]["exhaustion"] = worn ? rate::exhaustionSeeded : 0.0;
+    }
+}
 } // namespace lh

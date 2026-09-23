@@ -167,6 +167,28 @@ constexpr double mobiliseCost = 5e3;
 // establishment a month, never below what formations hold.
 constexpr int demobiliseAfter = 12;
 constexpr double demobiliseShare = 0.02;
+
+// Pacing, realism lifecycle only (Plan 26 I).
+//
+// Capture effort: how much superiority a region takes, relative to a typical one. Geographic extent
+// is the median distance from the region's interior to its neighbours' (the map has no areas; the
+// seeded median is 136 km, Donetsk 187, Texas 691), population how many people must be controlled,
+// and distance how far from the attacker's heartland the supply line runs. None of these is
+// terrain.
+constexpr double effortExtentKm = 150;
+constexpr double effortSupplyKm = 1500, effortSupplyScaleKm = 10000;
+// Exhaustion, 0 to 1, lowers attacking strength by up to exhaustionCap. Each month it rises with
+// the intensity fought at, the share of active personnel lost and any army cut off from home, and
+// recovers in proportion to itself: slowly while fighting, faster with fully funded replacement,
+// fastest in peace (a half-life of about seven months). A long high-intensity war with Russia's
+// losses settles near 0.8, the old anniversary multiplier of 0.6; a new war approaches it
+// gradually.
+constexpr double exhaustionCap = 0.5;
+constexpr double exhaustionOps[] = {0.005, 0.012, 0.02}; // by intensity: low / medium / high
+constexpr double exhaustionLosses = 5, exhaustionIsolated = 0.01;
+constexpr double recoveryFighting = 0.03, recoveryFunded = 0.03, recoveryPeace = 0.10;
+// Wars already a year old when a campaign moves to these rules start at the old multiplier.
+constexpr double exhaustionSeeded = 0.8;
 } // namespace rate
 namespace detail {
 using Int = Json::Int64;

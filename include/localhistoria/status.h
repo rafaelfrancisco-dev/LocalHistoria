@@ -29,9 +29,17 @@ Json::Value committedForce(const WorldState &, const Adjacency &, const std::str
 int assaultCapacity(const WorldState &, const Adjacency &, const std::string &, const std::string &,
                     const std::string &);
 // {attack, defend, capacity} for an assault on one region. assaultCapacity() returns only the
-// band; the monthly front model needs the ratio behind it.
+// band; the monthly front model needs the ratio behind it. Under the realism rules it also gives
+// `required`, the attack/defence ratio this region takes (1.5 x its capture effort), and `ratio`,
+// the actual ratio rescaled so that 1.5 is always the threshold.
 Json::Value assault(const WorldState &w, const Adjacency &adj, const std::string &a,
                     const std::string &d, const std::string &r);
+// Realism: how much superiority a region takes relative to a typical one, from its geographic
+// extent, its population and its distance from the attacker's heartland.
+double captureEffort(const WorldState &w, const Adjacency &adj, const std::string &a,
+                     const std::string &region);
+// Realism: the share of attacking strength left after exhaustion (1 fresh, 0.5 spent).
+double exhaustionFactor(const WorldState &w, const std::string &a);
 // The realism allocation, one engagement at a time: the actor's national pool divided across
 // every engagement (those it is already in, and this opponent), plus each active army in or next
 // to the regions at the share it can spare for this enemy. Summed over all its enemies it never

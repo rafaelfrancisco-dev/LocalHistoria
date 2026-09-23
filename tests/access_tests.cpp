@@ -90,7 +90,9 @@ static WorldState world() {
         t["owner"] = t["controller"] = t["initial_affiliation"] = r.actor;
         t["kind"] = "ADM1";
         t["coastal"] = r.coastal;
-        t["longitude"] = r.longitude;
+        // Interiors a degree apart: provinces about the size of real ones, so capture effort
+        // (Plan 26 I) reads them as typical.
+        t["longitude"] = r.longitude / 2;
         t["latitude"] = 0;
         t["population"] = 1000000;
         t["gdp_usd"] = Json::Int64(20000000000);
@@ -448,9 +450,10 @@ int main() {
               "An accepted access treaty takes effect");
 
         // A war declared earlier in the month draws on the same pool as the assault that follows:
-        // alone Aland can take B1, but not after opening a second front against DD first.
+        // alone Aland can take B1, but not after opening a second front against DD first. The
+        // strength clears the shared seizure threshold (Plan 26 I) on one front only.
         auto stretched = w;
-        stretched.actors["AA"]["status"]["military"]["active"] = 250000;
+        stretched.actors["AA"]["status"]["military"]["active"] = 500000;
         check(done(ops(stretched, "AA", R"([{"action":"occupy","region":"B1","by":"AA"}])")),
               "One front: strong enough to take B1");
         auto overreach = ops(stretched, "AA",
