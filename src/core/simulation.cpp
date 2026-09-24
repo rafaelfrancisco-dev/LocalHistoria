@@ -72,8 +72,32 @@ Json::Value briefReference(const Json::Value &reference, size_t excerpt, size_t 
         brief.removeMember("history_excerpt");
         if (history == 0)
             brief.removeMember("chronicle");
-        else
-            cut("chronicle", history);
+        else if (brief["chronicle"].asString().size() > history) {
+            const auto text = brief["chronicle"].asString();
+            std::vector<std::string> sentences;
+            size_t start = 0;
+            for (size_t i = 0; i < text.size(); ++i)
+                if ((text[i] == '.' || text[i] == '!' || text[i] == '?') &&
+                    (i + 1 == text.size() || std::isspace(static_cast<unsigned char>(text[i + 1])))) {
+                    auto first = text.find_first_not_of(" \n\r\t", start);
+                    if (first != std::string::npos && first <= i)
+                        sentences.push_back(text.substr(first, i + 1 - first));
+                    start = i + 1;
+                }
+            std::string background, recent;
+            size_t backgroundCount = 0;
+            for (const auto &sentence : sentences) {
+                if (background.size() + sentence.size() + 1 > history / 4) break;
+                background += (background.empty() ? "" : " ") + sentence;
+                ++backgroundCount;
+            }
+            for (size_t i = sentences.size(); i > backgroundCount; --i) {
+                const auto &sentence = sentences[i - 1];
+                if (recent.size() + sentence.size() + 1 > history - history / 4) continue;
+                recent = sentence + (recent.empty() ? "" : " ") + recent;
+            }
+            brief["chronicle"] = background + (background.empty() || recent.empty() ? "" : " ") + recent;
+        }
         return brief;
     }
     // The history excerpt ends with the most recent period, so keep its end.
@@ -354,6 +378,22 @@ CountryContext context(const WorldState &w, const std::string &a, const Json::Va
         o["text"] = p["text"];
         o["revision"] = p.get("revision", 1);
         o["terms"] = p["terms"];
+        o["actors"] = p["actors"];
+        o["required_signatories"] = p.get("required_signatories", p["actors"]);
+        o["months"] = p.get("months", 0);
+        o["duration_meaning"] = p["amends"].isString()
+            ? "months from acceptance; zero keeps the agreement end date"
+            : "months from acceptance; zero is open-ended";
+        o["from_id"] = p["from"];
+        for (const auto &party : p["actors"])
+            o["actor_names"][party.asString()] = w.actors[party.asString()]["name"];
+        for (const auto &term : p["terms"])
+            if (term["region"].isString())
+                o["region_names"][term["region"].asString()] = w.territories[term["region"].asString()]["name"];
+        for (auto k : {"amends", "amends_snapshot", "term_preconditions", "player_answer_turn"})
+            if (p.isMember(k)) o[k] = p[k];
+        if (p["amends"].isString())
+            o["amends_name"] = displayName(w, "commitment", p["amends"].asString());
         o["signatures"] = p.get("answers", Json::Value(Json::objectValue));
         o["expires_turn"] = p.get("expires_turn", p["proposed_turn"].asInt() + 1);
         if (!p["answers"].isMember(a))

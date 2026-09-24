@@ -8,6 +8,7 @@ static void check(bool ok, const std::string &what) {
 }
 int main() {
     try {
+        InferenceRequest request;
         WorldState w;
         w.player = "PT";
         w.actors["PT"]["name"] = "Portugal";
@@ -38,8 +39,8 @@ int main() {
                 return parse(R"({"choices":[{"message":{"content":"{\"actions\":[]}"}}]})");
             },
             0);
-        p.decide(w, c);
-        auto audit = p.takeAudit();
+        p.decide(w, c, request);
+        auto audit = request.takeAudit();
         if (!called || !clipped || audit.size() != 1 || audit[0]["prompt_tokens"].asInt() != 100)
             throw std::runtime_error("Budget clipping failed");
         LocalProvider full(
@@ -116,12 +117,13 @@ int main() {
         c.facts["action_count"] = 1;
         failed = false;
         try {
-            p.decide(w, c);
+            p.decide(w, c, request);
         } catch (const ValidationError &) {
             failed = true;
         }
         if (!failed)
             throw std::runtime_error("Empty independent slot accepted");
+        request.takeAudit();
         // Chronicles: no thinking, strict shape, and the long source is the first thing trimmed.
         Json::Value sent;
         std::string answer = R"({"summary":"Portugal joined the Iberian Pact."})";
@@ -155,10 +157,10 @@ int main() {
         chronicleInput["campaign_events"] = Json::arrayValue;
         chronicleInput["reference_only"]["history_source"] = "LONG SOURCE";
         chronicleInput["reference_only"]["title"] = "Portugal";
-        if (chronicler.chronicle(chronicleInput, "PT") != "Portugal joined the Iberian Pact." ||
+        if (chronicler.chronicle(chronicleInput, "PT", &request) != "Portugal joined the Iberian Pact." ||
             sent["chat_template_kwargs"]["enable_thinking"].asBool())
             throw std::runtime_error("Chronicle call failed");
-        auto chronicleAudit = chronicler.takeAudit();
+        auto chronicleAudit = request.takeAudit();
         if (chronicleAudit[0]["kind"] != "chronicle" ||
             chronicleAudit[0]["input"]["reference_only"].isMember("history_source") ||
             !chronicleAudit[0]["input"]["reference_only"]["title"].isString())
@@ -172,7 +174,7 @@ int main() {
             answer = bad;
             failed = false;
             try {
-                chronicler.chronicle(chronicleInput, "PT");
+                chronicler.chronicle(chronicleInput, "PT", &request);
             } catch (const ValidationError &) {
                 failed = true;
             }
@@ -230,8 +232,8 @@ int main() {
         }
         auto adjudication = adjudicationInput(e, contexts, intentions, {{"r-PT", {"r-ES"}}});
         auto &facts = adjudication["facts"];
-        check(facts["actors"]["FR"]["conflicts"]["war-1"]["months_without_gains"] == 7 &&
-                  facts["actors"]["FR"]["conflicts"]["war-1"]["front"].asString().find(
+        check(facts["shared"]["conflicts"]["war-1"]["months_without_gains"] == 7 &&
+                  facts["shared"]["conflicts"]["war-1"]["front"].asString().find(
                       "stalemate") != std::string::npos,
               "Stalemate and its duration reach the adjudicator through national facts");
         // The political system has to reach the model, or the instruction telling it that
@@ -246,19 +248,27 @@ int main() {
         check(adjudication["reference_only"].getMemberNames() ==
                   std::vector<std::string>{"DE", "ES", "FR", "PT"},
               "References only for the player, named and fighting nations");
-        check(!facts["actors"]["IT"].isMember("entities") &&
+        // Event bodies live in facts.shared.events; actor sections hold their IDs as strings. The
+        // schema must read that shape (it once threw on the strings in a second-month turn).
+        bool schemaRead = false;
+        try {
+            auto schema = operationSchema(e, facts, {{"PT", "Reform the schools"}}, {{"r-PT", {"r-ES"}}});
+            schemaRead = dump(schema).find("ev-FR0") != std::string::npos;
+        } catch (const std::exception &) {}
+        check(schemaRead, "Operation schema reads shared adjudication context and keeps event causes");
+        check(facts["actors"]["IT"]["entities"].isNull() &&
                   !facts["actors"]["IT"].isMember("regional_politics") &&
                   facts["actors"]["IT"]["related_history"].size() == 4 &&
                   facts["actors"]["IT"]["past_events"].size() == 2 &&
-                  facts["actors"]["ES"]["entities"].isObject() &&
+                  facts["actors"]["ES"]["entities"].isArray() &&
                   facts["actors"]["ES"]["related_history"].size() == 8 &&
                   facts["actors"]["ES"]["past_events"].size() == 4,
               "Peripheral actors get trimmed facts");
         // Cities appear only where an action or a front is; within_reach_of only when someone
         // reaches.
-        check(facts["entities"].isMember("city-FR") && facts["entities"].isMember("army-IT") &&
-                  !facts["entities"].isMember("city-IT") && facts["territories"].isMember("r-ES") &&
-                  !facts["entities"].isMember("city-ES"),
+        check(facts["shared"]["entities"].isMember("city-FR") && facts["shared"]["entities"].isMember("army-IT") &&
+                  !facts["shared"]["entities"].isMember("city-IT") && facts["territories"].isMember("r-ES") &&
+                  facts["shared"]["entities"].isMember("city-ES"),
               "Cities only on fronts or targets");
         check(facts["territories"]["r-ES"]["within_reach_of"] == parse(R"(["PT"])") &&
                   facts["territories"].isMember("r-held") &&
@@ -274,8 +284,50 @@ int main() {
                   dump(adjudication["intentions"]).find("within reach") == std::string::npos,
               "Intentions carry no appended attack hint");
 
+        check(adjudication["context_version"] == 2 && facts["shared"]["events"].size() == 44 &&
+                  facts["actors"]["PT"]["related_history"][0] == "ev-PT0" &&
+                  facts["shared"]["events"]["ev-PT0"]["text"] == std::string(200, 'h'),
+              "Shared event inventory preserves unique facts and actor relevance");
+        auto overflow = adjudication;
+        auto mandatory = overflow["facts"]["territories"];
+        int batches = 0;
+        while (trimOptionalContext(overflow, "adjudicate")) ++batches;
+        check(batches < 12 && overflow["facts"]["territories"] == mandatory &&
+                  overflow["facts"]["actors"]["PT"]["past_events"].empty() &&
+                  overflow["facts"]["shared"]["conflicts"] == facts["shared"]["conflicts"],
+              "Bounded trimming includes past events and preserves mandatory facts");
+        // Complete multiparty amendment facts and strict application validation (even if a server
+        // ignores its grammar).
+        e.proposals["p"] = parse(R"({"actors":["PT","ES","FR"],"required_signatories":["PT","ES","FR"],"from":"ES","name":"Accord","kind":"trade_agreement","text":"Terms","months":18,"revision":3,"amends":"agreement","amends_snapshot":{"revision":2,"expires_turn":24},"status":"pending","terms":[{"action":"cede","region":"r-PT","to":"ES"}],"answers":{},"expires_turn":7})");
+        auto treatyContext = context(e, "PT", {}, {});
+        auto proposal = treatyContext.facts["treaty_proposals"]["p"];
+        check(proposal["actors"].size() == 3 && proposal["required_signatories"].size() == 3 &&
+                  proposal["months"] == 18 && proposal["expires_turn"] == 7 && proposal["revision"] == 3 &&
+                  proposal["amends"] == "agreement" && proposal["actor_names"]["FR"] == "France" &&
+                  proposal["region_names"]["r-PT"] == "Heartland", "Complete revision-bound amendment facts");
+        std::string treatyAnswer;
+        LocalProvider signer("http://127.0.0.1:8081", 1, [&](auto, auto path, auto, double) {
+            if (path == "/props") return parse(R"({"default_generation_settings":{"n_ctx":32768}})");
+            Json::Value result; result["choices"][0]["message"]["content"] = treatyAnswer; return result;
+        });
+        for (const auto &bad : {R"({"actions":[]})", R"({"actions":[],"responses":{}})", R"({"actions":[],"responses":{"p":"yes"}})", R"({"actions":[],"responses":{"p":true,"unknown":false}})"}) {
+            treatyAnswer = bad; InferenceRequest attempt; bool rejected = false;
+            try { signer.decide(e, treatyContext, attempt); } catch (const ValidationError &) { rejected = true; }
+            check(rejected && attempt.audit[0]["status"] == "validation_failed", "Missing/unknown/nonboolean consent rejected and audited");
+        }
+        treatyAnswer = R"({"actions":[],"responses":{"p":false}})";
+        InferenceRequest signedRequest;
+        check(signer.decide(e, treatyContext, signedRequest).responses[0]["accept"] == false, "Explicit rejection preserved");
+        // An optional request's expired deadline cannot poison a following mandatory request.
+        InferenceRequest expired; expired.deadline = std::chrono::steady_clock::now();
+        bool expiredFailed = false;
+        try { signer.decide(e, treatyContext, expired); } catch (const ValidationError &) { expiredFailed = true; }
+        InferenceRequest following;
+        signer.decide(e, treatyContext, following);
+        check(expiredFailed && expired.audit[0]["status"] == "deadline" && following.audit[0]["status"] == "success", "Request deadlines and audit ownership are isolated");
         // Well inside the context, requests skip the template and tokenizer, and /props is fetched
         // once a minute.
+        request.takeAudit();
         int propsCalls = 0;
         Json::Value quick;
         LocalProvider estimating("http://127.0.0.1:8081", 1, [&](auto, auto path, auto b, double) {
@@ -290,11 +342,11 @@ int main() {
                          R"("usage":{"prompt_tokens":321}})");
         });
         c.facts["initiative_type"] = "reactive";
-        estimating.decide(w, c);
-        estimating.decide(w, c);
-        auto quickAudit = estimating.takeAudit();
+        estimating.decide(w, c, request);
+        estimating.decide(w, c, request);
+        auto quickAudit = request.takeAudit();
         check(propsCalls == 1 && quickAudit.size() == 2 &&
-                  quickAudit[0]["prompt_tokens_estimated"].asBool() &&
+                  !quickAudit[0]["prompt_tokens_estimated"].asBool() &&
                   quickAudit[0]["prompt_tokens"].asInt() == 321 &&
                   quick["max_tokens"].asInt() == 768,
               "Estimated requests");

@@ -1,7 +1,43 @@
 #include "localhistoria/providers.h"
+#include "localhistoria/turn.h"
 #include <algorithm>
+#include <exception>
 namespace lh {
+namespace {
+struct ValidateAnswer {
+    InferenceRequest &request;
+    int exceptions = std::uncaught_exceptions();
+    Json::ArrayIndex first = request.audit.size();
+    ~ValidateAnswer() {
+        if (request.audit.size() <= first) return;
+        auto &last = request.audit[request.audit.size() - 1];
+        if (last["status"] == "answered")
+            last["status"] = std::uncaught_exceptions() > exceptions ? "validation_failed" : "success";
+    }
+};
+}
+
+bool clearlyDomestic(const WorldState &w, const std::string &actor, const std::string &text) {
+    const auto lower = lowercase(text);
+    // Only a narrow, explicit domestic action class is admitted. Everything ambiguous retains
+    // reasoning, as do named foreign/territorial targets and military paraphrases.
+    bool domestic = false;
+    for (const auto *verb : {"reform", "invest", "investment", "research"})
+        domestic = domestic || containsWord(lower, verb);
+    bool subject = false;
+    for (const auto *noun : {"education", "schools", "healthcare", "hospitals", "science", "tax", "pensions", "courts", "sanitation"})
+        subject = subject || containsWord(lower, noun);
+    if (!domestic || !subject || consequential(text)) return false;
+    for (const auto *cue : {"foreign", "border", "military", "army", "navy", "fleet", "troops", "weapons", "defence", "defense", "security", "capital", "front", "advance", "drive", "push", "liberate", "recapture", "allies", "treaty", "agreement", "offer", "sign", "occupy", "territory", "missile", "drone", "nuclear", "mobilize", "mobilise", "strike", "war", "aid", "with", "against", "targets:"})
+        if (containsWord(lower, cue)) return false;
+    auto targets = mentioned(w, actor, {{text, {}}});
+    return targets.actors.empty() && targets.regions.empty();
+}
 Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
+    InferenceRequest request;
+    return decide(w, c, request);
+}
+Decision LocalProvider::decide(const WorldState &w, const CountryContext &c, InferenceRequest &request) {
     Json::Value input;
     input["facts"] = c.facts;
     input["reference_only"] = briefReference(c.reference, 1200, 2400);
@@ -58,7 +94,8 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
         "follow up, change course or respond to new developments. Refer to nations and regions by "
         "name.";
     auto ask = [&](const std::string &extra) {
-        auto j = completion(input, schema, instruction + extra, 0, 0.7, "decide", c.actor);
+        ValidateAnswer validation{request};
+        auto j = completion(input, schema, instruction + extra, 0, 0.7, "decide", c.actor, request);
         if (!j.isObject() || !j["actions"].isArray())
             throw ValidationError("Invalid decision shape");
         for (auto &key : j.getMemberNames())
@@ -66,7 +103,7 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
                 throw ValidationError("Invalid decision field");
         answers = Json::arrayValue;
         const auto responses = j.get("responses", Json::Value(Json::objectValue));
-        if (!responses.isObject())
+        if (!responses.isObject() || (proposals && responses.getMemberNames() != c.facts["treaty_proposals"].getMemberNames()))
             throw ValidationError("Invalid proposal answers");
         for (const auto &id : responses.getMemberNames()) {
             const auto &p = c.facts["treaty_proposals"][id];
@@ -88,16 +125,22 @@ Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     auto o = ask("");
     // An independent slot has one action a month; a ceremony spends it on nothing. Re-ask once,
     // then take whatever comes back: a worse month is not a broken one.
+    const auto firstAnswers = answers;
     if (independent && !o.empty() &&
         std::all_of(o.begin(), o.end(), [](const Order &x) { return ceremonial(x.text); }))
         try {
+            request.retryReason = "ceremonial_independent_action";
             o = ask(" The previous answer was a symbolic gesture. Write instead what this actor "
                     "does about something at stake for it this month.");
         } catch (const ValidationError &) {
+            answers = firstAnswers;
         }
     return {o, "Local model", answers};
 }
-std::string LocalProvider::chronicle(const Json::Value &input, const std::string &actor) {
+std::string LocalProvider::chronicle(const Json::Value &input, const std::string &actor, InferenceRequest *provided) {
+    InferenceRequest local;
+    auto &request = provided ? *provided : local;
+    ValidateAnswer validation{request};
     auto j = completion(
         input,
         parse(R"({"type":"object","additionalProperties":false,"required":["summary"],)"
@@ -110,7 +153,7 @@ std::string LocalProvider::chronicle(const Json::Value &input, const std::string
         "in this fictional campaign and override real history. "
         "Name the wars, treaties, policies and unresolved tensions that shape the nation's choices "
         "now. Do not invent events beyond these inputs. Write years, not month counts.",
-        0, 0.3, "chronicle", actor);
+        0, 0.3, "chronicle", actor, request);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"summary"} ||
         !j["summary"].isString() || j["summary"].asString().empty() ||
         j["summary"].asString().size() > 2400)
@@ -118,7 +161,10 @@ std::string LocalProvider::chronicle(const Json::Value &input, const std::string
     return j["summary"].asString();
 }
 std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e) { return narrate(e, {}); }
-std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e, const CountryContext &c) {
+std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e, const CountryContext &c, InferenceRequest *provided) {
+    InferenceRequest local;
+    auto &request = provided ? *provided : local;
+    ValidateAnswer validation{request};
     Json::Value in;
     in["authoritative_events"] = encode(e);
     in["facts"] = c.facts;
@@ -130,24 +176,21 @@ std::string LocalProvider::narrate(const std::vector<ResolvedEvent> &e, const Co
               R"("properties":{"text":{"type":"string","maxLength":2000}}})"),
         "Write a brief fictional monthly journal strictly reflecting these events. Do not invent "
         "outcomes.",
-        0, 0.7, "narrate", c.actor);
+        0, 0.7, "narrate", c.actor, request);
     if (!j.isObject() || j.getMemberNames() != std::vector<std::string>{"text"} ||
         !j["text"].isString() || j["text"].asString().size() > 2000 || j["text"].asString().empty())
         throw ValidationError("Invalid narration");
     return j["text"].asString();
 }
-Json::Value LocalProvider::takeAudit() {
-    std::lock_guard lock(inference);
-    auto result = audit;
-    audit = Json::arrayValue;
-    return result;
-}
 WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &input,
-                                     const Adjacency &adjacency, const Json::Value &responses) {
+                                     const Adjacency &adjacency, const Json::Value &responses, InferenceRequest *provided) {
+    InferenceRequest local;
+    auto &request = provided ? *provided : local;
+    ValidateAnswer validation{request};
     std::vector<std::pair<std::string, std::string>> actions;
     for (auto &i : input["intentions"])
         actions.emplace_back(i["actor"].asString(), i["action"].asString());
-    auto schema = operationSchema(w, input["facts"], actions, adjacency);
+    auto schema = operationSchema(w, input["facts"], actions, adjacency, request.experiment == "schema");
     for (Json::ArrayIndex n = 0; n < input["intentions"].size(); ++n)
         if (input["intentions"][n]["regional_actor"].isString()) {
             auto &item = schema["properties"]["events"]["prefixItems"][n];
@@ -162,7 +205,9 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         }
     static const std::string instruction =
         "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's "
-        "actions (intentions) against the facts. "
+        "actions (intentions) against the facts. Context version 2 shares event, entity, "
+        "conflict and agreement records in facts.shared dictionaries keyed by stable IDs; "
+        "actor lists reference those records and retain actor-specific relevance. "
         "Return events: exactly one per action, in the given order, each opening with that "
         "action's first words; describe what actually happened to that action this month. "
         "Then world_events: only unplanned developments historians would record, involving other "
@@ -182,14 +227,17 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "an economy only advance by a step: describe partial progress, never complete them at "
         "once. "
         "Actions without map effects (reforms, investment, research, trade, speeches, "
-        "negotiations) are valid events with no operations; describe their plausible effect. "
+        "preliminary talks) are valid events with no operations; describe their plausible effect. "
+        "A concrete recorded treaty offer requires add_commitment or amend_commitment. "
+        "Discussion alone is valid negotiation but creates no offer or agreement. Never describe "
+        "an offer as signed or in force before the supplied revision has every required signature. "
         "Ground every outcome in each nation's status: population, GDP (real currency), stability, "
         "wars and treaties. A small or poor economy cannot fund what a large one can; unstable or "
         "war-weary nations face unrest, desertion and failed reforms; a nation fighting a "
         "high-intensity war has little to spare. Elections, opposition parties and legislatures "
         "exist only where a nation's government has them. "
         "outcome_kind names what the outcome itself is when it is not an operation: a "
-        "reform, an investment, a negotiation (talks, offers, diplomacy) or a protest; none only "
+        "reform, an investment, a negotiation (preliminary talks, diplomacy) or a protest; none only "
         "if nothing happened. Operations derive consequences in C++. "
         "effects: economic and stability consequences of the event, only for nations it clearly "
         "affects; never invent numbers, the game computes them and corrects wars, seizures and "
@@ -267,16 +315,22 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     unsigned weighed = 0;
     for (auto &[actor, text] : actions)
         weighed +=
-            consequential(text) || !input["facts"]["actors"][actor]["offensive"]["regions"].empty();
+            consequential(text) || (!input["facts"]["actors"][actor]["offensive"]["regions"].empty() &&
+                !(request.experiment == "reasoning" && clearlyDomestic(w, actor, text)));
     unsigned budget = weighed ? std::clamp<unsigned>(256 + 128 * weighed, 384, 768) : 0;
+    const auto prompt = instruction + (request.experiment == "compact" ?
+        " For mechanical operations keep description to a short action label; do not repeat treaty "
+        "parties, duration, terms or results already encoded by operations. Keep authored names and "
+        "interpretive outcomes. The compiler describes recorded proposals and their signatures." : "");
     Json::Value response;
     try {
-        response = completion(input, schema, instruction, budget, 0.6, "adjudicate");
+        response = completion(input, schema, prompt, budget, 0.6, "adjudicate", "", request);
     } catch (const ValidationError &) {
-        if (!budget)
+        if (!budget || *request.cancelled || std::chrono::steady_clock::now() >= request.deadline)
             throw;
+        request.retryReason = "reasoning_answer_invalid";
         // A reasoning run can exhaust its budget before answering; retry once without thinking.
-        response = completion(input, schema, instruction, 0, 0.6, "adjudicate");
+        response = completion(input, schema, prompt, 0, 0.6, "adjudicate", "", request);
     }
     if (!response["events"].isArray() || response["events"].size() != actions.size())
         throw ValidationError("Every intention requires an outcome");
@@ -301,10 +355,19 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
     // The history the model was shown this month: anything it re-reports as a new background
     // development is the past, not a development.
     std::set<std::string> priorEvents;
+    for (const auto &id : input["facts"]["shared"]["events"].getMemberNames()) priorEvents.insert(id);
     for (const auto &a : input["facts"]["actors"].getMemberNames())
         for (const auto &past : input["facts"]["actors"][a]["related_history"])
-            if (past["id"].isString())
+            if (past.isObject() && past["id"].isString())
                 priorEvents.insert(past["id"].asString());
-    return compileOperations(w, response, adjacency, responses, priorEvents);
+    const auto compiling = std::chrono::steady_clock::now();
+    try {
+        auto delta = compileOperations(w, response, adjacency, responses, priorEvents);
+        request.audit[request.audit.size() - 1]["compilation_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compiling).count();
+        return delta;
+    } catch (...) {
+        request.audit[request.audit.size() - 1]["compilation_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compiling).count();
+        throw;
+    }
 }
 } // namespace lh

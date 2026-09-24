@@ -92,6 +92,29 @@ void OperationCompiler::buildEvent(EventScope &s) {
         event["text"] = "No validated change resulted from the proposed action.";
         event["major"] = false;
     }
+    if (w.engine.get("event_text_version", 0).asInt() >= 1 && happened && !failed) {
+        std::string factual;
+        for (const auto &change : pending) {
+            if (change.event != s.id || change.before == change.after || change.kind != "proposal") continue;
+            const auto &p = change.after;
+            const auto revision = p.get("revision", 1).asInt();
+            const auto label = p["name"].asString() + " (proposal " + change.id + ", revision " + std::to_string(revision) + ")";
+            if (!factual.empty()) factual += " ";
+            if (change.before.isNull())
+                factual += "Recorded " + label + (p["amends"].isString() ? " to amend agreement " + p["amends"].asString() : "") + "; awaiting required signatures.";
+            else {
+                for (const auto &party : p["answers"].getMemberNames())
+                    if (p["answers"][party] != change.before["answers"][party])
+                        factual += party + (p["answers"][party]["accept"] == true ? " signed " : " rejected ") + label + ". ";
+                if (p["status"] == "accepted")
+                    factual += "All required parties signed " + label + "; agreement " + p.get("amends", change.id).asString() + " took effect.";
+                else factual += label + " is " + p["status"].asString() + ".";
+            }
+        }
+        if (!factual.empty()) event["text"] = factual.substr(0, 2000);
+        else if (s.successfulOps.empty() && s.e["outcome_kind"] == "negotiation")
+            event["text"] = "Preliminary diplomatic talks took place; no treaty offer or agreement was recorded.";
+    }
     event["identity_changes"] = Json::arrayValue;
     for (const auto &c : pending)
         if (c.kind == "actor" && c.event == s.id && c.after["flag_revision"].isUInt() &&

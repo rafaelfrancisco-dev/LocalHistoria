@@ -223,7 +223,15 @@ Json::Value Store::monthChanges(int turn) {
     return parse(rows[0]["c"].asString());
 }
 CountryContext Store::campaignContext(const WorldState &w, const std::string &actor) {
-    auto c = context(w, actor, journal(), background(actor));
+    return campaignContext(w, actor, journal());
+}
+CountryContext Store::campaignContext(const WorldState &w, const std::string &actor, const Json::Value &journalSnapshot) {
+    auto c = context(w, actor, journalSnapshot, background(actor));
+    const auto cached = chronicle(actor);
+    if (cached["summary"].isString()) c.reference["chronicle"] = cached["summary"];
+    c.facts["chronicle_used"]["revision"] = cached["revision"];
+    c.facts["chronicle_used"]["through_turn"] = cached["through_turn"];
+    c.facts["chronicle_used"]["refresh"] = "cached";
     c.facts["regional_politics"] = Json::objectValue;
     for (auto &r : w.regionalPolitics.getMemberNames())
         if (w.territories[r]["controller"] == actor)

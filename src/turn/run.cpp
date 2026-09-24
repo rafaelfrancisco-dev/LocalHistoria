@@ -9,7 +9,7 @@ namespace lh {
 const unsigned maxChroniclesPerTurn = 3;
 void TurnRunner::run(const TurnPlan &p, const std::string &id) {
     auto &[w, orders, actors, reactiveCounts, chronicleNations, allocations, refs, contexts,
-           independentContexts, narrate] = p;
+           independentContexts, narrate, submitted, preparationMs] = p;
     auto &store = d.store;
     auto &provider = d.provider;
     auto &references = d.references;
@@ -17,6 +17,17 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
     auto &geography = d.geography;
     auto &adjacency = d.adjacency;
     bool committed = false;
+    InferenceRequest request;
+    request.experiment = d.experiment;
+    request.deadline = submitted + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(d.budgetSeconds));
+    const auto runStarted = std::chrono::steady_clock::now();
+    auto ms = [](auto from) { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - from).count(); };
+    Json::Value timing;
+    timing["kind"] = "turn_timing";
+    timing["context_preparation_ms"] = preparationMs;
+    timing["queue_ms"] = std::max(0.0, std::chrono::duration<double, std::milli>(runStarted - submitted).count() - preparationMs);
+    auto checkpoint = runStarted;
+    auto stage = [&](const char *name) { timing[name] = ms(checkpoint); checkpoint = std::chrono::steady_clock::now(); };
     {
         std::lock_guard l(mutex);
         if (cancelRequests.erase(id)) {
@@ -25,10 +36,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             return;
         }
         current = id;
-        provider.clearCancel();
-        provider.setDeadline(std::chrono::steady_clock::now() +
-                             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                 std::chrono::duration<double>(d.budgetSeconds)));
+        cancellation = request.cancelled;
     }
     struct Finish {
         TurnRunner &t;
@@ -37,8 +45,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             std::lock_guard l(t.d.mutex);
             t.current.clear();
             t.cancelRequests.erase(id);
-            t.d.provider.clearCancel();
-            t.d.provider.clearDeadline();
+            t.cancellation.reset();
         }
     } finish{*this, id};
     try {
@@ -49,58 +56,58 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         // missing, a year old or source-less.
         std::set<std::string> chronicled;
         unsigned written = 0;
+        const auto chronicleEnd = runStarted + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(std::min(60.0, .15 * d.budgetSeconds)));
+        const auto reserveEnd = request.deadline - std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(d.mandatoryReserveSeconds));
         for (auto &a : chronicleNations) {
             if (!chronicled.insert(a).second)
                 continue;
-            Json::Value previous, input;
-            {
-                std::lock_guard l(mutex);
-                previous = store.chronicle(a);
-                auto background = store.background(a);
-                bool sourceAvailable = background["history_source"].isString();
-                if (chronicleDue(previous, w.turn, sourceAvailable) &&
-                    written < maxChroniclesPerTurn) {
-                    auto &facts = turnContexts.at(a).facts;
-                    for (auto k : {"actor_name", "status", "conflicts", "commitments"})
-                        input["facts"][k] = facts[k];
-                    input["facts"]["date"] = campaignDate(w.turn);
-                    // A chronicle written before the source was cached is
-                    // rebuilt from it, not built upon.
-                    bool first = !previous["summary"].isString() ||
-                                 (sourceAvailable && !previous.get("with_source", false).asBool());
-                    if (!first)
-                        input["previous_chronicle"] = previous["summary"];
-                    input["campaign_events"] =
-                        store.chronicleEvents(a, first ? 0 : previous["through_turn"].asInt());
-                    // Later rewrites build on the previous chronicle instead of
-                    // the source.
-                    if (first && sourceAvailable)
-                        input["reference_only"]["history_source"] = background["history_source"];
-                    input["reference_only"]["title"] = background["title"];
-                }
+            auto previous = refs["chronicle_snapshots"][a];
+            Json::Value input;
+            std::string refresh = "cached";
+            if (refs["chronicle_inputs"][a].isObject()) {
+                refresh = d.mandatoryReserveSeconds > 0 ? "skipped_allowance" : "skipped_no_reserve";
+                if (written >= maxChroniclesPerTurn) refresh = "skipped_limit";
+                else if (d.mandatoryReserveSeconds > 0 &&
+                         std::chrono::steady_clock::now() < std::min(chronicleEnd, reserveEnd))
+                    input = refs["chronicle_inputs"][a];
             }
             if (!input.isNull()) {
                 ++written;
+                InferenceRequest optional;
+                optional.cancelled = request.cancelled;
+                optional.deadline = std::min(chronicleEnd, reserveEnd);
                 try {
-                    auto summary = provider.chronicle(input, a);
+                    auto summary = provider.chronicle(input, a, &optional);
+                    refresh = "refreshed";
                     Json::Value document;
                     document["summary"] = summary;
+                    document["revision"] = previous.get("revision", 0).asInt() + 1;
                     document["through_turn"] = w.turn;
-                    document["with_source"] = input["reference_only"].isMember("history_source") ||
+                    document["with_source"] = optional.audit[optional.audit.size() - 1]["input"]["reference_only"].isMember("history_source") ||
                                               previous.get("with_source", false).asBool();
-                    document["events_covered"] = input["campaign_events"].size();
+                    document["events_covered"] = optional.audit[optional.audit.size() - 1]["input"]["campaign_events"].size();
                     std::lock_guard l(mutex);
-                    document["source_revision"] = store.background(a)["revision"];
+                    document["source_revision"] = input["reference_only"]["revision"];
                     store.saveChronicle(a, document);
-                    store.recordInference(id, provider.takeAudit());
+                    store.recordInference(id, optional.takeAudit());
                     previous = document;
                 } catch (const std::exception &) {
+                    refresh = "failed";
                     // Optional like narration: the nation keeps its earlier
                     // chronicle or the raw excerpt.
                     std::lock_guard l(mutex);
-                    store.recordInference(id, provider.takeAudit());
+                    store.recordInference(id, optional.takeAudit());
                 }
             }
+            Json::Value provenance;
+            provenance["refresh"] = refresh;
+            provenance["revision"] = previous["revision"];
+            provenance["through_turn"] = previous["through_turn"];
+            turnRefs["chronicle_usage"][a] = provenance;
+            turnContexts.at(a).facts["chronicle_used"] = provenance;
+            for (Json::ArrayIndex n = 0; n < allocations.size(); ++n)
+                if (allocations[n]["actor"] == a && allocations[n]["region"] == "")
+                    turnIndependent[n].facts["chronicle_used"] = provenance;
             if (!previous["summary"].isString())
                 continue;
             turnContexts.at(a).reference["chronicle"] = previous["summary"];
@@ -109,13 +116,14 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                 if (allocations[n]["actor"] == a && allocations[n]["region"] == "")
                     turnIndependent[n].reference["chronicle"] = previous["summary"];
         }
+        stage("chronicles_ms");
         std::map<std::string, TurnOrders> intentions{{w.player, orders}};
         for (auto &a : actors) {
             auto c = turnContexts.at(a);
             c.facts["initiative_type"] = "reactive";
             c.facts["action_count"] = reactiveCounts.at(a);
             c.facts["player_actions"] = encode(orders);
-            auto decision = provider.decide(w, c);
+            auto decision = provider.decide(w, c, request);
             intentions[a] = decision.orders;
             for (const auto &answer : decision.responses)
                 turnRefs["proposal_responses"].append(answer);
@@ -123,19 +131,19 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
             // adjudicated.
             {
                 std::lock_guard l(mutex);
-                store.recordInference(id, provider.takeAudit());
+                store.recordInference(id, request.takeAudit());
             }
         }
         Json::Value independent(Json::arrayValue);
         for (Json::ArrayIndex n = 0; n < allocations.size(); ++n) {
             auto slot = allocations[n];
             auto a = slot["actor"].asString(), r = slot["region"].asString();
-            auto decision = provider.decide(w, turnIndependent[n]);
+            auto decision = provider.decide(w, turnIndependent[n], request);
             for (const auto &answer : decision.responses)
                 turnRefs["proposal_responses"].append(answer);
             {
                 std::lock_guard l(mutex);
-                store.recordInference(id, provider.takeAudit());
+                store.recordInference(id, request.takeAudit());
             }
             for (auto &o : decision.orders) {
                 slot["action"] = o.text;
@@ -148,6 +156,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                 independent.append(slot);
             }
         }
+        stage("decisions_ms");
         auto result = beginTurn(w, turnRefs);
         auto adjudication = adjudicationInput(result.state, turnContexts, intentions, adjacency);
         // Attach trusted slot attribution by matching each appended action
@@ -168,11 +177,13 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                 auto r = slot["region"].asString();
                 adjudication["facts"]["regional_politics"][r] = regionalState(w, r);
             }
+        stage("adjudication_preparation_ms");
         auto delta = provider.adjudicate(result.state, adjudication, adjacency,
-                                         turnRefs.get("proposal_responses", Json::arrayValue));
+                                         turnRefs.get("proposal_responses", Json::arrayValue), &request);
+        stage("adjudication_ms");
         {
             std::lock_guard l(mutex);
-            store.recordInference(id, provider.takeAudit());
+            store.recordInference(id, request.takeAudit());
         }
         result = finishTurn(result, delta, adjacency, geography, turnRefs);
         auto frozen = turnRefs;
@@ -181,14 +192,17 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         Json::Value recorded;
         for (auto &[a, o] : intentions)
             recorded[a] = encode(o);
+        stage("simulation_ms");
         {
             std::lock_guard l(mutex);
-            store.recordInference(id, provider.takeAudit());
+            store.recordInference(id, request.takeAudit());
             // Checked under the lock the cancel route takes, so an accepted cancel never commits.
             if (cancelRequests.contains(id))
                 throw ValidationError("Cancelled by the player");
             store.commit(id, result, recorded, frozen, false);
             committed = true;
+            stage("commit_ms");
+            timing["submission_to_commit_ms"] = ms(submitted);
             references.prepare(result.state);
         }
         if (narrate)
@@ -198,25 +212,32 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
                     std::lock_guard l(mutex);
                     narrationContext = store.campaignContext(result.state, result.state.player);
                 }
-                auto text = provider.narrate(result.events, narrationContext);
+                auto text = provider.narrate(result.events, narrationContext, &request);
                 std::lock_guard l(mutex);
                 store.narrate(id, text, false);
-                store.recordInference(id, provider.takeAudit());
+                store.recordInference(id, request.takeAudit());
             } catch (...) {
                 std::lock_guard l(mutex);
-                store.recordInference(id, provider.takeAudit());
+                store.recordInference(id, request.takeAudit());
             }
     } catch (const std::exception &e) {
         if (!committed) {
             std::lock_guard l(mutex);
-            store.recordInference(id, provider.takeAudit());
+            store.recordInference(id, request.takeAudit());
             store.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", {e.what(), id});
         }
     }
+    stage("post_commit_or_failure_ms");
+    timing["submission_to_finished_ms"] = ms(submitted);
+    timing["status"] = committed ? "complete" : "failed";
+    Json::Value records(Json::arrayValue);
+    records.append(timing);
+    std::lock_guard l(mutex);
+    store.recordInference(id, records);
 }
 void TurnRunner::cancel(const std::string &id) {
     cancelRequests.insert(id);
     if (id == current)
-        d.provider.requestCancel();
+        if (cancellation) *cancellation = true;
 }
 } // namespace lh

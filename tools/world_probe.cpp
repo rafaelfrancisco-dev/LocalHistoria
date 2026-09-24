@@ -10,8 +10,8 @@ using namespace lh;
 // Real-model scenarios on a four-region map: West and North (PT), East (ES, borders West) and
 // Interior (ES, borders only East).
 int main(int argc, char **argv) {
-    if (argc < 2 || argc > 3) {
-        std::cerr << "Usage: world_probe output.json [scenario]\n";
+    if (argc < 2 || argc > 4) {
+        std::cerr << "Usage: world_probe output.json [scenario|all] [reasoning|schema|compact]\n";
         return 1;
     }
     Json::Value report(Json::arrayValue);
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
         {"sea_move", {"PT", "Sail the Portuguese Fleet to Madeira."}},
         {"overseas_landing", {"PT", "Ship the Portuguese Army to Madeira with the fleet."}}};
     for (auto &[name, intention] : scenarios) {
-        if (argc == 3 && name != argv[2])
+        if (argc >= 3 && std::string(argv[2]) != "all" && name != argv[2])
             continue;
         WorldState w;
         w.engine["lifecycle_version"] = 1;
@@ -135,8 +135,10 @@ int main(int argc, char **argv) {
         Json::Value row;
         row["scenario"] = name;
         auto started = std::chrono::steady_clock::now();
+        InferenceRequest request;
+        if (argc == 4) request.experiment = argv[3];
         try {
-            auto delta = provider.adjudicate(base.state, input, adjacency);
+            auto delta = provider.adjudicate(base.state, input, adjacency, Json::arrayValue, &request);
             auto result = applyDelta(base, delta, geo);
             auto &s = result.state;
             row["valid"] = true;
@@ -201,7 +203,7 @@ int main(int argc, char **argv) {
         }
         row["seconds"] =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-        auto records = provider.takeAudit();
+        auto records = request.takeAudit();
         for (auto &r : records) {
             r.removeMember("chat_template");
             r["schema_bytes"] = Json::UInt64(dump(r["schema"]).size());

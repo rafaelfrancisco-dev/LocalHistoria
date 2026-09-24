@@ -33,7 +33,7 @@ std::string actionOpening(const std::string &);
 // and only occupy what it can physically reach, so the grammar cannot express the wrong operation.
 Json::Value operationSchema(const WorldState &, const Json::Value &facts,
                             const std::vector<std::pair<std::string, std::string>> &actions,
-                            const Adjacency &adjacency = {});
+                            const Adjacency &adjacency = {}, bool narrow = false);
 // Physically impossible operations (reach, pacing, ownership) block only their event.
 // responses: the player's [{proposal, accept}] answers to last month's treaty offers, settled
 // first; unanswered offers lapse. priorEvents: IDs already in campaign history, so a background

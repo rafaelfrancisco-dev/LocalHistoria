@@ -163,27 +163,28 @@ int main(int argc, char **argv) {
                     return parse(R"({"choices":[{"message":{"content":)"
                                  R"("{\"actions\":[]}"}}]})");
                 });
+            InferenceRequest request;
             auto message = [&] {
                 try {
-                    bounded.decide(w, c);
+                    bounded.decide(w, c, request);
                 } catch (const std::exception &e) {
                     return std::string(e.what());
                 }
                 return std::string();
             };
-            bounded.requestCancel();
+            *request.cancelled = true;
             check(message() == "Cancelled by the player" && requests == 0, "Cancel before request");
-            bounded.clearCancel();
-            bounded.setDeadline(std::chrono::steady_clock::now() + std::chrono::seconds(2));
+            *request.cancelled = false;
+            request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
             check(message().empty() && longest > 0 && longest <= 2, "Deadline caps timeout");
-            bounded.setDeadline(std::chrono::steady_clock::now() - std::chrono::seconds(1));
+            request.deadline = std::chrono::steady_clock::now() - std::chrono::seconds(1);
             requests = 0;
             check(message() == "Month exceeded its time budget" && requests == 0, "Past deadline");
             // A request cut short by the deadline reports the budget, not the transport.
-            bounded.setDeadline(std::chrono::steady_clock::now() + std::chrono::milliseconds(20));
+            request.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
             fail = true;
             check(message() == "Month exceeded its time budget", "Budget error after timeout");
-            bounded.clearDeadline();
+            request.deadline = std::chrono::steady_clock::time_point::max();
             check(message() == "timeout", "Transport error without deadline");
         }
         // Adjudication reasons only for actions about war, land or treaties, and only when the
@@ -213,8 +214,9 @@ int main(int argc, char **argv) {
                 input["intentions"][0]["action"] = action;
                 if (action == "Drive straight to the capital")
                     input["facts"]["actors"]["PT"]["offensive"]["regions"].append("border");
-                judge.adjudicate(w, input, {});
-                auto audit = judge.takeAudit();
+                InferenceRequest request;
+                judge.adjudicate(w, input, {}, Json::arrayValue, &request);
+                auto audit = request.takeAudit();
                 bool thinks = ctx == 32768 && action != "Wait";
                 check(seen["chat_template_kwargs"]["enable_thinking"].asBool() == thinks &&
                           seen["max_tokens"].asInt() == (thinks ? 1536 + 384 : 1536) &&

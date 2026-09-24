@@ -80,6 +80,7 @@ Json::Value lifecycleReference(const WorldState &w) {
     Json::Value ref(Json::objectValue);
     ref["lifecycle_version"] = realismLifecycleVersion;
     ref["status_version"] = statusVersion;
+    ref["event_text_version"] = 1;
     const int prior = w.engine.get("lifecycle_version", legacyLifecycleVersion).asInt();
     if (prior != realismLifecycleVersion) {
         if (prior != legacyLifecycleVersion)
@@ -92,6 +93,11 @@ Json::Value lifecycleReference(const WorldState &w) {
 Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
     const auto rules = lifecycleRules(reference);
     auto w = source;
+    if (reference.isMember("event_text_version")) {
+        if (!reference["event_text_version"].isInt() || reference["event_text_version"] != 1)
+            throw ValidationError("Unsupported event text version");
+        w.engine["event_text_version"] = reference["event_text_version"];
+    }
     // Preserve the order used by historical replay and the HTTP route.
     if (reference.isMember("status_seed"))
         seedStatus(w, decodeSeed(reference["status_seed"]), false);

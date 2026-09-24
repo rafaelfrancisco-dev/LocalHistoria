@@ -541,6 +541,9 @@ function actorName(code) {
 }
 // Renders one flushed model call as a single readable line, ahead of it being turned into map deltas.
 function logText(r) {
+  if (r.kind === "turn_timing") return r.status === "complete" ? "Month processing finished." : "Month processing failed.";
+  if (r.status && !["success", "answered"].includes(r.status))
+    return (r.actor ? actorName(r.actor) + ": " : "") + "Model attempt " + r.status.replaceAll("_", " ") + (r.error ? ": " + r.error : ".");
   const a = r.answer || {};
   if (r.kind === "decide") {
     const actions = (a.actions || []).map((x) => x.text).filter(Boolean);

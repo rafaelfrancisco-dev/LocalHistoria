@@ -30,6 +30,8 @@ struct TurnPlan {
     std::vector<CountryContext> independentContexts;
     // The player can skip the optional model narration; the factual summary stays.
     bool narrate = true;
+    std::chrono::steady_clock::time_point submitted = std::chrono::steady_clock::now();
+    double preparationMs = 0;
 };
 struct TurnDeps {
     Store &store;
@@ -41,11 +43,15 @@ struct TurnDeps {
     std::mutex &mutex;
     // Total time a month's model calls may take, from the start of run().
     double budgetSeconds = 480;
+    // Measured baseline p90 mandatory work, zero disables chronicle refresh.
+    double mandatoryReserveSeconds = 0;
+    std::string experiment;
 };
 class TurnRunner {
     TurnDeps d;
     // Guarded by the mutex: the job in run(), and jobs the player cancelled.
     std::string current;
+    std::shared_ptr<std::atomic<bool>> cancellation;
     std::set<std::string> cancelRequests;
 
   public:

@@ -233,6 +233,21 @@ int main() {
         legacy.engine = Json::objectValue;
         check(apply(legacy, compile(legacy, gift)).territories["BB"]["owner"] == "AA",
               "Legacy campaigns keep unilateral cession");
+        auto textVersion = fixture();
+        textVersion.engine["event_text_version"] = 1;
+        auto concrete = compile(textVersion, offer("AA"));
+        auto concreteState = apply(textVersion, concrete);
+        const auto pid = concreteState.proposals.getMemberNames()[0];
+        check(concrete.events[0]["text"].asString().find("proposal " + pid + ", revision 1") != std::string::npos && concrete.events[0]["text"].asString().find("awaiting required signatures") != std::string::npos, "Compiler describes an offer with its actual ID and revision");
+        concreteState.turn++;
+        auto signatures = answer(pid, "AA", true); signatures.append(answer(pid, "BB", true)[0]);
+        auto signedDelta = compile(concreteState, event("AA", "Quiet", "[]"), signatures);
+        check(signedDelta.events[0]["text"].asString().find("agreement " + pid + " took effect") != std::string::npos, "Compiler reports agreement only after exact signatures");
+        auto talks = event("AA", "Everyone signed a peace treaty and ended the war.", "[]");
+        talks["outcome_kind"] = "negotiation";
+        check(compile(textVersion, talks).events[0]["text"] == "Preliminary diplomatic talks took place; no treaty offer or agreement was recorded.", "Unsupported diplomatic completion is not authoritative");
+        auto oldText = textVersion; oldText.engine.removeMember("event_text_version");
+        check(compile(oldText, talks).events[0]["text"] == talks["description"], "Absent event text version preserves old compiler output");
         std::cout << checks << " explicit consent and accepted outcome checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

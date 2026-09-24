@@ -88,12 +88,12 @@ void historyTests() {
           "Brief history keeps its most recent end");
     auto chronicled = briefReference(
         parse(R"({"excerpt":"Intro","history_excerpt":"Raw tail","history_source":"Long tail",)"
-              R"("chronicle":"Founded long ago, then reformed in 2024"})"),
-        12, 20);
+              R"("chronicle":"Old. A very long background sentence is omitted here. Reform won. Peace came."})"),
+        12, 40);
     check(!chronicled.isMember("history_excerpt") && !chronicled.isMember("history_source") &&
-              chronicled["chronicle"] == "Founded long ago,…" &&
+              chronicled["chronicle"] == "Old. Reform won. Peace came." &&
               !briefReference(chronicled, 12, 0).isMember("chronicle"),
-          "Chronicle replaces the history excerpt and keeps its start");
+          "Chronicle reserves background and keeps newest complete sentences");
     {
         Store chronicles(":memory:");
         WorldState cw;
@@ -123,6 +123,18 @@ void historyTests() {
         check(chronicles.chronicleEvents("PT", 0).size() == 2 &&
                   chronicles.chronicleEvents("PT", 0)[0]["description"] == "D1",
               "Chronicle events are oldest first");
+        // A busy year cannot push an unresolved milestone out with routine later events.
+        auto state = chronicles.campaign();
+        state["proposals"]["pending"]["status"] = "pending";
+        state["proposals"]["pending"]["event"] = "e1";
+        chronicles.execute("UPDATE campaign SET state=?", {dump(state)});
+        for (int n = 5; n < 65; ++n) {
+            auto id = "e" + std::to_string(n);
+            chronicles.execute("INSERT INTO events VALUES(?,?,?)", {id, std::to_string(n), R"({"actor":"PT","text":"Routine event"})"});
+            chronicles.execute("INSERT INTO event_links VALUES(?,'actors','PT')", {id});
+        }
+        auto busy = chronicles.chronicleEvents("PT", 0);
+        check(busy.size() == 40 && busy[0]["id"] == "e1" && busy[39]["id"] == "e64", "Busy-year selection preserves unresolved events and chronological order");
         chronicles.create(cw, true);
         check(chronicles.chronicle("PT").isNull(), "New campaign clears chronicles");
     }

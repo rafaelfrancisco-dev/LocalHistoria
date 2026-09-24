@@ -49,6 +49,8 @@ class Mock(http.server.BaseHTTPRequestHandler):
    result={'summary':'Fixture chronicle'}
   else:
    value=json.loads(raw);facts=value.get('facts',{});result={'actions':[{'text':'Discuss a local civic initiative' if facts.get('initiative_type')=='independent_regional' else 'Discuss a national civic initiative'}] if facts.get('initiative_type','').startswith('independent_') else []}
+  if 'actions' in result and json.loads(raw).get('facts',{}).get('treaty_proposals'):
+   result['responses']={pid:False for pid in json.loads(raw)['facts']['treaty_proposals']}
   content=json.dumps(result)
   response=json.dumps({'choices':[{'message':{'content':content}}]}).encode()
   try:self.send_response(200);self.end_headers();self.wfile.write(response)
@@ -56,7 +58,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
 class Server:
  def __init__(self,folder,endpoint=None,timeout=.25,extra={}):
   self.p=port();self.base=f'http://127.0.0.1:{self.p}';self.config=folder/'config.json';self.save=folder/'save.sqlite';self.log=open(folder/'server.log','a')
-  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'turn_budget_seconds':15,'reference_network':False,**extra}))
+  self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'turn_budget_seconds':15,'mandatory_reserve_seconds':1,'reference_network':False,**extra}))
   self.endpoint=endpoint
  def start(self):
   args=[str(ROOT/'build/localhistoria'),str(self.config)]
@@ -140,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    tolls=[e['text'] for e in journal if e['action']=='war_toll'];assert any(t.startswith('Russo-Ukrainian War (high intensity): about ') for t in tolls),tolls
    assert current['conflicts']['c0-1']['casualties']>0 and current['territories'] != w['territories']
    s.get('turns',order(w,'stale-turn',[]),409)
-   j=s.get('turns',order(current,'second-turn',[{'text':'war-fixture: declare war on Spain','targets':['ES']}]),202);assert s.poll(j['id'])['status']=='complete'
+   j=s.get('turns',order(current,'second-turn',[{'text':'war-fixture: declare war on Spain','targets':['ES']}]),202);second=s.poll(j['id']);assert second['status']=='complete',second
    current=s.get('campaign')['state'];assert current['turn']==2
    war=next(c for c in current['conflicts'].values() if c['actors']==['PT','ES']);assert war['name']=='Portugal–Spain War' and war['kind']=='war' and war['started_turn']==2,war
    assert war['intensity']=='medium' and war['affected_regions'] and war['casualties']>0 and war['displaced']>0,war

@@ -3,28 +3,48 @@
 #include "localhistoria/world.h"
 #include <algorithm>
 #include <memory>
+#include <tuple>
 namespace lh {
 Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
     Json::Value out(Json::arrayValue);
-    // The latest 40, returned oldest first.
-    for (auto &row :
-         query("SELECT turn,document FROM (SELECT e.turn,e.document,e.rowid AS r FROM events e "
-               "JOIN event_links l ON l.event=e.id "
-               "WHERE l.kind='actors' AND l.target=? AND e.turn>? AND " +
-                   happened + " ORDER BY e.turn DESC,e.rowid DESC LIMIT 40) ORDER BY turn,r",
-               {actor, std::to_string(afterTurn)})) {
+    const auto state = campaign();
+    std::set<std::string> unresolved;
+    auto links = [&](const Json::Value &v) {
+        for (auto k : {"event", "origin_event"}) if (v[k].isString()) unresolved.insert(v[k].asString());
+        for (const auto &e : v["supporting_events"]) if (e.isString()) unresolved.insert(e.asString());
+    };
+    for (auto kind : {"conflicts", "commitments", "proposals"})
+        for (const auto &v : state[kind])
+            if (isOpen(v) || v["status"] == "pending") links(v);
+    for (const auto &region : state["regional_politics"])
+        for (const auto &demand : region["demands"])
+            if (demand["status"] == "pending") links(demand);
+    struct Candidate { Json::Value event; int turn, priority; Json::Int64 row; };
+    std::vector<Candidate> candidates;
+    // EXISTS avoids duplicate event links; select priority before the 40-event cap.
+    for (auto &row : query("SELECT e.id,e.turn,e.rowid AS row,document FROM events e WHERE "
+            "EXISTS (SELECT 1 FROM event_links l WHERE l.event=e.id AND l.kind='actors' AND l.target=?) "
+            "AND e.turn>? AND " + happened, {actor, std::to_string(afterTurn)})) {
         auto document = parse(row["document"].asString());
+        auto id = row["id"].asString();
+        bool structural = document.get("major", false).asBool() || !document["identity_changes"].empty() ||
+            !document["conflicts"].empty() || !document["commitments"].empty();
         Json::Value event;
+        event["id"] = id;
         event["turn"] = row["turn"];
         event["actor"] = document["actor"];
-        // Saved events hold their outcome as text; the chronicle prompt calls it a description.
-        event["description"] =
-            (document.isMember("text") ? document["text"] : document["description"]).asString() +
-            droppedClause(document);
-        if (document.isMember("effects"))
-            event["effects"] = document["effects"];
-        out.append(event);
+        event["description"] = (document.isMember("text") ? document["text"] : document["description"]).asString() + droppedClause(document);
+        if (document.isMember("effects")) event["effects"] = document["effects"];
+        candidates.push_back({event, row["turn"].asInt(), unresolved.contains(id) ? 2 : structural ? 1 : 0, row["row"].asInt64()});
     }
+    std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+        return std::tie(a.priority, a.turn, a.row) > std::tie(b.priority, b.turn, b.row);
+    });
+    if (candidates.size() > 40) candidates.resize(40);
+    std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+        return std::tie(a.turn, a.row) < std::tie(b.turn, b.row);
+    });
+    for (const auto &candidate : candidates) out.append(candidate.event);
     return out;
 }
 Json::Value Store::eventLog(const WorldState &w, const Json::Value &filter) {

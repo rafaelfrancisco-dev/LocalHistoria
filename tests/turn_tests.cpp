@@ -1,5 +1,7 @@
 #include "localhistoria/turn.h"
 #include <iostream>
+#include <thread>
+#include <cmath>
 using namespace lh;
 static void check(bool ok, const std::string &what) {
     if (!ok)
@@ -75,7 +77,7 @@ int main() {
                                      [](auto &, auto &, auto &, double) -> Json::Value {
                                          throw std::runtime_error("Reference network disabled");
                                      });
-        TurnRunner runner({store, reference, provider, references, geography, adjacency, mutex});
+        TurnRunner runner({store, reference, provider, references, geography, adjacency, mutex, 480, 100});
         TurnOrders orders{{"Negotiate a trade agreement with Spain", {"ES"}}};
         std::string id;
         TurnPlan plan;
@@ -116,6 +118,55 @@ int main() {
         check(recorded.find("mining royalties") != std::string::npos &&
                   recorded.find("town hall") == std::string::npos,
               "A ceremonial independent decision is re-asked once");
+        for (const auto mode : {"no_reserve", "slow_chronicle", "cancel"}) {
+            Store boundedStore(":memory:"); boundedStore.create(w, false);
+            std::mutex boundedMutex;
+            TurnRunner *running = nullptr;
+            std::string boundedId;
+            int chronicles = 0, mandatory = 0;
+            LocalProvider boundedProvider("http://127.0.0.1:8081", 2,
+                [&](const auto &url, const auto &path, const auto &body, double limit) -> Json::Value {
+                    if (path == "/v1/chat/completions") {
+                        const auto in = parse(body["messages"][1]["content"].asString());
+                        if (in.isMember("campaign_events")) {
+                            ++chronicles;
+                            check(limit <= .3, "Combined optional allowance caps transport");
+                            if (std::string(mode) == "slow_chronicle") {
+                                std::this_thread::sleep_for(std::chrono::duration<double>(limit + .01));
+                                throw std::runtime_error("slow optional request");
+                            }
+                        } else if (!in.isMember("authoritative_events")) {
+                            ++mandatory;
+                            if (std::string(mode) == "cancel") {
+                                std::lock_guard guard(boundedMutex);
+                                running->cancel(boundedId);
+                            }
+                        } else throw std::runtime_error("narration unavailable");
+                    }
+                    return model(url, path, body, limit);
+                });
+            ReferencePreparer boundedReferences(boundedStore, reference, boundedMutex,
+                [](auto &, auto &, auto &, double) -> Json::Value { throw std::runtime_error("offline"); });
+            TurnRunner boundedRunner({boundedStore, reference, boundedProvider, boundedReferences, geography, adjacency, boundedMutex, 2, std::string(mode) == "no_reserve" ? 0.0 : 1.0});
+            running = &boundedRunner;
+            auto boundedPlan = boundedRunner.plan(w, orders);
+            boundedId = boundedStore.submit(0, mode, "{}")["id"].asString();
+            boundedRunner.run(boundedPlan, boundedId);
+            boundedReferences.finish();
+            const bool cancelled = std::string(mode) == "cancel";
+            check(boundedStore.job(boundedId)["status"] == (cancelled ? "failed" : "complete"), "Optional failure cannot invalidate committed work; cancellation cannot commit");
+            check(decode(boundedStore.campaign()).turn == (cancelled ? 0 : 1), "Atomic cancellation");
+            check(mandatory > 0 && (std::string(mode) != "no_reserve" || chronicles == 0), "No reserve skips refresh and still runs decisions");
+            if (!cancelled) check(boundedStore.query("SELECT fallback FROM narration")[0]["fallback"].asInt() == 1, "Narration failure retains authoritative summary");
+            Json::Value timing;
+            for (const auto &row : boundedStore.query("SELECT record FROM inference")) {
+                auto entry = parse(row["record"].asString());
+                if (entry["kind"] == "turn_timing") timing = entry;
+            }
+            double total = 0;
+            for (auto key : {"context_preparation_ms", "queue_ms", "chronicles_ms", "decisions_ms", "adjudication_preparation_ms", "adjudication_ms", "simulation_ms", "commit_ms", "post_commit_or_failure_ms"}) total += timing[key].asDouble();
+            check(std::abs(total - timing["submission_to_finished_ms"].asDouble()) < 10, "Stage timings reconcile with elapsed time");
+        }
         std::cout << "Turn tests passed\n";
         return 0;
     } catch (const std::exception &e) {

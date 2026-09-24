@@ -6,9 +6,12 @@ namespace lh {
 using namespace detail;
 static void collectEventIds(const Json::Value &v, std::set<std::string> &ids) {
     if (v.isObject()) {
+        // Prompt inputs mix objects, arrays and prose; index only what is an object.
+        if (v["shared"].isObject() && v["shared"]["events"].isObject())
+            for (const auto &id : v["shared"]["events"].getMemberNames()) ids.insert(id);
         if (v["related_history"].isArray())
             for (auto &e : v["related_history"])
-                if (e["id"].isString())
+                if (e.isObject() && e["id"].isString())
                     ids.insert(e["id"].asString());
         for (auto &k : v.getMemberNames())
             collectEventIds(v[k], ids);
@@ -35,7 +38,7 @@ static Json::Value enumeration(const std::set<std::string> &values) {
 }
 Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
                             const std::vector<std::pair<std::string, std::string>> &actions,
-                            const Adjacency &adjacency) {
+                            const Adjacency &adjacency, bool narrow) {
     std::set<std::string> actors, regions, entities, movable, conflicts, commitments, causes;
     if (facts["actors"].isObject())
         for (auto &a : facts["actors"].getMemberNames())
@@ -51,9 +54,11 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
                         actors.insert(a);
                 }
             }
-    if (facts["entities"].isObject())
-        for (auto &id : facts["entities"].getMemberNames())
-            if (w.entities.isMember(id)) {
+    const auto &entityFacts = facts["shared"]["entities"].isObject() ? facts["shared"]["entities"] : facts["entities"];
+    if (entityFacts.isObject())
+        for (auto &id : entityFacts.getMemberNames())
+            if (w.entities.isMember(id) && (!facts["map_entities"].isArray() ||
+                std::find(facts["map_entities"].begin(), facts["map_entities"].end(), Json::Value(id)) != facts["map_entities"].end())) {
                 entities.insert(id);
                 auto a = w.entities[id]["actor"].asString();
                 if (w.hasActor(a))
@@ -377,6 +382,35 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         if (byActor.contains(a))
             for (auto &own : byActor.at(a))
                 item["properties"]["operations"]["items"]["anyOf"].append(own);
+        if (narrow) {
+            // Authority is stable for existing mobile formations and treaty membership. Do not
+            // strength-filter occupation or transit: earlier operations can supply access, fleets
+            // or ground. Existing hostile entity status choices remain available for warfare.
+            auto &choices = item["properties"]["operations"]["items"]["anyOf"];
+            Json::Value allowed(Json::arrayValue);
+            for (const auto &choice : choices) {
+                auto definition = choice["$ref"].asString();
+                definition = definition.substr(definition.find_last_of('/') + 1);
+                const auto operation = defs[definition]["properties"]["action"]["enum"][0].asString();
+                const char *field = operation == "move_entity" ? "entity" :
+                    (operation == "amend_commitment" || operation == "resolve_commitment") ? "commitment" :
+                    (operation == "resolve_conflict" || operation == "set_conflict_intensity") ? "conflict" : nullptr;
+                if (!field) { allowed.append(choice); continue; }
+                std::set<std::string> ids;
+                for (const auto &id : defs[definition]["properties"][field]["enum"]) {
+                    auto value = id.asString();
+                    if (operation == "move_entity" ? w.entities[value]["actor"] == a :
+                        isParty(std::string(field) == "commitment" ? w.commitments[value] : w.conflicts[value], a)) ids.insert(value);
+                }
+                if (ids.empty()) continue;
+                auto projected = defs[definition];
+                projected["properties"][field] = enumeration(ids);
+                auto name = definition + "_authority_" + a;
+                defs[name] = projected;
+                allowed.append(ref(name));
+            }
+            choices = allowed;
+        }
         outcomes["prefixItems"].append(item);
     }
     outcomes["minItems"] = outcomes["maxItems"] = Json::UInt(outcomes["prefixItems"].size());

@@ -35,6 +35,7 @@ class Store {
     // The recorded delta changes of one month, without parsing the whole reference.
     Json::Value monthChanges(int turn);
     CountryContext campaignContext(const WorldState &, const std::string &);
+    CountryContext campaignContext(const WorldState &, const std::string &, const Json::Value &journalSnapshot);
     void recordInference(const std::string &, const Json::Value &);
     Json::Value background(const std::string &);
     void cache(const std::string &, const Json::Value &);

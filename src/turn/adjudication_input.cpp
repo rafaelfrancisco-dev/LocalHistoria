@@ -216,6 +216,54 @@ Json::Value adjudicationInput(const WorldState &w,
             input["intentions"].append(item);
         }
     }
+    input["context_version"] = 2;
+    auto &shared = input["facts"]["shared"];
+    for (auto key : {"events", "commitments", "entities", "conflicts"}) shared[key] = Json::objectValue;
+    auto project = [](Json::Value value) {
+        // Citations remain in the persisted documents and reference UI.
+        for (auto key : {"sources", "source", "license", "attribution", "source_revision", "url"})
+            value.removeMember(key);
+        return value;
+    };
+    auto merge = [&](const char *kind, const std::string &id, const Json::Value &value) {
+        auto compact = project(value);
+        auto &record = shared[kind][id];
+        if (record.isNull()) record = compact;
+        else for (const auto &key : compact.getMemberNames()) {
+            if (!record.isMember(key)) record[key] = compact[key];
+            else if (record[key] != compact[key])
+                throw ValidationError("Conflicting shared context fact " + id + ":" + key);
+        }
+    };
+    input["facts"]["map_entities"] = Json::arrayValue;
+    for (const auto &id : input["facts"]["entities"].getMemberNames()) {
+        merge("entities", id, input["facts"]["entities"][id]);
+        input["facts"]["map_entities"].append(id);
+    }
+    input["facts"].removeMember("entities");
+    for (const auto &a : input["facts"]["actors"].getMemberNames()) {
+        auto &facts = input["facts"]["actors"][a];
+        for (auto kind : {"commitments", "conflicts", "entities"}) {
+            if (!facts[kind].isObject()) continue;
+            Json::Value ids(Json::arrayValue);
+            for (const auto &id : facts[kind].getMemberNames()) {
+                merge(kind, id, facts[kind][id]);
+                ids.append(id);
+            }
+            facts[kind] = ids;
+        }
+        // The old recent_events strings have no stable IDs. Keep these bounded strings until
+        // the journal supplies document IDs; never invent an event ID for prose.
+        for (auto kind : {"related_history", "past_events"}) {
+            if (!facts[kind].isArray()) continue;
+            for (auto &event : facts[kind])
+                if (event.isObject() && event["id"].isString()) {
+                    const auto id = event["id"].asString();
+                    merge("events", id, event);
+                    event = id;
+                }
+        }
+    }
     return input;
 }
 } // namespace lh

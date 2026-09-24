@@ -8,6 +8,7 @@
 namespace lh {
 const size_t maxAiActors = 4;
 TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
+    const auto submitted = std::chrono::steady_clock::now();
     auto &store = d.store;
     auto &reference = d.reference;
     auto &references = d.references;
@@ -145,13 +146,18 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
     for (auto &a : actors)
         refs[a] = store.background(a);
     std::map<std::string, CountryContext> contexts;
-    contexts[w.player] = store.campaignContext(w, w.player);
+    const auto journalSnapshot = store.journal();
+    auto actorContext = [&](const std::string &a) -> CountryContext {
+        if (!contexts.contains(a)) contexts[a] = store.campaignContext(w, a, journalSnapshot);
+        return contexts.at(a);
+    };
+    contexts[w.player] = actorContext(w.player);
     for (auto &a : actors)
-        contexts[a] = store.campaignContext(w, a);
+        contexts[a] = actorContext(a);
     std::vector<CountryContext> independentContexts;
     for (auto &slot : allocations) {
         auto a = slot["actor"].asString(), r = slot["region"].asString();
-        auto c = store.campaignContext(w, a);
+        auto c = actorContext(a);
         contexts[a] = c;
         c.facts["initiative_type"] = slot["initiative_type"];
         c.facts["action_count"] = 1;
@@ -189,8 +195,8 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
                     }
             }
             const auto &politics = c.facts["politics"];
-            for (const auto &d : politics["demands"])
-                if (d[key::status] == "pending")
+            for (const auto &demand : politics["demands"])
+                if (demand[key::status] == "pending")
                     situation["unanswered_demands"] =
                         situation.get("unanswered_demands", 0).asInt() + 1;
             // How restive its own people are, in the words the journal uses, so a regional voice
@@ -214,12 +220,31 @@ TurnPlan TurnRunner::plan(const WorldState &w, const TurnOrders &orders) {
         refs[a] = store.background(a);
         independentContexts.push_back(c);
     }
+    for (const auto &a : chronicleNations) {
+        const auto previous = store.chronicle(a), background = store.background(a);
+        refs["chronicle_snapshots"][a] = previous;
+        const bool sourceAvailable = background["history_source"].isString();
+        if (!chronicleDue(previous, w.turn, sourceAvailable)) continue;
+        auto &input = refs["chronicle_inputs"][a];
+        for (auto key : {"actor_name", "status", "conflicts", "commitments", "treaty_proposals", "regional_politics"})
+            input["facts"][key] = contexts.at(a).facts[key];
+        input["facts"]["date"] = campaignDate(w.turn);
+        const bool first = !previous["summary"].isString() ||
+            (sourceAvailable && !previous.get("with_source", false).asBool());
+        if (!first) input["previous_chronicle"] = previous["summary"];
+        input["campaign_events"] = store.chronicleEvents(a, first ? 0 : previous["through_turn"].asInt());
+        if (first && sourceAvailable) input["reference_only"]["history_source"] = background["history_source"];
+        input["reference_only"]["title"] = background["title"];
+        input["reference_only"]["revision"] = background["revision"];
+    }
     // The long history source feeds chronicles only; frozen turns keep the bounded
     // excerpts.
     for (auto &k : refs.getMemberNames())
         if (refs[k].isObject())
             refs[k].removeMember("history_source");
-    return {w,           orders, actors,   reactiveCounts,     chronicleNations,
-            allocations, refs,   contexts, independentContexts};
+    TurnPlan plan{w, orders, actors, reactiveCounts, chronicleNations, allocations, refs, contexts, independentContexts};
+    plan.submitted = submitted;
+    plan.preparationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - submitted).count();
+    return plan;
 }
 } // namespace lh
