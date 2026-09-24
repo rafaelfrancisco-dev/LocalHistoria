@@ -246,6 +246,37 @@
    "pop_growth": -1.0,
    "stability": 88,
    "source": "INSEE / IEOM estimate"
+  },
+  "XS": {
+   "population": 5500000,
+   "gdp_usd": 3900000000,
+   "gdp_growth": 3.5,
+   "pop_growth": 2.8,
+   "stability": 40,
+   "usd_rate": 10000,
+   "carved_from": {
+    "code": "SO",
+    "fields": [
+     "population",
+     "gdp_usd"
+    ]
+   },
+   "source": "Estimate: about 28% of the World Bank Somalia population (the UNFPA 2014 PESS share of the Somaliland regions) and a GDP between the Somaliland Ministry of Planning 2024 figure (US$4.6bn) and the Somalia per-capita level; market rate near 10,000 Somaliland shillings per US dollar. Carved out of Somalia's World Bank totals, which cover the whole claimed territory."
+  },
+  "XY": {
+   "population": 400000,
+   "gdp_usd": 7000000000,
+   "gdp_growth": 3.5,
+   "pop_growth": 1.5,
+   "stability": 65,
+   "usd_rate_like": "TR",
+   "carved_from": {
+    "code": "CY",
+    "fields": [
+     "population"
+    ]
+   },
+   "source": "Estimate: TRNC State Planning Organisation 2024 GDP of 231.9bn Turkish lira at the 2024 average rate, and a de facto population near 400,000 (2021 census 382,836 and 2024 per-capita income of US$17,498). The World Bank Cyprus population covers the whole island, so this is carved out of it; Cyprus GDP already excludes the north."
   }
  },
  "military_fallbacks": {

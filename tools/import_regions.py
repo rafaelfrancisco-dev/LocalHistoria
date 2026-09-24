@@ -6,7 +6,7 @@ import argparse, concurrent.futures, hashlib, json, pathlib, sqlite3, urllib.req
 from shapely.geometry import shape, mapping, Point, MultiPolygon
 from shapely import make_valid, set_precision
 from shapely.ops import unary_union
-from import_data import normalize
+from import_data import normalize, CITY_PARENTS
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CACHE=ROOT/'data/source/gbOpen'
 def polygons(g):
@@ -101,7 +101,9 @@ def main():
     for id,code,name,pop,lat,lon in db.execute('SELECT id,code,name,population,latitude,longitude FROM cities ORDER BY id').fetchall():
         pt=Point(lon,lat)
         for i in tree.query(pt):
-            if affiliations[ids[i]]==code and shapes[i].covers(pt):
+            owner=affiliations[ids[i]]
+            if (owner==code or CITY_PARENTS.get(owner)==code) and shapes[i].covers(pt):
+                if owner!=code:db.execute('UPDATE cities SET code=? WHERE id=?',(owner,id))
                 db.execute('INSERT INTO region_cities VALUES(?,?,?,?,?,?)',('city-'+str(id),ids[i],name,lat,lon,pop));seeded+=1;break
     for i,g in enumerate(shapes):
         for k in tree.query(g):

@@ -10,7 +10,7 @@ topology=root/'web/regions.topojson'
 assert topology.stat().st_size<12_000_000,topology.stat().st_size
 for path in (topology,root/'web/world.geojson'):assert gzip.decompress(path.with_name(path.name+'.gz').read_bytes())==path.read_bytes(),path
 display=[g['id'] for g in json.loads(topology.read_text())['objects']['regions']['geometries']]
-for name,code in [('France','FR'),('Norway','NO'),('Kosovo','XK'),('Taiwan','TW')]:
+for name,code in [('France','FR'),('Norway','NO'),('Kosovo','XK'),('Taiwan','TW'),('Somaliland','XS'),('Northern Cyprus','XY')]:
  assert normalize({'properties':{'name':name,'ISO3166-1-Alpha-2':'-99'}},0)['properties']['code']==code
 assert not normalize({'properties':{'name':'Unresolved'}},5)['properties']['playable']
 assert any(not x['properties']['playable'] for x in f)
@@ -25,9 +25,15 @@ assert 'population' not in [r[1] for r in db.execute('PRAGMA table_info(countrie
 # National statistics: every actor has World Bank data or a sourced estimate, and regional shares sum to national totals.
 stats={r[0]:r for r in db.execute('SELECT code,population,gdp_usd,stability,currency,usd_rate,estimated,source FROM country_stats')}
 assert set(stats)=={c for c, in db.execute('SELECT code FROM countries')}
+overrides=json.loads((root/'data/source/stats_overrides.json').read_text())['countries']
+carved={o['carved_from']['code'] for o in overrides.values() if 'carved_from' in o}
 for code,population,gdp,stability,currency,rate,estimated,source in stats.values():
  assert population>=0 and gdp>=0 and 0<=stability<=100 and len(currency)==3 and rate>0 and source,(code,population,gdp,stability,currency,rate)
- assert not estimated or code in json.loads((root/'data/source/stats_overrides.json').read_text())['countries'],code
+ assert not estimated or code in overrides or code in carved,code
+# De facto states are carved out of the claimant's World Bank totals, and their cities follow the map.
+assert 12_000_000<stats['SO'][1]<16_000_000 and 5_000_000<stats['XS'][1]<6_500_000 and 900_000<stats['CY'][1]<1_100_000
+assert dict(db.execute("SELECT name,code FROM cities WHERE name IN ('Hargeisa','Kyrenia')"))=={'Hargeisa':'XS','Kyrenia':'XY'}
+assert db.execute("SELECT count(*) FROM region_cities c JOIN regions r ON r.id=c.region WHERE r.affiliation IN ('XS','XY')").fetchone()[0]>=4
 assert 10_000_000<stats['PT'][1]<11_500_000 and stats['PT'][4]=='EUR' and stats['BG'][4]=='EUR' and stats['US'][5]==1
 # Political systems: every actor classifies, into the same twelve values C++ validGovernment() knows.
 SYSTEMS={'parliamentary_republic','presidential_republic','semi_presidential_republic','constitutional_monarchy','absolute_monarchy','theocracy','one_party_state','dominant_party_state','military_junta','transitional_government','dependent_territory','uninhabited_territory'}

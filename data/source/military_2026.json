@@ -2344,6 +2344,26 @@
    "reserve": 3000,
    "source": "plan 21 model estimate of January 2026 active-duty strength, excluding gendarmerie, state police and other paramilitary forces; not a cited observation"
   },
+  "XS": {
+   "estimated": 1,
+   "year": 2025,
+   "active": 12000,
+   "active_year": 2025,
+   "reserve": 0,
+   "ships": 0,
+   "aircraft": 0,
+   "source": "plan 21-style model estimate of January 2026 active-duty strength; not a cited observation. Somaliland National Army, commonly put at 8,000-12,000 volunteers with no conscription or organised reserve; coast guard patrol boats are not counted as ships (https://en.wikipedia.org/wiki/Somaliland_National_Army, accessed 2026-09-24)."
+  },
+  "XY": {
+   "estimated": 1,
+   "year": 2025,
+   "active": 9000,
+   "active_year": 2025,
+   "reserve": 26000,
+   "ships": 0,
+   "aircraft": 0,
+   "source": "plan 21-style model estimate of January 2026 active-duty strength; not a cited observation. Turkish Cypriot Security Forces Command conscripts, sources ranging 5,000-15,000; the Turkish Armed Forces garrison on the island belongs to Turkey (https://en.wikipedia.org/wiki/Security_Forces_Command, accessed 2026-09-24)."
+  },
   "YE": {
    "aircraft": 76,
    "aircraft_observed_2025": 76,

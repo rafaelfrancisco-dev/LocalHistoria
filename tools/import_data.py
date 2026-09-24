@@ -2,7 +2,10 @@
 """Rebuild SQLite reference data from project-owned inputs. The browser's world.geojson comes from display_geometry.py."""
 import gzip, json, re, sqlite3, pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OVERRIDES = {'France':'FR','Norway':'NO','Kosovo':'XK','Taiwan':'TW'}
+# XS and XY are user-assigned codes (like XK) for the two de facto states the source leaves at -99.
+OVERRIDES = {'France':'FR','Norway':'NO','Kosovo':'XK','Taiwan':'TW','Somaliland':'XS','Northern Cyprus':'XY'}
+# Their cities arrive under the claiming state's code; import_regions relocates them by geometry.
+CITY_PARENTS = {'XS':'SO','XY':'CY'}
 def normalize(feature, index):
     p = feature['properties']; code = OVERRIDES.get(p['name'], p.get('ISO3166-1-Alpha-2',''))
     code = code if re.fullmatch('[A-Z]{2}',code) else None

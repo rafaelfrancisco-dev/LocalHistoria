@@ -1175,6 +1175,16 @@
    "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution",
    "system": "parliamentary_republic"
   },
+  "XS": {
+   "since": 2001,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Somaliland: declared independence from Somalia in 1991; constitution approved by referendum in 2001; not a UN member.",
+   "system": "presidential_republic"
+  },
+  "XY": {
+   "since": 1985,
+   "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Northern Cyprus: declared in 1983, constitution of 1985; recognised only by Turkey.",
+   "system": "semi_presidential_republic"
+  },
   "YE": {
    "since": 0,
    "source": "CIA World Factbook 'Government type' (2025) and the state's own constitution. Internationally recognised government and rival authorities divided by civil war.",

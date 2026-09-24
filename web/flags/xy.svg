@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="flag-xy" viewBox="0 0 640 480">
+  <path fill="#fff" d="M0 0h640v480H0z"/>
+  <path fill="#e30a17" d="M0 36h640v36H0zm0 372h640v36H0z"/>
+  <circle cx="290" cy="240" r="96" fill="#e30a17"/>
+  <circle cx="314" cy="240" r="77" fill="#fff"/>
+  <polygon fill="#e30a17" points="328.0,240.0 358.4,230.1 358.4,198.2 377.2,224.0 407.6,214.1 388.8,240.0 407.6,265.9 377.2,256.0 358.4,281.8 358.4,249.9"/>
+</svg>

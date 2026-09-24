@@ -6989,7 +6989,7 @@
       "residual_area": 0.09886163903066542
     },
     {
-      "code": "feature-020",
+      "code": "XS",
       "regions": 0,
       "missing_subdivisions": true,
       "rejected_overlaps": [],
@@ -8173,7 +8173,7 @@
       "residual_area": 1.3243734999963908e-06
     },
     {
-      "code": "feature-168",
+      "code": "XY",
       "regions": 0,
       "missing_subdivisions": true,
       "rejected_overlaps": [],
@@ -8911,9 +8911,9 @@
     ]
   ],
   "coordinate_precision_degrees": 1e-08,
-  "geometry_sha256": "289d050b5f41e6d68a95e231ae755a86c74e35c2d36f7ec9ea381ee59ea320c4",
-  "display_sha256": "b44ab0e4c71c86c0b7594c82c5ae0602cf09c6d375ac5820ecbe26d0aca29031",
-  "world_display_sha256": "af1aa296783ee4980b6313fe65e84d7d7267bc325d77912b5b31ebe32ac56fdc",
+  "geometry_sha256": "a754729714f9d834a3050c1079181010e15d70a39f088c6bd32de9cc5e04f038",
+  "display_sha256": "7ee2b22703410ccf872700257ff9ada23e2bb915c747f6444aa3f1c775d975dc",
+  "world_display_sha256": "9cb39571b61cffdce70eba305c464d8476da21882043c327ce6013aa7e670f0f",
   "display_tolerance_degrees": {
     "regions": 0.01,
     "world": 0.02

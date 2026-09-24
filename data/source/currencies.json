@@ -1,5 +1,5 @@
 {
- "note": "Hand-authored ISO 3166-1 alpha-2 to ISO 4217 map for LocalHistoria actors as of January 2026. Territories without their own currency use the currency in circulation. Symbols default to the ISO code. Bulgaria adopted the euro on 1 January 2026.",
+ "note": "Hand-authored ISO 3166-1 alpha-2 to ISO 4217 map for LocalHistoria actors as of January 2026. Territories without their own currency use the currency in circulation. Symbols default to the ISO code. Bulgaria adopted the euro on 1 January 2026. XS and XY are user-assigned actor codes (Somaliland, Northern Cyprus); the Somaliland shilling has no ISO 4217 code, so SLS is a project placeholder.",
  "countries": {
   "AD": {
    "code": "EUR",
@@ -940,6 +940,14 @@
   "XK": {
    "code": "EUR",
    "symbol": "€"
+  },
+  "XS": {
+   "code": "SLS",
+   "symbol": "SlSh "
+  },
+  "XY": {
+   "code": "TRY",
+   "symbol": "₺"
   },
   "YE": {
    "code": "YER",

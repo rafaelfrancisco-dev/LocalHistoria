@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="flag-xs" viewBox="0 0 640 480">
+  <path fill="#006d21" d="M0 0h640v160H0z"/>
+  <path fill="#fff" d="M0 160h640v160H0z"/>
+  <path fill="#d21034" d="M0 320h640v160H0z"/>
+  <polygon fill="#000" points="320.0,180.0 333.9,222.8 379.0,222.8 342.5,249.3 356.4,292.2 320.0,265.7 283.6,292.2 297.5,249.3 261.0,222.8 306.1,222.8"/>
+  <text x="320" y="96" fill="#fff" font-family="sans-serif" font-size="44" text-anchor="middle" direction="rtl">لا إله إلا الله محمد رسول الله</text>
+</svg>

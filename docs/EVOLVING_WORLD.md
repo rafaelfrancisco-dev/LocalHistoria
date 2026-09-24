@@ -180,7 +180,7 @@ began (0 when it is long-standing or not well established). Seeded non-state act
 transitional, as is any state founded during a campaign. `src/status/regimes.cpp` gives each system
 a `vent` (how much grievance legitimate channels discharge) and a `repression` (how much dissent is
 suppressed rather than resolved). These modulate **unrest only**, never `driftStability`: the seeded
-stability figures are real observations, and a regime-dependent baseline would pull all 239 nations
+stability figures are real observations, and a regime-dependent baseline would pull all 241 nations
 away from their January values in the first month. Only a `change_identity` with
 `change_type: refounding`, or the engine's own collapse rule, changes a nation's system.
 

@@ -147,8 +147,9 @@ Json::Value fetchHistory(const std::string &code, Transport get) {
     out["attribution"] = "Wikipedia contributors, CC BY-SA 4.0; Wikidata CC0";
     out["notice"] = "Reference only. Current sources may postdate January 2026.";
     try {
-        std::map<std::string, std::string> overrides = {
-            {"FR", "Q142"}, {"NO", "Q20"}, {"XK", "Q1246"}, {"TW", "Q865"}};
+        std::map<std::string, std::string> overrides = {{"FR", "Q142"},   {"NO", "Q20"},
+                                                        {"XK", "Q1246"},  {"TW", "Q865"},
+                                                        {"XS", "Q34754"}, {"XY", "Q23681"}};
         std::string qid;
         if (overrides.contains(code))
             qid = overrides.at(code);

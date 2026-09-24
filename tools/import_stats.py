@@ -93,6 +93,17 @@ def national(codes):
             raise SystemExit(f'{code}: implausible government_since {s["government_since"]}')
         s['population'] = int(round(s['population'])); s['gdp_usd'] = int(round(s['gdp_usd']))
         stats[code] = s
+    # A de facto state inside another's World Bank totals: take its estimate out of the claimant's
+    # figures so the territory is not counted twice.
+    for code in codes:
+        carve = overrides.get(code, {}).get('carved_from')
+        if not carve: continue
+        parent = stats[carve['code']]
+        for field in carve['fields']:
+            parent[field] -= stats[code][field]
+            if parent[field] <= 0: raise SystemExit(f'{carve["code"]}: carving {code} leaves no {field}')
+        parent['estimated'] = 1
+        parent['source'] += f'; less the {code} estimate ({", ".join(carve["fields"])}), stats_overrides.json'
     return stats
 
 def split(total, weights):

@@ -1,6 +1,6 @@
 # LocalHistoria
 
-A local C++20/Drogon strategy sandbox in the spirit of Pax Historia. Choose one of 239 nations, begin in **January 2026**, and each month write what your nation does in your own words. A local model decides what actually happens, what other nations do in response, and how the map changes: occupations, annexations, new states, construction, treaties and wars. There are no fixed action types or costs. Each nation starts from its real January 2026 situation: population, GDP in its own currency (with a US dollar equivalent), political stability, how it is governed, and the wars and treaties it is part of. These evolve month by month and ground every model decision.
+A local C++20/Drogon strategy sandbox in the spirit of Pax Historia. Choose one of 241 nations, begin in **January 2026**, and each month write what your nation does in your own words. A local model decides what actually happens, what other nations do in response, and how the map changes: occupations, annexations, new states, construction, treaties and wars. There are no fixed action types or costs. Each nation starts from its real January 2026 situation: population, GDP in its own currency (with a US dollar equivalent), political stability, how it is governed, and the wars and treaties it is part of. These evolve month by month and ground every model decision.
 
 ## Run
 

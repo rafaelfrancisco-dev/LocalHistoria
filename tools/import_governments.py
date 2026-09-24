@@ -18,10 +18,10 @@ SYSTEMS = {
  """,
  'presidential_republic': """
    AO AR BI BJ BO BR BW CD CF CI CL CO CR CY DO DZ EC EG FM GH GM GT GY HN ID KE
-   KG KM KR LR MR MV MW MX NA NG PA PE PH PW PY SC SL SR SS SV TN TR US UY ZM
+   KG KM KR LR MR MV MW MX NA NG PA PE PH PW PY SC SL SR SS SV TN TR US UY XS ZM
  """,
  'semi_presidential_republic': """
-   CV FR GW LK LT MG MN MZ PT RO SN ST TL TW UA
+   CV FR GW LK LT MG MN MZ PT RO SN ST TL TW UA XY
  """,
  'constitutional_monarchy': """
    AD AG AU BE BH BS BT BZ CA DK ES GB GD JM JO JP KN KW LC LI LS LU MA MC MY NL NO NZ
@@ -57,7 +57,7 @@ SINCE = {
  'SE': 1974, 'SI': 1991, 'SK': 1993, 'SS': 2011, 'SY': 2024, 'TD': 2024, 'TH': 2017,
  'TJ': 1994, 'TL': 2002, 'TM': 1991, 'TN': 2022, 'TR': 2018, 'TW': 1996, 'TZ': 1977,
  'UA': 1996, 'UG': 1995, 'US': 1789, 'UY': 1967, 'UZ': 1991, 'VA': 1929, 'VE': 1999,
- 'VN': 1976, 'XK': 2008, 'ZA': 1996, 'ZW': 2013,
+ 'VN': 1976, 'XK': 2008, 'XS': 2001, 'XY': 1985, 'ZA': 1996, 'ZW': 2013,
 }
 
 # Rows where the classification departs from the Factbook's formal label, and why.
@@ -76,6 +76,8 @@ NOTES = {
  'AE': 'Federation of seven hereditary emirates.',
  'VE': 'Formally a presidential republic; classified by the absence of competitive turnover.',
  'NI': 'Formally a presidential republic; classified by the absence of competitive turnover.',
+ 'XS': 'Somaliland: declared independence from Somalia in 1991; constitution approved by referendum in 2001; not a UN member.',
+ 'XY': 'Northern Cyprus: declared in 1983, constitution of 1985; recognised only by Turkey.',
 }
 
 SOURCE = "CIA World Factbook 'Government type' (2025) and the state's own constitution"
