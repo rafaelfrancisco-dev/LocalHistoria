@@ -2,6 +2,7 @@
 #include "localhistoria/conflicts.h"
 #include "status/status_internal.h"
 #include <map>
+#include <optional>
 #include <set>
 namespace lh::detail {
 // Where an open conflict is fought this month.
@@ -113,6 +114,7 @@ class MonthlyStatus {
     double nationalStress(const std::string &actor) const;
     double regionalGrievance(const std::string &region) const;
     double occupationPressure(const std::string &region) const;
+    bool armedMovementRule(const std::string &region) const;
     double demandPressure(const std::string &region) const;
     void accrueUnrest();
     void formRebellions();
@@ -145,6 +147,8 @@ class MonthlyStatus {
     std::set<std::string> mobilising;
     std::map<std::string, double> effectGdp, effectStability;
     std::set<std::string> seized;
+    // Actors that own at least one region, as the month began; filled on first use.
+    mutable std::optional<std::set<std::string>> landowners;
     // Seizures this month's orders made, as opposed to momentum.
     std::set<std::string> ordered;
     std::map<std::string, std::pair<std::string, std::string>>

@@ -274,6 +274,68 @@ void conquestTests() {
               "Occupation resistance is deterministic");
     }
 
+    // Status version 5 (plan 28 D): occupation resentment climbs at one rate whoever occupies,
+    // occupations older than the campaign start where they have long been, and land an armed
+    // movement holds is restive too.
+    {
+        auto after = [](Resolution r, int n, int version) {
+            auto v = refs();
+            v["status_version"] = version;
+            for (int m = 0; m < n; ++m)
+                r = finishTurn(beginTurn(r.state, v), {}, adjacency, Json::Value(Json::objectValue), v);
+            return r;
+        };
+        auto taken = [](const char *occupier, int version) {
+            auto r = world("presidential_republic", 60, occupier);
+            r.state.territories["a2"]["controller"] = "BB";
+            r.state.turn++;
+            return applyMonthlyStatus(r, {}, adjacency, version);
+        };
+        auto republic = after(taken("presidential_republic", 5), 3, 5);
+        auto junta = after(taken("military_junta", 5), 3, 5);
+        std::cout << "Four months occupied: unrest " << unrestOf(republic, "a2") << " under a republic, "
+                  << unrestOf(junta, "a2") << " under a junta\n";
+        check(unrestOf(republic, "a2") >= 35 &&
+                  std::abs(unrestOf(republic, "a2") - unrestOf(junta, "a2")) < 1,
+              "An occupation is restive within four months whoever occupies: " +
+                  num(unrestOf(republic, "a2")) + " vs " + num(unrestOf(junta, "a2")));
+        auto old = after(taken("presidential_republic", 4), 3, 4);
+        check(unrestOf(old, "a2") < unrestOf(republic, "a2"),
+              "Turns recorded at status version 4 keep the occupier-dependent climb: " +
+                  num(unrestOf(old, "a2")));
+        auto found = world();
+        found.state.territories["a2"]["controller"] = "BB";
+        auto seeded = after(found, 1, 5);
+        check(unrestOf(seeded, "a2") >= 35 &&
+                  seeded.state.territories["a2"]["control"]["seeded"] == true,
+              "An occupation older than the campaign starts where it has long been: " +
+                  num(unrestOf(seeded, "a2")));
+        auto settled = after(seeded, 1, 5);
+        check(std::abs(unrestOf(settled, "a2") - unrestOf(seeded, "a2")) < 10,
+              "The seed is applied once: " + num(unrestOf(settled, "a2")));
+        auto movement = world();
+        movement.state.actors["MM"] = parse(R"({"name":"Northmark Movement","color":"#333333"})");
+        // Like the seeded RSF and M23: a status and forces of its own, but no land it owns.
+        movement.state.actors["MM"]["status"] = movement.state.actors["BB"]["status"];
+        movement.state.conflicts["c0-9"] =
+            parse(R"({"name":"Northmark Civil War","kind":"civil_war","status":"open","text":"War",)"
+                  R"("actors":["AA","MM"],"started_turn":0,"set_intensity":"low","intensity":"low",)"
+                  R"("theatre":["a2"],"affected_regions":["a2"],)"
+                  R"("hostile_pairs":[{"actors":["AA","MM"],"status":"active"}],)"
+                  R"("postures":{"AA":"low","MM":"low"}})");
+        movement.state.territories["a2"]["controller"] = "MM";
+        auto ruled = after(movement, 12, 5);
+        bool rising = false;
+        for (const auto &a : std::as_const(ruled.state.actors))
+            rising = rising || a["rebellion"]["against"] == "MM";
+        // 70 is the revolt threshold.
+        check(unrestOf(ruled, "a2") >= 35 && unrestOf(ruled, "a2") < 70 && !rising,
+              "Land an armed movement holds is restive, and raises no rising against it: " +
+                  num(unrestOf(ruled, "a2")));
+        check(unrestOf(after(movement, 3, 4), "a2") == 0,
+              "Status version 4 left such land calm");
+    }
+
     // Quiet countries stay quiet. A fragile but steady nation has no reason to fragment, and even
     // demands it ignores for years make a province restive but never rebellious on their own.
     {

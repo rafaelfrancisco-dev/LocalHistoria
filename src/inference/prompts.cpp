@@ -203,7 +203,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
             item["properties"]["operations"]["minItems"] = 1;
             item["properties"]["operations"]["maxItems"] = 1;
         }
-    static const std::string instruction =
+    static const std::string head =
         "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's "
         "actions (intentions) against the facts. Context version 2 shares event, entity, "
         "conflict and agreement records in facts.shared dictionaries keyed by stable IDs; "
@@ -235,13 +235,25 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "wars and treaties. A small or poor economy cannot fund what a large one can; unstable or "
         "war-weary nations face unrest, desertion and failed reforms; a nation fighting a "
         "high-intensity war has little to spare. Elections, opposition parties and legislatures "
-        "exist only where a nation's government has them. "
+        "exist only where a nation's government has them. ";
+    // Event text version 2 replaces the sentence rather than adding one: the prompt is crowdable.
+    static const std::string outcomes =
         "outcome_kind names what the outcome itself is when it is not an operation: a "
         "reform, an investment, a negotiation (preliminary talks, diplomacy) or a protest; none only "
         "if nothing happened. Operations derive consequences in C++. "
         "effects: economic and stability consequences of the event, only for nations it clearly "
         "affects; never invent numbers, the game computes them and corrects wars, seizures and "
-        "treaties. Omit effects unless something changes; a world_event must list at least one. "
+        "treaties. Omit effects unless something changes; a world_event must list at least one. ";
+    static const std::string consequences =
+        "outcome_kind names what the outcome itself is when it is not an operation: a "
+        "reform, an investment, a negotiation (preliminary talks, diplomacy), a protest, security "
+        "(deployments, policing, martial law) or policy (laws, decrees, appointments, statements). "
+        "Operations derive consequences in C++. "
+        "outcome_effects (effects in world_events): economic and stability consequences of the "
+        "event, only for nations it clearly affects; never invent numbers, the game computes them "
+        "and corrects wars, seizures and treaties. Every outcome has a consequence: rate it from "
+        "the facts and history, a minor act a minor effect. ";
+    static const std::string tail =
         "Name every new war and treaty the way historians and newspapers would: specific, never "
         "generic. Wars after places, peoples or causes (Second Iberian War, Galician War, Douro "
         "Border Conflict, Rif Insurgency); treaties after the signing city or purpose (Treaty of "
@@ -318,6 +330,8 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
             consequential(text) || (!input["facts"]["actors"][actor]["offensive"]["regions"].empty() &&
                 !(request.experiment == "reasoning" && clearlyDomestic(w, actor, text)));
     unsigned budget = weighed ? std::clamp<unsigned>(256 + 128 * weighed, 384, 768) : 0;
+    const auto instruction =
+        head + (w.engine.get("event_text_version", 0).asInt() >= 2 ? consequences : outcomes) + tail;
     const auto prompt = instruction + (request.experiment == "compact" ?
         " For mechanical operations keep description to a short action label; do not repeat treaty "
         "parties, duration, terms or results already encoded by operations. Keep authored names and "
@@ -350,6 +364,12 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
             event.removeMember(k);
             if (intent.isMember(k))
                 event[k] = intent[k];
+        }
+        // Event text version 2 names the rating outcome_effects so the model writes it after its
+        // operations; the compiler reads effects.
+        if (event.isMember("outcome_effects")) {
+            event["effects"] = event["outcome_effects"];
+            event.removeMember("outcome_effects");
         }
     }
     // The history the model was shown this month: anything it re-reports as a new background

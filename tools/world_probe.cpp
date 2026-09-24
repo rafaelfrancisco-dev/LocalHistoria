@@ -45,6 +45,9 @@ int main(int argc, char **argv) {
         {"treaty_consent", {"ES", "Sign a defence pact with Portugal."}},
         {"access_treaty",
          {"PT", "Offer Spain a treaty granting our forces military access to Spanish territory."}},
+        // Acts without a map change, which once read "No validated change" (plan 28 A).
+        {"border_police", {"PT", "Deploy 200 border police officers to the frontier with Spain."}},
+        {"talks", {"PT", "Open preliminary talks with Spain on fishing rights."}},
         {"sea_move", {"PT", "Sail the Portuguese Fleet to Madeira."}},
         {"overseas_landing", {"PT", "Ship the Portuguese Army to Madeira with the fleet."}}};
     for (auto &[name, intention] : scenarios) {
@@ -52,6 +55,7 @@ int main(int argc, char **argv) {
             continue;
         WorldState w;
         w.engine["lifecycle_version"] = 1;
+        w.engine["event_text_version"] = 2;
         w.turn = 80;
         w.player = "PT";
         w.actors = parse(R"({"PT":{"name":"Portugal","color":"#338855"},"ES":{"name":"Spain",)"
@@ -190,6 +194,15 @@ int main(int argc, char **argv) {
                 for (auto &p : s.proposals)
                     for (auto &t : p["terms"])
                         expected = expected || (t["action"] == "grant_access" && t["to"] == "PT");
+            }
+            // The act keeps its description and a consequence the model rated itself.
+            if (name == "border_police" || name == "talks") {
+                const auto &e = delta.events.empty() ? Json::Value() : delta.events[0];
+                expected = !e.isNull() && !e.get("effects", Json::arrayValue).empty() &&
+                           !e.isMember("effect_source") &&
+                           e["text"].asString().find("No validated change") == std::string::npos &&
+                           e["text"].asString().find("Preliminary diplomatic talks") ==
+                               std::string::npos;
             }
             if (name == "sea_move")
                 expected = s.entities["pt-fleet"]["region"] == "region-isle";

@@ -81,7 +81,7 @@
           <p id="background"></p>
         </details>
         <section id="controls" hidden>
-          <h2>This month's actions</h2>
+          <h2>This month's actions <button id="decisions-badge" class="badge" type="button" hidden></button></h2>
           <p id="player-label"></p>
           <p>
             Write what your nation does this month, in your own words. Click a
@@ -95,6 +95,14 @@
         </section>
       </section>
     </main>
+    <dialog id="decisions" aria-labelledby="decisions-title">
+      <div class="dialog-head">
+        <h2 id="decisions-title">Needs your decision</h2>
+        <button id="decisions-close" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="meta">Answers take effect as this month ends. You can also answer later, below this month's actions.</p>
+      <div id="decisions-list"></div>
+    </dialog>
     <dialog id="diplomacy" aria-labelledby="diplomacy-title">
       <div class="dialog-head">
         <h2 id="diplomacy-title">Wars &amp; treaties</h2>

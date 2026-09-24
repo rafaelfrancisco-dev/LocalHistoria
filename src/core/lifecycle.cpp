@@ -80,7 +80,7 @@ Json::Value lifecycleReference(const WorldState &w) {
     Json::Value ref(Json::objectValue);
     ref["lifecycle_version"] = realismLifecycleVersion;
     ref["status_version"] = statusVersion;
-    ref["event_text_version"] = 1;
+    ref["event_text_version"] = 2;
     const int prior = w.engine.get("lifecycle_version", legacyLifecycleVersion).asInt();
     if (prior != realismLifecycleVersion) {
         if (prior != legacyLifecycleVersion)
@@ -94,7 +94,9 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
     const auto rules = lifecycleRules(reference);
     auto w = source;
     if (reference.isMember("event_text_version")) {
-        if (!reference["event_text_version"].isInt() || reference["event_text_version"] != 1)
+        // 1: factual proposal text. 2: every outcome keeps its description and a consequence.
+        if (!reference["event_text_version"].isInt() || reference["event_text_version"].asInt() < 1 ||
+            reference["event_text_version"].asInt() > 2)
             throw ValidationError("Unsupported event text version");
         w.engine["event_text_version"] = reference["event_text_version"];
     }

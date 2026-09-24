@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
 
   s=Server(folder,f'http://127.0.0.1:{mock.server_port}');s.start()
   try:
-   created=s.get('campaign',{'country':'PT'});w=created['state'];assert w['turn']==0 and len(w['actors'])==242 and 'countries' not in w
+   created=s.get('campaign',{'country':'PT'});w=created['state'];assert w['turn']==0 and len(w['actors'])==244 and 'countries' not in w,(w['turn'],len(w['actors']))
    pt=created['national_status']['PT'];assert 10_000_000<pt['population']<11_500_000 and pt['gdp'].startswith('€') and 'US$' in pt['gdp'] and pt['stability'],pt
    assert 23800 <= pt['military']['active'] <= 32200 and pt['military']['uncommitted_personnel'] == pt['military']['active'],pt
    names={c['name'] for c in w['conflicts'].values()}|{c['name'] for c in w['commitments'].values()};assert {'Russo-Ukrainian War','North Atlantic Treaty Organization','European Union'}<=names,names
@@ -124,6 +124,8 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    s.get('turns',order(w,'illegal-target',[{'text':'Invade','targets':['ZZ']}]),409)
    s.get('turns',order(w,'typed-action',[{'action':'economy'}]),409)
    s.get('turns',dict(order(w,'bad-narration',[]),narration='no'),409)
+   s.get('turns',dict(order(w,'bad-demand',[]),responses=[{'demand':'t1-x','region':'nowhere','accept':True}]),409)
+   s.get('turns',dict(order(w,'malformed-demand',[]),responses=[{'demand':'t1-x','region':'nowhere','accept':True,'revision':1}]),409)
    rows=s.get('countries');assert any(r['code']=='ES' and r.get('neighbor') for r in rows) and not any(r['code']=='FR' and r.get('neighbor') for r in rows) and next(r for r in rows if r['code']=='PT')['has_flag'],rows[:3]
    assert s.get('campaign')['state']==w
    Mock.mode='slow';payload=order(w,'first-turn',[{'text':'Propose an alliance to Spain','targets':['ES']},{'text':'Invest in the national railway network'}])
@@ -138,9 +140,10 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==1
-   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and events[0]=='No validated change resulted from the proposed action.' and events[1].startswith(payload['orders'][1]['text']),events
+   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and events[0].startswith(payload['orders'][0]['text']) and not any('No validated change' in t for t in events) and events[1].startswith(payload['orders'][1]['text']),events
    tolls=[e['text'] for e in journal if e['action']=='war_toll'];assert any(t.startswith('Russo-Ukrainian War (high intensity): about ') for t in tolls),tolls
    assert current['conflicts']['c0-1']['casualties']>0 and current['territories'] != w['territories']
+   moved=sorted(c['region'] for c in s.get('campaign')['journal'][0]['territory_changes']);assert moved==sorted(r for r,t in current['territories'].items() if (t.get('owner'),t.get('controller'))!=(w['territories'][r].get('owner'),w['territories'][r].get('controller'))),moved
    s.get('turns',order(w,'stale-turn',[]),409)
    j=s.get('turns',order(current,'second-turn',[{'text':'war-fixture: declare war on Spain','targets':['ES']}]),202);second=s.poll(j['id']);assert second['status']=='complete',second
    current=s.get('campaign')['state'];assert current['turn']==2

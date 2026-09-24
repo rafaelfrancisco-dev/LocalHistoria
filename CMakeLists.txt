@@ -92,3 +92,6 @@ add_test(NAME conflicts COMMAND conflict_tests)
 add_executable(access_tests tests/access_tests.cpp)
 target_link_libraries(access_tests PRIVATE historia_core)
 add_test(NAME access COMMAND access_tests)
+# Every suite runs in well under a second; a hang fails instead of running forever.
+get_property(all_tests DIRECTORY PROPERTY TESTS)
+set_tests_properties(${all_tests} PROPERTIES TIMEOUT 60)

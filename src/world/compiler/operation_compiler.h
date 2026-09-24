@@ -24,6 +24,11 @@ class OperationCompiler {
 
   private:
     bool realism() const { return w.engine.get("lifecycle_version", 0).asInt() == 1; }
+    // Event text version 2 (plan 28): every outcome keeps its description and carries a
+    // consequence, and regional demands are answered, refused or lapse on a deadline.
+    bool consequential() const {
+        return realism() && w.engine.get("event_text_version", 0).asInt() >= 2;
+    }
     void initializeProposal(Json::Value &) const;
     int settleExplicitProposals(Json::Value &, const Json::Value &) const;
     struct Touched {
@@ -77,6 +82,7 @@ class OperationCompiler {
     }
 
     int settleProposals(Json::Value &all, const Json::Value &responses) const;
+    int settleDemands(Json::Value &all, const Json::Value &responses) const;
     void collectNames();
     void collectConsent(const Json::Value &response);
     void compileEvent(const Json::Value &e, bool trusted);
@@ -87,6 +93,10 @@ class OperationCompiler {
     void breachTreaties(EventScope &s, OpScope &op);
 
     void opRegional(EventScope &s, OpScope &op);
+    void opSettleDemand(EventScope &s, OpScope &op);
+    // Moves a region's relations one step toward cooperative (+1) or strained (-1), at most once
+    // a month.
+    void stepRelations(const std::string &r, Json::Value &p, int direction) const;
     void opChangeIdentity(EventScope &s, OpScope &op);
     void opCreateActor(EventScope &s, OpScope &op);
     void opOpen(EventScope &s, OpScope &op);

@@ -3,6 +3,30 @@
 #include <algorithm>
 #include <memory>
 namespace lh {
+namespace {
+// Regions whose owner or controller differs between two saved states: every way land changes
+// hands (seizure, front advance, rebel takes, returns, annexation, secession) ends up here.
+Json::Value territoryChanges(const Json::Value &before, const Json::Value &after) {
+    Json::Value out(Json::arrayValue);
+    const auto &was = before["territories"];
+    for (const auto &id : after["territories"].getMemberNames()) {
+        const auto &t = after["territories"][id];
+        const auto &p = was.get(id, Json::Value(Json::objectValue));
+        if (p.get("owner", "") == t.get("owner", "") &&
+            p.get("controller", "") == t.get("controller", ""))
+            continue;
+        Json::Value c;
+        c["region"] = id;
+        c["name"] = t.get("name", id);
+        c["owner_before"] = p.get("owner", "");
+        c["owner_after"] = t.get("owner", "");
+        c["controller_before"] = p.get("controller", "");
+        c["controller_after"] = t.get("controller", "");
+        out.append(c);
+    }
+    return out;
+}
+} // namespace
 Store::Store(const std::string &p, bool readOnly) {
     if (sqlite3_open_v2(p.c_str(), &db,
                         readOnly ? SQLITE_OPEN_READONLY
@@ -146,12 +170,16 @@ void Store::commit(const std::string &id, const Resolution &r, const Json::Value
         auto c = campaign();
         if (j["status"] != "running" || c["turn"].asInt() + 1 != r.state.turn)
             throw ValidationError("Stale job");
-        execute("UPDATE campaign SET state=? WHERE id=1", {dump(encode(r.state))});
+        const auto after = encode(r.state);
+        execute("UPDATE campaign SET state=? WHERE id=1", {dump(after)});
         if (fail)
             throw std::runtime_error("Injected failure");
+        // Derived from the two states, so replay never needs it; the journal's war report does.
+        auto stored = refs;
+        stored["territory_changes"] = territoryChanges(c, after);
         execute("INSERT INTO turns VALUES(?,?,?,?,?,?)",
-                {std::to_string(r.state.turn), id, dump(encode(r.state)), dump(i),
-                 dump(encode(r.events)), dump(refs)});
+                {std::to_string(r.state.turn), id, dump(after), dump(i),
+                 dump(encode(r.events)), dump(stored)});
         for (auto &event : refs["delta"]["events"]) {
             auto eid = event["id"].asString();
             for (auto &cause : event["causes"]) {
@@ -190,8 +218,35 @@ Json::Value Store::job(const std::string &id) {
 }
 Json::Value Store::journal() {
     auto j =
-        query("SELECT t.turn,t.events,n.text AS narration,n.fallback AS narration_fallback FROM "
+        query("SELECT t.turn,t.events,n.text AS narration,n.fallback AS narration_fallback,"
+              "json_extract(t.reference,'$.territory_changes') AS territory_changes FROM "
               "turns t LEFT JOIN narration n ON t.job=n.job ORDER BY t.turn DESC LIMIT 24");
+    // Turns saved before the war report record no territory changes: diff their states once and
+    // keep the result, so later reads never parse whole states again.
+    for (auto &month : j) {
+        if (month["territory_changes"].isString()) {
+            month["territory_changes"] = parse(month["territory_changes"].asString());
+            continue;
+        }
+        auto turn = month["turn"].asInt();
+        auto rows = query("SELECT state FROM turns WHERE turn=?", {std::to_string(turn)});
+        auto prior = turn == 1 ? query("SELECT state FROM initial_world WHERE id=1")
+                               : query("SELECT state FROM turns WHERE turn=?",
+                                       {std::to_string(turn - 1)});
+        if (rows.empty() || prior.empty()) {
+            month["territory_changes"] = Json::arrayValue;
+            continue;
+        }
+        month["territory_changes"] = territoryChanges(parse(prior[0]["state"].asString()),
+                                                      parse(rows[0]["state"].asString()));
+        try {
+            execute("UPDATE turns SET reference=json_set(reference,'$.territory_changes',json(?)) "
+                    "WHERE turn=?",
+                    {dump(month["territory_changes"]), std::to_string(turn)});
+        } catch (const std::exception &) {
+            // A read-only or busy store still shows the journal; it diffs again next time.
+        }
+    }
     std::map<int, Json::Value> structured;
     for (auto &row : query("SELECT turn,document FROM events WHERE turn IN (SELECT turn FROM turns "
                            "ORDER BY turn DESC LIMIT 24) ORDER BY rowid"))

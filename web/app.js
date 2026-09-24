@@ -172,17 +172,19 @@ function countryButton(c) {
   $("countries").append(b);
 }
 // Stability & unrest map mode. The bands mirror unrestDescription() and stabilityLabel() in C++;
-// a region carries its own unrest, and everything calm falls back to its owner's stability.
+// a region carries its own unrest, and everything calm falls back to its controller's stability,
+// except occupied land, which is never shown in its occupier's colours.
 const UNREST_BANDS = [[80, "in open rebellion", "#8c1d18"], [70, "in revolt", "#bb3b23"], [55, "unrest", "#d9762b"], [35, "restive", "#d8a83a"]];
 const STABILITY_BANDS = [[85, "highly stable", "#2f7d5f"], [70, "very stable", "#4d8f6a"], [50, "stable", "#6d8f76"], [35, "fragile", "#8a8560"], [20, "unstable", "#8a6a4a"], [0, "collapsing", "#7d4a44"]];
+const OCCUPIED_FILL = "#6f5a86";
 const unrestBand = (u) => UNREST_BANDS.find(([floor]) => u >= floor)?.[1] || "calm";
 function unrestStyle(f) {
   const p = f.properties, owner = p.owner ?? p.code, controller = p.controller || owner;
   const unrest = state?.territories?.[p.id]?.unrest || 0;
   const band = UNREST_BANDS.find(([floor]) => unrest >= floor);
   const stability = state?.actors?.[controller]?.status?.stability;
-  const fillColor = band ? band[2] : typeof stability === "number" ? STABILITY_BANDS.find(([floor]) => stability >= floor)[2] : "#39464d";
   const occupied = p.controller && owner && p.controller !== owner;
+  const fillColor = band ? band[2] : occupied ? OCCUPIED_FILL : typeof stability === "number" ? STABILITY_BANDS.find(([floor]) => stability >= floor)[2] : "#39464d";
   return {
     color: occupied ? state?.actors?.[p.controller]?.color || "#fff" : "#3d4e55",
     weight: occupied ? 2 : 0.5,
@@ -366,19 +368,33 @@ function renderStats() {
   // Folded on a phone so the month's actions stay near the top.
   let politics = $("regional-politics");
   if (!politics) { politics = document.createElement("details"); politics.id = "regional-politics"; politics.open = !phone.matches; $("stats").after(politics); }
-  const restive = Object.entries(state.territories).filter(([id, t]) => t.controller === selected && t.unrest >= 35);
+  // Restive regions and land the selected nation occupies show even with nothing on record.
+  const restive = Object.entries(state.territories).filter(([id, t]) => t.controller === selected && (t.unrest >= 35 || (t.owner && t.owner !== selected)));
   const merged = { ...Object.fromEntries(restive.map(([id]) => [id, state.regional_politics?.[id] || { agenda: "No standing agenda recorded", relations: "neutral", demands: [] }])), ...(state.regional_politics || {}) };
   const regions = Object.entries(merged).filter(([id]) => state.territories[id]?.controller === selected);
   politics.hidden = !regions.length;
   const heading = document.createElement("summary");
   heading.textContent = `Regional politics (${regions.length})`;
   politics.replaceChildren(heading);
+  const answerable = new Map(selected === state.player ? pendingDemands().map((x) => [`${x.region}/${x.d.id}`, x]) : []);
   for (const [id, p] of regions) {
     const h = document.createElement("h3"); h.textContent = state.territories[id].name;
-    const unrest = state.territories[id].unrest || 0;
-    const agenda = document.createElement("p"); agenda.textContent = `${p.agenda} · Relations: ${p.relations}` + (unrest >= 35 ? ` · Unrest: ${unrestBand(unrest)} (${unrest.toFixed(0)}/100)` : "");
+    const t = state.territories[id], unrest = t.unrest || 0, occupied = t.owner && t.owner !== t.controller;
+    if (occupied) h.textContent += ` · occupied, taken from ${actorName(t.owner)}`;
+    const agenda = document.createElement("p"); agenda.textContent = `${humanize(p.agenda)} · Relations: ${humanize(p.relations).toLowerCase()}` + (unrest >= 35 || occupied ? ` · Unrest: ${unrestBand(unrest)} (${unrest.toFixed(0)}/100)` : "");
     politics.append(h, agenda);
-    for (const d of p.demands) { const line = document.createElement("p"); line.textContent = `${d.status}: ${d.text} (${d.id})`; politics.append(line); }
+    for (const d of p.demands || []) {
+      const line = document.createElement("p");
+      line.className = "demand";
+      const { raised, by } = demandTurns(id, d);
+      const outcome = { accepted: "Granted", rejected: "Refused", expired: "Lapsed" }[d.status];
+      line.textContent = outcome
+        ? `${outcome}: ${humanize(d.text)}`
+        : `Demands ${humanize(d.text).replace(/^./, (c) => c.toLowerCase())} · raised ${month(raised)} · answer by ${month(by)}`;
+      politics.append(line);
+      const mine = answerable.get(`${id}/${d.id}`);
+      if (mine) politics.append(answerChips(mine.key, "Grant", "Refuse", by <= state.turn ? "Lapses if unanswered this month" : `Lapses if unanswered by the end of ${month(by)}`));
+    }
   }
 }
 async function select(code, zoom = false) {
@@ -447,8 +463,9 @@ async function load() {
     $("player-label").textContent =
       "Playing as " + (countries.find((c) => c.code === state.player)?.name || state.player);
     renderActions();
-    renderProposals();
+    renderDecisions();
     const expanded = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details.events")?.open).map(e => e.dataset.turn));
+    const warOpen = new Set([...$("journal").querySelectorAll("article")].filter(e => e.querySelector("details.war")?.open).map(e => e.dataset.turn));
     $("journal").replaceChildren();
     for (const [index, entry] of j.journal.entries()) {
       const box = document.createElement("article");
@@ -462,11 +479,13 @@ async function load() {
       played.textContent = `played · led to ${month(entry.turn)}`;
       h.append(" ", played);
       box.append(h);
-      if (entry.changes?.length) {
+      // Land changing hands is listed in the war report instead.
+      const changed = (entry.changes || []).filter((c) => c.kind !== "territory");
+      if (changed.length) {
         const changes = document.createElement("ul");
         changes.className = "changes";
         changes.setAttribute("aria-label", "What changed this month");
-        for (const c of entry.changes) {
+        for (const c of changed) {
           const item = document.createElement("li");
           item.textContent = c.summary;
           changes.append(item);
@@ -486,29 +505,25 @@ async function load() {
       const summary = document.createElement("summary");
       summary.textContent = "Authoritative events";
       details.append(summary);
-      // The player's outcomes first, then other nations; war tolls are folded away.
+      // The player's outcomes first, then other nations; war tolls go to the war report.
       const tolls = entry.events.filter((e) => e.action === "war_toll");
       const others = entry.events.filter((e) => e.action !== "war_toll");
       const ordered = [...others.filter((e) => e.actor === state.player), ...others.filter((e) => e.actor !== state.player)];
-      let tollBox = null;
-      if (tolls.length) {
-        tollBox = document.createElement("details");
-        tollBox.className = "tolls";
-        const s = document.createElement("summary");
-        s.textContent = `War tolls (${tolls.length})`;
-        tollBox.append(s);
-      }
-      for (const event of [...ordered, ...tolls]) {
+      for (const event of ordered) {
         const line = document.createElement("p");
         line.textContent = (event.action?.startsWith("independent_") ? "Independent initiative · " : EVENT_PREFIX[event.action] || "") + event.text;
         const structured = entry.structured_events?.find(e => e.id === event.target);
         if (structured?.failed || structured?.partial) line.prepend(structured.failed ? "Failed · " : "Partial · ");
         if (structured?.regional_actor) line.prepend(`${state.territories[structured.regional_actor]?.name || structured.regional_actor} · `);
         flagThumbs(structured?.identity_changes, line);
-        (event.action === "war_toll" ? tollBox : details).append(line);
+        details.append(line);
       }
-      if (tollBox) details.append(tollBox);
       box.append(details);
+      const war = warReport(tolls, entry.territory_changes || []);
+      if (war) {
+        war.open = warOpen.has(String(entry.turn));
+        box.append(war);
+      }
       if (index === 0 && lastTurnLog?.turn === entry.turn) {
         const decided = document.createElement("details");
         decided.className = "decided";
@@ -529,6 +544,7 @@ async function load() {
   if ($("events").open) protect(() => fetchEvents(false))();
   if (selected && state?.actors?.[selected]) { $("country-name").textContent = state.actors[selected].name; flag($("flag"), selected); }
   if (state) await refreshCampaignMap();
+  if (state) promptDecisions();
   return j;
 }
 function setBusy(value) {
@@ -538,6 +554,50 @@ function setBusy(value) {
 }
 function actorName(code) {
   return state?.actors?.[code]?.name || code;
+}
+// One line per region whose owner or controller changed this month.
+function changedHands(c) {
+  const name = c.name || c.region;
+  if (c.owner_before !== c.owner_after) {
+    if (c.owner_after === c.controller_before && c.controller_before !== c.owner_before)
+      return `${name} — annexed by ${actorName(c.owner_after)} from ${actorName(c.owner_before)}`;
+    return `${name} — passed from ${actorName(c.owner_before)} to ${actorName(c.owner_after)}`;
+  }
+  if (c.controller_after === c.owner_after)
+    return `${name} — returned to ${actorName(c.owner_after)}`;
+  if (!c.controller_after) return `${name} (${actorName(c.owner_after)}) — left ungoverned`;
+  return `${name} (${actorName(c.owner_after)}) — taken by ${actorName(c.controller_after)}`;
+}
+// Tolls and changed hands, collapsed by default like the authoritative events.
+function warReport(tolls, territory) {
+  if (!tolls.length && !territory.length) return null;
+  const box = document.createElement("details");
+  box.className = "war";
+  const summary = document.createElement("summary");
+  const parts = [];
+  if (tolls.length) parts.push(`${tolls.length} ${tolls.length === 1 ? "war" : "wars"}`);
+  if (territory.length)
+    parts.push(`${territory.length} ${territory.length === 1 ? "region" : "regions"} changed hands`);
+  summary.textContent = `War report · ${parts.join(" · ")}`;
+  box.append(summary);
+  for (const t of tolls) {
+    const line = document.createElement("p");
+    line.textContent = t.text;
+    box.append(line);
+  }
+  if (territory.length) {
+    const heading = document.createElement("h4");
+    heading.textContent = "Changed hands";
+    const list = document.createElement("ul");
+    list.className = "hands";
+    for (const c of territory) {
+      const item = document.createElement("li");
+      item.textContent = changedHands(c);
+      list.append(item);
+    }
+    box.append(heading, list);
+  }
+  return box;
 }
 // Renders one flushed model call as a single readable line, ahead of it being turned into map deltas.
 function logText(r) {
@@ -763,46 +823,122 @@ function setAnswers(answers) {
 function pendingProposals() {
   return Object.entries(state?.proposals || {}).filter(([, p]) => p.status === "pending" && p.actors.includes(state.player) && !p.answers?.[state.player]);
 }
-function renderProposals() {
-  const box = $("proposals");
-  const offers = pendingProposals();
-  box.hidden = !offers.length;
-  box.replaceChildren();
-  if (!offers.length) return;
-  const h = document.createElement("h3");
-  h.textContent = offers.length === 1 ? "A treaty is offered" : `${offers.length} treaties are offered`;
-  box.append(h);
+// The month a demand was raised, from its event ID ("t5-…"), and its last month for an answer.
+function demandTurns(region, d) {
+  const raised = Number(/^t(\d+)-/.exec(d.id)?.[1] ?? state.turn);
+  const controller = state.territories[region]?.controller;
+  return { raised, by: d.answer_by_turn ?? raised + (controller === state.player ? 3 : 6) };
+}
+// Pending demands from regions the player governs; answers are keyed "demand:<region>/<id>".
+function pendingDemands() {
+  const out = [];
+  for (const [region, p] of Object.entries(state?.regional_politics || {}))
+    if (state.territories[region]?.controller === state.player)
+      for (const d of p.demands || [])
+        if (d.status === "pending") out.push({ key: `demand:${region}/${d.id}`, region, d });
+  return out;
+}
+// Accept/refuse chips shared by treaty offers and demands, in the box and the popup alike.
+function answerChips(key, yes, no, pendingNote) {
   const answers = readAnswers();
-  for (const [id, p] of offers) {
-    const card = document.createElement("article");
-    card.className = "agreement proposal";
-    const others = p.actors.filter((a) => a !== state.player && a !== p.from).map(actorName);
-    const offered = document.createElement("p");
-    offered.className = "meta";
-    offered.textContent = `Offered by ${actorName(p.from)} · revision ${p.revision || 1}` + (others.length ? `, with ${others.join(", ")}` : "");
-    const terms = document.createElement("p");
-    terms.textContent = p.text + (p.months ? ` Lasts ${p.months} month${p.months === 1 ? "" : "s"}.` : p.amends ? "" : " Open-ended.");
-    const choice = document.createElement("div");
-    choice.className = "chips";
-    const note = document.createElement("small");
-    const answer = (value) => () => {
-      const next = readAnswers();
-      if (next[id] === value) delete next[id];
-      else next[id] = value;
-      setAnswers(next);
-      renderProposals();
-    };
-    const accept = button("Accept", "chip" + (answers[id] === true ? " chosen" : ""), answer(true));
-    const decline = button("Decline", "chip" + (answers[id] === false ? " chosen" : ""), answer(false));
-    accept.setAttribute("aria-pressed", String(answers[id] === true));
-    decline.setAttribute("aria-pressed", String(answers[id] === false));
-    note.textContent = id in answers ? "Takes effect as the month ends" : "Lapses if unanswered this month";
-    choice.append(accept, decline, note);
-    card.append(cardHead(p.amends ? `Amendment to the ${p.name}` : p.name, [[kindLabel(p.kind), ""]]), offered, terms);
-    if (p.terms?.length) card.append(termList(p.terms));
-    card.append(choice);
-    box.append(card);
+  const choice = document.createElement("div");
+  choice.className = "chips";
+  const answer = (value) => () => {
+    const next = readAnswers();
+    if (next[key] === value) delete next[key];
+    else next[key] = value;
+    setAnswers(next);
+    renderDecisions();
+    if (selected === state.player) renderStats();
+  };
+  const accept = button(yes, "chip" + (answers[key] === true ? " chosen" : ""), answer(true));
+  const decline = button(no, "chip" + (answers[key] === false ? " chosen" : ""), answer(false));
+  accept.setAttribute("aria-pressed", String(answers[key] === true));
+  decline.setAttribute("aria-pressed", String(answers[key] === false));
+  const note = document.createElement("small");
+  note.textContent = key in answers ? "Takes effect as the month ends" : pendingNote;
+  choice.append(accept, decline, note);
+  return choice;
+}
+function demandCard({ key, region, d }) {
+  const card = document.createElement("article");
+  card.className = "agreement proposal";
+  const { raised, by } = demandTurns(region, d);
+  const meta = document.createElement("p");
+  meta.className = "meta";
+  meta.textContent = `Regional demand · raised ${month(raised)}`;
+  const text = document.createElement("p");
+  text.textContent = humanize(d.text);
+  const note = by <= state.turn ? "Lapses if unanswered this month" : `Lapses if unanswered by the end of ${month(by)}`;
+  card.append(cardHead(state.territories[region]?.name || region, [["Demand", ""]]), meta, text, answerChips(key, "Grant", "Refuse", note));
+  return card;
+}
+function decisionCards() {
+  return [...pendingProposals().map(([id, p]) => proposalCard(id, p)), ...pendingDemands().map(demandCard)];
+}
+// Treaty offers and regional demands awaiting the player, below the actions and in a popup
+// shown once a month.
+function renderDecisions() {
+  const box = $("proposals");
+  const cards = decisionCards();
+  box.hidden = !cards.length;
+  box.replaceChildren();
+  const badge = $("decisions-badge");
+  const open = cards.length - Object.keys(readAnswers()).filter((k) => decisionKeys().has(k)).length;
+  badge.hidden = !open;
+  badge.textContent = `${open} to decide`;
+  if ($("decisions").open) {
+    $("decisions-list").replaceChildren(...decisionCards());
+    if (!cards.length) $("decisions").close();
   }
+  if (!cards.length) return;
+  const h = document.createElement("h3");
+  h.textContent = "Needs your decision";
+  box.append(h, ...cards);
+}
+// The answers sent with End month: treaty signatures and demand answers still pending.
+function turnResponses() {
+  const offered = new Set(pendingProposals().map(([id]) => id));
+  const demands = new Map(pendingDemands().map((x) => [x.key, x]));
+  const answers = Object.entries(readAnswers());
+  return [
+    ...answers.filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept, revision: state.proposals[proposal].revision || 1 })),
+    ...answers.filter(([key]) => demands.has(key)).map(([key, accept]) => ({ demand: demands.get(key).d.id, region: demands.get(key).region, accept })),
+  ];
+}
+function decisionKeys() {
+  return new Set([...pendingProposals().map(([id]) => id), ...pendingDemands().map((x) => x.key)]);
+}
+function showDecisions() {
+  const cards = decisionCards();
+  if (!cards.length) return;
+  $("decisions-list").replaceChildren(...cards);
+  if (!$("decisions").open) $("decisions").showModal();
+}
+// The popup opens by itself once per campaign month.
+function promptDecisions() {
+  const key = `${state?.campaign_id}:${state?.turn}`;
+  try {
+    if (sessionStorage.getItem("decisionsSeen") === key) return;
+    sessionStorage.setItem("decisionsSeen", key);
+  } catch {}
+  showDecisions();
+}
+$("decisions-badge").onclick = showDecisions;
+wireDialog("decisions");
+function proposalCard(id, p) {
+  const card = document.createElement("article");
+  card.className = "agreement proposal";
+  const others = p.actors.filter((a) => a !== state.player && a !== p.from).map(actorName);
+  const offered = document.createElement("p");
+  offered.className = "meta";
+  offered.textContent = `Offered by ${actorName(p.from)} · revision ${p.revision || 1}` + (others.length ? `, with ${others.join(", ")}` : "");
+  const terms = document.createElement("p");
+  terms.textContent = p.text + (p.months ? ` Lasts ${p.months} month${p.months === 1 ? "" : "s"}.` : p.amends ? "" : " Open-ended.");
+  card.append(cardHead(p.amends ? `Amendment to the ${p.name}` : p.name, [[kindLabel(p.kind), ""]]), offered, terms);
+  if (p.terms?.length) card.append(termList(p.terms));
+  card.append(answerChips(id, "Accept", "Decline", "Lapses if unanswered this month"));
+  return card;
 }
 $("add-action").onclick = () => {
   if (draft.length >= 8) return;
@@ -824,8 +960,7 @@ $("turn").onclick = protect(async () => {
         .filter((a) => a.text.trim())
         .map((a) => (a.targets.length ? { text: a.text.trim(), targets: a.targets } : { text: a.text.trim() })),
     };
-    const offered = new Set(pendingProposals().map(([id]) => id));
-    const responses = Object.entries(readAnswers()).filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept, revision: state.proposals[proposal].revision || 1 }));
+    const responses = turnResponses();
     if (responses.length) pending.responses = responses;
     if (readSkipNarration()) pending.narration = false;
     sessionStorage.setItem("pendingTurn", JSON.stringify(pending));
@@ -902,9 +1037,10 @@ async function refreshCampaignMap() {
           const stability=state?.actors?.[controller]?.status?.stability;
           const lines=[p.name+(p.population?` · ${p.population.toLocaleString()} people`:"")];
           lines.push(`Unrest: ${unrestBand(unrest)}${unrest?` (${unrest.toFixed(0)}/100)`:""}`);
-          const held=controlText(p);
+          const held=controlText(p), occupied=p.controller&&p.owner&&p.controller!==p.owner;
           if (held) lines.push(held);
-          if (typeof stability==="number") lines.push(`${state.actors[controller]?.name||controller}: ${STABILITY_BANDS.find(([floor])=>stability>=floor)[1]} (${stability.toFixed(0)}/100)`);
+          else if (occupied) lines.push(`Held by ${state.actors[p.controller]?.name||p.controller}, taken from ${state.actors[p.owner]?.name||p.owner}`);
+          if (typeof stability==="number") lines.push(`${occupied?"Occupier ":""}${state.actors[controller]?.name||controller}: ${STABILITY_BANDS.find(([floor])=>stability>=floor)[1]} (${stability.toFixed(0)}/100)`);
           box.style.whiteSpace="pre-line";box.textContent=lines.join("\n");return box;
         }
         if (mapMode!=="diplomacy") { box.textContent=regionLabel(p); return box; }
@@ -1014,7 +1150,7 @@ function renderLegend() {
     const heading = document.createElement("strong");
     heading.textContent = "Stability & unrest";
     box.append(heading);
-    const rows = [...UNREST_BANDS.map(([, text, color]) => [color, `Region ${text}`]), ...STABILITY_BANDS.map(([, text, color]) => [color, `Nation ${text}`]), [null, "Dashed border in the occupier’s colour: occupied"]];
+    const rows = [...UNREST_BANDS.map(([, text, color]) => [color, `Region ${text}`]), [OCCUPIED_FILL, "Occupied, calm so far"], ...STABILITY_BANDS.map(([, text, color]) => [color, `Nation ${text}`]), [null, "Dashed border in the occupier’s colour: occupied"]];
     for (const [color, text] of rows) {
       const row = document.createElement("div");
       const swatch = document.createElement("i");
@@ -1052,6 +1188,13 @@ setMapMode(readPreference("mapMode", "political"));
 
 // Wars & treaties menu.
 let diplomacyTab = "wars";
+// Model- and engine-written identifiers ("sovereign_recognition") as words ("Sovereign recognition").
+function humanize(text) {
+  const raw = String(text ?? "").trim();
+  // Hyphens join words in prose ("anti-corruption"); only an identifier without spaces loses them.
+  const words = (raw.includes(" ") ? raw.replace(/_+/g, " ") : raw.replace(/[_-]+/g, " ")).replace(/\s+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 function kindLabel(kind) {
   return (kind || "other").replaceAll("_", " ");
 }
@@ -1330,7 +1473,7 @@ function eventCard(ev) {
   card.append(head, parties, text);
   if (ev.effects?.length) {
     const effects = document.createElement("p");
-    const arrow = { severe_decline: "⇊", decline: "↓", growth: "↑", strong_growth: "⇈" };
+    const arrow = { severe_decline: "⇊", decline: "↓", slight_decline: "↘", slight_growth: "↗", growth: "↑", strong_growth: "⇈" };
     for (const x of ev.effects)
       for (const [label, value] of [["economy", x.economy], ["stability", x.stability]]) {
         if (!arrow[value]) continue;

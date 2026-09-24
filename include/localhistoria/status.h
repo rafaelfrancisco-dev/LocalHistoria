@@ -100,7 +100,10 @@ const Regime &regime(const std::string &system);
 std::string unrestDescription(double unrest);
 // 3 added autonomous front movement and stalemate tracking; turns recorded at 2 keep neither.
 // 4 added regional unrest and the rebellion, secession and regime-collapse chain it feeds.
-constexpr int statusVersion = 4, frontMomentumVersion = 3, unrestVersion = 4;
+// 5 made occupation unrest climb at one rate whoever occupies, seeded occupations older than the
+// campaign at what they justify, and gave land held by armed movements unrest of its own.
+constexpr int statusVersion = 5, frontMomentumVersion = 3, unrestVersion = 4,
+              occupationUnrestVersion = 5;
 // Deterministic monthly consequences after the accepted delta: growth, war fronts, casualties,
 // displacement, GDP and stability. Replay runs it again, so it needs no inference. `version` is the
 // turn's recorded status_version: a live month uses the current rules, while replay passes what the

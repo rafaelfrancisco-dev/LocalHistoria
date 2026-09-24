@@ -1,3 +1,4 @@
+#include <set>
 #include "localhistoria/lifecycle.h"
 #include "status_tests.h"
 void realWorldTests() {
@@ -213,12 +214,20 @@ void realWorldTests() {
             check(record.find("\"recorded\"") != std::string::npos &&
                       record.find("since") == std::string::npos,
                   "A seeded occupation is recorded without an invented age: " + record);
-        double occupied = 0, elsewhere = 0;
+        double occupied = 0, elsewhere = 0, movement = 100;
         std::string loudest;
+        std::set<std::string> owners;
+        for (const auto &id : t.getMemberNames())
+            owners.insert(t[id]["owner"].asString());
         for (const auto &id : t.getMemberNames()) {
             double u = t[id]["unrest"].asDouble();
             if (t[id]["control"].isObject())
                 occupied = std::max(occupied, u);
+            // Status version 5: land an armed movement holds (the RSF's Darfur, the M23's North
+            // Kivu) is ruled by force too.
+            else if (t[id]["owner"] != t[id]["controller"] &&
+                     !owners.contains(t[id]["controller"].asString()))
+                movement = std::min(movement, u);
             else if (u > elsewhere) {
                 elsewhere = u;
                 loudest = t[id]["name"].asString();
@@ -227,10 +236,13 @@ void realWorldTests() {
                   "No region spends a month past the revolt line under the new rules: " + id);
         }
         std::cout << "Two idle years under the plan 26 rules: occupied Ukraine at " << occupied
+                  << "/100; land held by armed movements at least " << movement
                   << "/100; elsewhere " << (loudest.empty() ? "none" : loudest) << " at "
                   << elsewhere << "/100\n";
         check(occupied >= 35 && occupied < 70,
               "Occupied Ukraine resists short of revolt: " + std::to_string(occupied));
+        check(movement >= 35 && movement < 70,
+              "Land held by armed movements is restive short of revolt: " + std::to_string(movement));
         check(elsewhere < 35, "Nothing unoccupied approaches unrest: " + loudest);
         for (const auto *code : {"YE", "ML", "SY", "SO", "AF"})
             for (const auto &id : t.getMemberNames())

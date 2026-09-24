@@ -117,6 +117,11 @@ constexpr double occupationPressure = 60;
 constexpr double occupationStress = 0.5; // a fully stressed occupier multiplies it by 1.5
 constexpr double occupationDevastation = 10, occupationStrained = 10, occupationCooperative = -15;
 constexpr double garrisonedPressure = 0.8; // a region its occupier garrisons in strength
+// Status version 5: an occupied population's resentment rises at this share of the gap a month
+// whoever the occupier is. A regime's vent is how it channels its own people's grievance, not a
+// foreign population's, and scaling by it left a region taken by a presidential republic calm for
+// half a year. 0.30 takes a region with an occupation target of 56 to "restive" in the third month.
+constexpr double occupationRise = 0.30;
 // Demands a government leaves unanswered make a region restive on their own, each one to
 // demandPressure once fully aged, but never past demandPressureCap: that path reaches the journal,
 // and only a nation's real decline takes it further.

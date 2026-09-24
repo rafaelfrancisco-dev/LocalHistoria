@@ -30,6 +30,7 @@ code, tests and docs describe them, and `git log` has the originals. Dependencie
 | 24 | war-momentum-and-peace (after 19, 21, 23) | simulation | L | done 2026-09-22 |
 | 25 | political-systems-and-unrest (after 22, 23, 24) | data + simulation + UI | L | done 2026-09-22 |
 | 26 | [simulation-realism-and-consistency](26-simulation-realism-and-consistency.md) (after 19, 21–25) | simulation + correctness + replay + UI | XL, phased | done 2026-09-23 |
+| 28 | [consequential-events-and-occupation](28-consequential-events-and-occupation.md) (after 26, 27) | simulation + schema + UI | L, phased | |
 
 Baseline numbers to beat (real save, India, Qwen3.5-4B, M1 Pro): month 1 159 s, month 2 212 s;
 adjudication 100 s / 123 s with 6,047 / 12,420 prompt tokens and ~2,650 generated tokens; schema 99 / 194 KB.

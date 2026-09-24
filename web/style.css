@@ -284,10 +284,21 @@ button.primary {
 .entry .changes li {
   margin: 2px 0;
 }
-.entry details.tolls,
+.entry details.war,
 .entry details.decided {
   margin: 6px 0;
   color: var(--muted);
+}
+.entry details.war p {
+  margin: 3px 0;
+}
+.entry details.war h4 {
+  margin: 8px 0 2px;
+  font: 600 12px system-ui, sans-serif;
+}
+.entry details.war .hands {
+  margin: 2px 0;
+  padding-left: 18px;
 }
 .entry details.decided p {
   margin: 3px 0;
@@ -352,6 +363,7 @@ a {
 }
 dialog#diplomacy,
 dialog#events,
+dialog#decisions,
 dialog#settings {
   width: min(760px, calc(100vw - 32px));
   max-height: min(85vh, 900px);
@@ -361,7 +373,8 @@ dialog#settings {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
-dialog#settings {
+dialog#settings,
+dialog#decisions {
   width: min(520px, calc(100vw - 32px));
 }
 .settings-links {
@@ -381,6 +394,7 @@ dialog#settings {
 }
 dialog#diplomacy::backdrop,
 dialog#events::backdrop,
+dialog#decisions::backdrop,
 dialog#settings::backdrop {
   background: rgb(5 12 16 / 70%);
 }
@@ -639,6 +653,20 @@ footer {
 #proposals {
   margin-bottom: 10px;
 }
+h2 .badge {
+  cursor: pointer;
+  border: 0;
+  background: #7d3d35;
+  color: #f5d6cf;
+  text-transform: none;
+  vertical-align: middle;
+}
+#regional-politics .demand {
+  margin: 2px 0;
+}
+#regional-politics .chips {
+  margin: 2px 0 8px;
+}
 #proposals h3 {
   margin: 0 0 4px;
   font-size: 14px;
@@ -765,7 +793,8 @@ footer {
     padding: 10px 15px;
   }
   dialog#diplomacy,
-  dialog#events {
+  dialog#events,
+  dialog#decisions {
     padding: 0 16px 16px;
   }
   .map-legend {
@@ -813,6 +842,7 @@ footer {
 .event-card .text {
   color: var(--text);
 }
+.badge.effect-slight_decline,
 .badge.effect-decline,
 .badge.effect-severe_decline,
 .badge.blocked {
@@ -824,6 +854,7 @@ footer {
   color: #18252a;
   font-weight: 650;
 }
+.badge.effect-slight_growth,
 .badge.effect-growth,
 .badge.effect-strong_growth {
   background: #2f5c4c;

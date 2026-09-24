@@ -93,10 +93,10 @@ double MonthlyStatus::regionalGrievance(const std::string &id) const {
 // region's relations with its new rulers raise it; a strong garrison and integration lower it.
 double MonthlyStatus::occupationPressure(const std::string &id) const {
     const auto &record = hostileControl(w, id);
-    if (!record.isObject())
-        return 0;
     const auto &t = cT[id];
     auto controller = t["controller"].asString();
+    if (!record.isObject() && !armedMovementRule(id))
+        return 0;
     double p = rate::occupationPressure * (1 - number(record, "integration") / 100) *
                (1 + rate::occupationStress * nationalStress(controller));
     double population = double(integer(t, "population"));
@@ -113,6 +113,26 @@ double MonthlyStatus::occupationPressure(const std::string &id) const {
         population * rate::garrisonPerResident)
         p *= rate::garrisonedPressure;
     return std::clamp(p, 0.0, 100.0);
+}
+// Status version 5: land an armed movement holds against its owner (the M23 in North Kivu, the RSF
+// in Darfur) is ruled by force like an occupation, though the control history counts it as local
+// rule. A movement is an actor that owns no land at all; a rising the game raised is not one, since
+// it takes ground only where the population is already with it. Without this such regions never
+// showed any unrest, because a movement's own stability never falls from where it was seeded.
+bool MonthlyStatus::armedMovementRule(const std::string &id) const {
+    if (version < occupationUnrestVersion)
+        return false;
+    const auto &t = cT[id];
+    auto owner = t["owner"].asString(), controller = t["controller"].asString();
+    if (owner.empty() || controller.empty() || owner == controller ||
+        cActors[controller]["rebellion"].isObject() || agreedOccupation(w, id, controller))
+        return false;
+    if (!landowners) {
+        landowners.emplace();
+        for (const auto &r : regionIds)
+            landowners->insert(cT[r]["owner"].asString());
+    }
+    return !landowners->contains(controller);
 }
 // Demands left unanswered make a region restive without any national decline, up to a bound.
 double MonthlyStatus::demandPressure(const std::string &id) const {
@@ -132,12 +152,27 @@ void MonthlyStatus::accrueUnrest() {
             continue;
         double grievance = std::min(regionalGrievance(id), rate::unrestGrievanceCap);
         double target = 100 * nationalStress(controller) * grievance / rate::unrestGrievanceCap;
-        if (realism() && cT[id]["kind"] != "residual" && integer(cT[id], "population") > 0)
-            target = std::max({target, occupationPressure(id), demandPressure(id)});
+        double occupation = 0;
+        if (realism() && cT[id]["kind"] != "residual" && integer(cT[id], "population") > 0) {
+            occupation = occupationPressure(id);
+            target = std::max({target, occupation, demandPressure(id)});
+        }
         double unrest = number(cT[id], "unrest");
+        const bool v5 = version >= occupationUnrestVersion;
+        // An occupation older than the campaign's control history starts where it has long been,
+        // once, rather than climbing from calm as if it began in January 2026.
+        const auto &record = hostileControl(w, id);
+        if (v5 && occupation > 0 && record.isObject() && record["cause"] == "recorded" &&
+            !record.get("seeded", false).asBool()) {
+            unrest = std::max(unrest, occupation);
+            if (T[id].isMember("control"))
+                T[id]["control"]["seeded"] = true;
+        }
         const auto &g = regime(cActors[controller]["status"].get("government", "").asString());
-        double share = target > unrest ? rate::unrestRise * (1 - rate::ventRise * g.vent)
-                                       : rate::unrestFall * (1 + g.vent);
+        double share = target > unrest
+                           ? (v5 && occupation >= target ? rate::occupationRise
+                                                         : rate::unrestRise * (1 - rate::ventRise * g.vent))
+                           : rate::unrestFall * (1 + g.vent);
         double step =
             std::clamp((target - unrest) * share, -rate::maxUnrestStep, rate::maxUnrestStep);
         double next = std::clamp(unrest + step, 0.0, 100.0);

@@ -12,6 +12,7 @@ WorldDelta OperationCompiler::compile(const Json::Value &response, const Json::V
     // Outcomes of this month's actions first, then background developments.
     Json::Value all(Json::arrayValue);
     int settlements = settleProposals(all, responses);
+    settlements += settleDemands(all, responses);
     for (auto e : response["events"]) {
         if (e.isObject()) {
             e.removeMember("action");
@@ -251,6 +252,8 @@ void OperationCompiler::apply(EventScope &s, OpScope &op) {
         opAmend(s, op);
     else if (name == "settle_proposal")
         opSettle(s, op);
+    else if (name == "settle_demand")
+        opSettleDemand(s, op);
     else if (name == "set_conflict_intensity")
         opIntensity(s, op);
     else if (name == "build")

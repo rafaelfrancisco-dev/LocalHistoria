@@ -241,7 +241,9 @@ void MonthlyStatus::modelEffects() {
             static const std::map<std::string, std::pair<double, double>> scale{
                 {"severe_decline", {-1.0, -6}},
                 {"decline", {-0.3, -2}},
+                {"slight_decline", {-0.15, -1}},
                 {"none", {0, 0}},
+                {"slight_growth", {0.1, 0.5}},
                 {"growth", {0.2, 1}},
                 {"strong_growth", {0.5, 3}}};
             auto a = x["actor"].asString();

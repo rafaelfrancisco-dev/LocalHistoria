@@ -154,3 +154,42 @@ ceiling and was not re-measured live. A negotiation outcome keeps its text, so "
 submits a proposal for a ceasefire" can read like an offer that the engine never recorded; the
 proposals list and the treaty panel show only real offers. Decision schemas that offer proposals now require a
 `responses` object with one boolean per proposal ID.
+
+Plan 28 phase A (event text version 2) replaced the adjudication sentence about `outcome_kind` and
+`effects` rather than adding one. `none` gave way to `security` and `policy`, and "Omit effects
+unless something changes" became "Every outcome has a consequence: rate it from the facts and
+history, a minor act a minor effect". The schema requires at least one rated effect, which must
+move an axis (an entry may not be `none`/`none`). It is named `outcome_effects` so that it sorts
+after `operations`, and the provider renames it back to `effects`. It was measured on 24 September
+2026 with Qwen3.5-4B and `world_probe`, three runs per scenario:
+
+| Scenario | Version 2 (final) | Previous |
+|---|---|---|
+| `border_police` (a deployment, no map change): text kept, model-rated | 3/3 | 0/3 (one blanked, one relabelled as talks, one reform) |
+| `talks` (preliminary talks): text kept, model-rated | 3/3 | 0/3 (all replaced by "Preliminary diplomatic talks…") |
+| `reform`: effort started | 2/3 (one labelled `policy`) | 3/3 |
+| `access_treaty`: proposal with a `grant_access` term | 0/3 | 1/3 |
+| `treaty_consent`: an AI pact becomes a proposal | 1/3 | 2/3 |
+| `conflict`: the ordered occupation | 3/3 | 1/3 |
+| `invasion` (strong attacker): the ordered occupation | 3/3 | 3/3 |
+
+- **Blanking:** the previous prompt replaced the text of 9 of its 21 outcomes with "No validated
+  change" or "Preliminary diplomatic talks"; version 2 replaced none.
+- **Default effects:** none of the 21 outcomes needed the C++ default. The two intermediate
+  variants show why both schema choices matter:
+  - Required effects alone came back as a single `none`/`none` entry in 4 of 21 probe outcomes
+    and 8 of 19 outcomes in a live month, so C++ supplied the consequence.
+  - Requiring an axis to move, but with the field sorted before `operations` (`effects`), cut
+    the ordered treaty and war operations to 4 of 12. Written after the operations, as with
+    `outcome_kind`, it is 7 of 12, the same as the previous prompt.
+- **Treaties:** version 2 wrote fewer treaty operations here (1 of 6 against 3 of 6). The small
+  model has always narrated offers without writing them (see above). What changed is how that is
+  reported: the text is kept, and any outcome without a successful operation whose description
+  narrates a signing, treaty, pact, accord, agreement or alliance ends "No agreement was recorded."
+  (in two runs of an intermediate variant the model narrated a pact as signed). Three runs a
+  scenario cannot separate this from noise.
+- **Reform labelled `policy`:** without a map change a `policy` or `security` outcome may cost the
+  economy but never grow it, so a reform the model files as a policy earns no growth without the
+  effort that pays for it.
+- **Latency:** unchanged (17–25 s for operational scenarios, 4–8 s for talks and reform, on both
+  sides).

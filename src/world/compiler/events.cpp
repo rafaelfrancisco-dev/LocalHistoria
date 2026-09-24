@@ -1,6 +1,29 @@
 #include "world/compiler/operation_compiler.h"
 #include <algorithm>
+#include <cctype>
+#include <regex>
 namespace lh::detail {
+namespace {
+// Whether a description narrates an agreement: only used to add the record's verdict to it.
+bool claimsAgreement(const std::string &text) {
+    static const std::regex words(
+        R"(\b(sign|signs|signed|signing|ratif\w*|treaty|treaties|pact|pacts|accord|accords|agreement|agreements|alliance)\b)",
+        std::regex::icase);
+    return std::regex_search(text, words);
+}
+// A description the 160-character cap cut mid-sentence ends in an ellipsis.
+std::string closed(std::string text) {
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+        text.pop_back();
+    if (!text.empty() && !text.ends_with("…") &&
+        std::string(".!?\"')").find(text.back()) == std::string::npos)
+        text += "…";
+    return text;
+}
+std::string withVerdict(const std::string &text, const std::string &verdict) {
+    return closed(text) + " " + verdict;
+}
+} // namespace
 // A later event about an incident, or one caused by it, keeps its site on the map for another few
 // months.
 void OperationCompiler::renewEventSites(EventScope &s) {
@@ -48,7 +71,7 @@ void OperationCompiler::buildEvent(EventScope &s) {
         event["blocked_by"] = s.blocked;
     if (!s.breaches.empty() && happened)
         event["breaches"] = s.breaches;
-    event["text"] = s.text.substr(0, 2000);
+    event["text"] = consequential() ? closed(s.text.substr(0, 2000)) : s.text.substr(0, 2000);
     if (!s.dropped.empty())
         event["dropped_operations"] = s.dropped;
     // What players and later prompts are told about dropped operations: a flag, never the reasons.
@@ -87,11 +110,11 @@ void OperationCompiler::buildEvent(EventScope &s) {
             event["text"] = "The proposed action could not be carried out.";
     } else if (realism() && happened && !s.dropped.empty())
         event["text"] = "Only part of the proposed action was carried out; see accepted changes.";
-    if (realism() && happened && !failed && s.successfulOps.empty() &&
-        s.e.get("outcome_kind", "none") == "none" && !s.e.get("background", false).asBool()) {
+    // Before version 2 an outcome the model called "none" lost its description; now it keeps it and
+    // settleEffects gives it a bounded consequence.
+    if (realism() && !consequential() && happened && !failed && s.successfulOps.empty() &&
+        s.e.get("outcome_kind", "none") == "none" && !s.e.get("background", false).asBool())
         event["text"] = "No validated change resulted from the proposed action.";
-        event["major"] = false;
-    }
     if (w.engine.get("event_text_version", 0).asInt() >= 1 && happened && !failed) {
         std::string factual;
         for (const auto &change : pending) {
@@ -112,8 +135,16 @@ void OperationCompiler::buildEvent(EventScope &s) {
             }
         }
         if (!factual.empty()) event["text"] = factual.substr(0, 2000);
-        else if (s.successfulOps.empty() && s.e["outcome_kind"] == "negotiation")
-            event["text"] = "Preliminary diplomatic talks took place; no treaty offer or agreement was recorded.";
+        else if (s.successfulOps.empty() &&
+                 (s.e["outcome_kind"] == "negotiation" ||
+                  (consequential() && claimsAgreement(event["text"].asString()))))
+            // Talks keep what the model said happened, with the record's verdict after it. So does
+            // any outcome describing a signing without an operation that recorded one: a small model
+            // labels a pact it never wrote a "policy" and narrates it as signed.
+            event["text"] = consequential()
+                                ? withVerdict(event["text"].asString(), "No agreement was recorded.")
+                                : "Preliminary diplomatic talks took place; no treaty offer or "
+                                  "agreement was recorded.";
     }
     event["identity_changes"] = Json::arrayValue;
     for (const auto &c : pending)
@@ -166,6 +197,14 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                 inert = false;
         }
     auto independent = s.e.get("outcome_kind", "none").asString();
+    bool background = s.e.get("background", false).asBool();
+    // Version 2 has no "none": an unlabelled outcome from an unconstrained provider is a policy.
+    if (consequential() && !background && independent != "reform" &&
+        independent != "investment" && independent != "negotiation" && independent != "protest" &&
+        independent != "security")
+        independent = "policy";
+    // A consequence without a map change is felt, not decisive.
+    auto mild = [](const std::string &x) { return stronger(weaker(x, "growth"), "decline"); };
     auto effortOpen = [&](const std::string &a) {
         return std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
                efforts.contains(a + ":" + independent);
@@ -176,10 +215,14 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     };
     // A world event is an unplanned development whose consequence is the point of it, bounded like
     // any other effect.
+    // Security, policy and talks under version 2 are the act itself: when every operation it
+    // proposed failed, its consequence is the failure, not an independent result.
+    const bool failedAll = !s.seenOps.empty() && s.failedOps == int(s.seenOps.size());
     bool supportedIndependent =
         s.regional.empty() &&
-        (independent == "reform" || independent == "investment" || independent == "negotiation" ||
-         independent == "protest" || s.e.get("background", false).asBool());
+        (independent == "reform" || independent == "investment" || independent == "protest" ||
+         background || (independent == "negotiation" && !(consequential() && failedAll)) ||
+         (consequential() && !failedAll && (independent == "security" || independent == "policy")));
     if (!inert && (!realism() || supportedIndependent) && s.e["effects"].isArray())
         for (auto &x : s.e["effects"]) {
             if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
@@ -195,8 +238,19 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                 // author; operations supply their own deterministic consequences below.
                 if (a != s.ev)
                     continue;
-                if (independent == "negotiation")
-                    economy = stability = "none";
+                // Talks read at home as progress or weakness; their economic worth waits for a
+                // treaty.
+                if (independent == "negotiation") {
+                    economy = "none";
+                    stability = consequential() ? mild(stability) : "none";
+                }
+                // A law, decree or deployment can cost an economy but not grow it within a month:
+                // growth is what a reform or investment pays for as an effort. Labelled a policy,
+                // a reform would otherwise earn its benefit at once and for nothing.
+                if (independent == "security" || independent == "policy") {
+                    economy = weaker(mild(economy), "none");
+                    stability = mild(stability);
+                }
                 if (independent == "protest") {
                     economy = "none";
                     stability = "decline";
@@ -232,6 +286,21 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
                                   (worse(x["economy"]) || worse(x["stability"])));
         if (!setback && !effortOpen(s.ev))
             startEffort(s.ev);
+    }
+    // Every outcome does something. When the model rated nothing usable for an act without
+    // operations, its author feels the usual small consequence of that kind of act. A failed
+    // attempt is not given one: its consequence is the failure.
+    if (consequential() && !inert && supportedIndependent && !background && s.seenOps.empty() &&
+        find(s.ev) == effects.end() && !event.isMember("effort")) {
+        static const std::map<std::string, std::pair<const char *, const char *>> defaults{
+            {"security", {"decline", "growth"}},
+            {"policy", {"none", "growth"}},
+            {"negotiation", {"none", "growth"}},
+            {"protest", {"none", "decline"}}};
+        if (auto d = defaults.find(independent); d != defaults.end()) {
+            effects.push_back({s.ev, d->second.first, d->second.second, false});
+            event["effect_source"] = "default";
+        }
     }
     auto entry = [&](const std::string &a) -> Effect & {
         auto f = find(a);
@@ -279,12 +348,22 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
         effects.resize(3);
     if (effects.empty())
         return;
+    // A deployment, decree or round of talks that changed nothing on the map is felt slightly:
+    // its rated step is recorded at half weight, so routine acts do not add up to a crisis.
+    const bool slight = consequential() && s.successfulOps.empty() &&
+                        (independent == "security" || independent == "policy" ||
+                         independent == "negotiation");
+    auto soften = [&](const Effect &f, const std::string &v) -> std::string {
+        if (!slight || f.forced)
+            return v;
+        return v == "decline" ? "slight_decline" : v == "growth" ? "slight_growth" : v;
+    };
     event["effects"] = Json::arrayValue;
     for (auto &f : effects) {
         Json::Value x;
         x["actor"] = f.actor;
-        x["economy"] = f.economy;
-        x["stability"] = f.stability;
+        x["economy"] = soften(f, f.economy);
+        x["stability"] = soften(f, f.stability);
         event["effects"].append(x);
     }
 }

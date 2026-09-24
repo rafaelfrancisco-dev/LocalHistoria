@@ -248,6 +248,108 @@ int main() {
         check(compile(textVersion, talks).events[0]["text"] == "Preliminary diplomatic talks took place; no treaty offer or agreement was recorded.", "Unsupported diplomatic completion is not authoritative");
         auto oldText = textVersion; oldText.engine.removeMember("event_text_version");
         check(compile(oldText, talks).events[0]["text"] == talks["description"], "Absent event text version preserves old compiler output");
+        // Plan 28 A: every outcome keeps its description and carries a consequence.
+        auto v2 = fixture();
+        v2.engine["event_text_version"] = 2;
+        auto police = event("AA", "Aland deploys 200 border police to the frontier.", "[]");
+        police["outcome_kind"] = "security";
+        police["effects"] = parse(R"([{"actor":"AA","economy":"none","stability":"none"}])");
+        auto guarded = compile(v2, police).events[0];
+        check(guarded["text"] == police["description"] && guarded["effect_source"] == "default" &&
+                  guarded["effects"][0]["economy"] == "slight_decline" &&
+                  guarded["effects"][0]["stability"] == "slight_growth",
+              "An act the model rated nothing keeps its text and its kind's default consequence");
+        police["effects"] =
+            parse(R"([{"actor":"AA","economy":"severe_decline","stability":"strong_growth"}])");
+        guarded = compile(v2, police).events[0];
+        check(!guarded.isMember("effect_source") &&
+                  guarded["effects"][0]["economy"] == "slight_decline" &&
+                  guarded["effects"][0]["stability"] == "slight_growth",
+              "Without a map change a security act moves each axis by at most a step, felt slightly");
+        auto spoken = compile(v2, talks).events[0];
+        check(spoken["text"] == talks["description"].asString() + " No agreement was recorded." &&
+                  spoken["effects"][0]["economy"] == "none" &&
+                  spoken["effects"][0]["stability"] == "slight_growth",
+              "Talks keep their description, say no agreement was recorded, and read at home");
+        talks["effects"] =
+            parse(R"([{"actor":"AA","economy":"strong_growth","stability":"severe_decline"}])");
+        spoken = compile(v2, talks).events[0];
+        check(spoken["effects"][0]["economy"] == "none" &&
+                  spoken["effects"][0]["stability"] == "slight_decline",
+              "Talks move stability only, by at most a step");
+        auto claimed = event("BB", "Bland and Aland sign the Lisbon Defence Pact.", "[]");
+        claimed["outcome_kind"] = "policy";
+        check(compile(v2, claimed).events[0]["text"] ==
+                  "Bland and Aland sign the Lisbon Defence Pact. No agreement was recorded.",
+              "A signing narrated without a treaty operation is marked as unrecorded");
+        Json::Value rumour;
+        rumour["events"] = Json::arrayValue;
+        rumour["world_events"].append(parse(
+            R"({"actor":"BB","description":"The Lisbon Defence Pact is signed.","causes":[],"effects":[{"actor":"BB","economy":"none","stability":"growth"}]})"));
+        check(compileOperations(v2, rumour, {}).events[0]["text"] ==
+                  "The Lisbon Defence Pact is signed. No agreement was recorded.",
+              "So is one a world event narrates");
+        auto relabelled = event("AA", "Aland overhauls its curriculum.", "[]");
+        relabelled["outcome_kind"] = "policy";
+        relabelled["effects"] =
+            parse(R"([{"actor":"AA","economy":"strong_growth","stability":"growth"}])");
+        auto decree = compile(v2, relabelled).events[0];
+        check(decree["effects"][0]["economy"] == "none" && decree["effects"][0]["stability"] == "slight_growth" &&
+                  !decree.isMember("effort"),
+              "A policy cannot grow the economy at once: that is what an effort pays for");
+        {
+            auto slightDelta = compile(v2, police);
+            auto applied = applyDelta({v2, {}}, slightDelta, Json::Value(Json::objectValue));
+            check(applied.state.turn == v2.turn, "A slight effect is a valid recorded effect");
+        }
+        auto unlabelled = event("AA", "Aland renames a ministry.", "[]");
+        check(compile(v2, unlabelled).events[0]["effects"][0]["stability"] == "slight_growth",
+              "An unlabelled outcome is a policy");
+        check(compile(v2, reform).events[0]["effort"] == "reform",
+              "A reform still starts its effort");
+        auto impossibleV2 = bad;
+        impossibleV2["outcome_kind"] = "security";
+        impossibleV2.removeMember("effects");
+        check(compile(v2, impossibleV2).events[0]["failed"] == true,
+              "A failed attempt earns no default consequence");
+        impossibleV2["effects"] =
+            parse(R"([{"actor":"AA","economy":"none","stability":"growth"}])");
+        auto attempted = compile(v2, impossibleV2).events[0];
+        check(attempted["failed"] == true && !attempted.isMember("effects") &&
+                  attempted["text"] == "The proposed action could not be carried out.",
+              "Nor a rated one: a failed security act's consequence is the failure");
+        auto v2schema = operationSchema(v2, encode(v2), {{"AA", "Deploy border police"}});
+        const auto &item = v2schema["properties"]["events"]["prefixItems"][0];
+        bool effectsRequired = false, hasNone = false;
+        for (const auto &k : item["required"])
+            effectsRequired = effectsRequired || k == "outcome_effects";
+        for (const auto &k : item["properties"]["outcome_kind"]["enum"])
+            hasNone = hasNone || k == "none";
+        check(effectsRequired && !hasNone && item["properties"]["outcome_effects"]["minItems"] == 1 &&
+                  !item["properties"].isMember("effects"),
+              "Version 2 requires a rated consequence, written after the operations, and has no 'none' outcome");
+        check(v2schema["properties"]["world_events"]["items"]["properties"]["effects"]["minItems"] == 1,
+              "World events keep the plain name");
+        const auto &rated = v2schema["$defs"]["rated_effect"]["anyOf"];
+        check(item["properties"]["outcome_effects"]["items"]["$ref"] == "#/$defs/rated_effect" &&
+                  rated.size() == 2 && rated[1]["properties"]["economy"]["const"] == "none" &&
+                  rated[1]["properties"]["stability"]["enum"].size() == 4,
+              "A rated consequence moves at least one axis");
+        auto cut = event("AA", "Aland opens talks with Bland on fishing rights in the", "[]");
+        cut["outcome_kind"] = "negotiation";
+        check(compile(v2, cut).events[0]["text"] ==
+                  "Aland opens talks with Bland on fishing rights in the… No agreement was recorded.",
+              "A description cut at the length cap ends in an ellipsis before the verdict");
+        auto trailing = event("AA", "Aland publishes a white paper on coastal defence in the", "[]");
+        trailing["outcome_kind"] = "policy";
+        check(compile(v2, trailing).events[0]["text"] ==
+                  "Aland publishes a white paper on coastal defence in the…",
+              "Any description cut at the cap ends in an ellipsis");
+        auto ellipsis = event("AA", "Aland opens talks with Bland on fishing rights in the…", "[]");
+        ellipsis["outcome_kind"] = "negotiation";
+        check(compile(v2, ellipsis).events[0]["text"] ==
+                  "Aland opens talks with Bland on fishing rights in the… No agreement was recorded.",
+              "A model's own ellipsis is not doubled");
         std::cout << checks << " explicit consent and accepted outcome checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

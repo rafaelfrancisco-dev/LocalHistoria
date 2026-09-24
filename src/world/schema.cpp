@@ -290,7 +290,7 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     event["properties"]["description"] = string(160);
     event["properties"]["causes"] = parse(R"({"type":"array","maxItems":4})");
     // Economic and stability consequences are qualitative; C++ turns them into bounded numbers.
-    // Optional: most events change nothing.
+    // Optional before event text version 2; since then every outcome rates at least one.
     auto effect = parse(
         R"({"type":"string","enum":["severe_decline","decline","none","growth","strong_growth"]})");
     defs["effect"] =
@@ -309,6 +309,31 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         event["properties"]["outcome_kind"] = parse(
             R"({"type":"string","enum":["reform","investment","negotiation","protest","none"]})");
         event["required"].append("outcome_kind");
+        // Version 2: every outcome has a consequence the model rates, so "none" gives way to the
+        // two kinds it used to hide (deployments and policing; laws, decrees and statements).
+        if (w.engine.get("event_text_version", 0).asInt() >= 2) {
+            event["properties"]["outcome_kind"]["enum"] = parse(
+                R"(["reform","investment","negotiation","protest","security","policy"])");
+            // Required alone, the list came back as one "none"/"none" entry in eight of nineteen
+            // live outcomes, which left the consequence to a C++ default. An entry must move at
+            // least one axis, so the model grounds the direction and size itself. Named so it sorts
+            // after operations, like outcome_kind: rated first, it talked the model out of the
+            // treaty and occupation operations (4 of 12 written against 7 of 12). The provider
+            // renames it back to effects.
+            auto moved = parse(
+                R"({"type":"string","enum":["severe_decline","decline","growth","strong_growth"]})");
+            Json::Value economyMoves = defs["effect"], stabilityMoves = defs["effect"];
+            economyMoves["properties"]["economy"] = moved;
+            stabilityMoves["properties"]["economy"] = parse(R"({"const":"none"})");
+            stabilityMoves["properties"]["stability"] = moved;
+            defs["rated_effect"]["anyOf"].append(economyMoves);
+            defs["rated_effect"]["anyOf"].append(stabilityMoves);
+            auto rated = parse(R"({"type":"array","minItems":1,"maxItems":3})");
+            rated["items"] = ref("rated_effect");
+            event["properties"].removeMember("effects");
+            event["properties"]["outcome_effects"] = rated;
+            event["required"].append("outcome_effects");
+        }
     }
     if (causes.empty())
         event["properties"]["causes"]["maxItems"] = 0;
@@ -420,6 +445,11 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     development["required"] = Json::arrayValue;
     for (auto k : {"actor", "causes", "description", "effects"})
         development["required"].append(k);
+    // A development has no operations to write first, so it keeps the plain name.
+    if (development["properties"].isMember("outcome_effects")) {
+        development["properties"]["effects"] = development["properties"]["outcome_effects"];
+        development["properties"].removeMember("outcome_effects");
+    }
     // A development is kept only when it changes something, so it must name at least one effect.
     development["properties"]["effects"]["minItems"] = 1;
     development["properties"].removeMember("operations");

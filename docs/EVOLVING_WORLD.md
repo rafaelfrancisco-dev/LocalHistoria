@@ -111,14 +111,36 @@ Under the realism lifecycle (Plan 26 B and C), and as corrected by the
   impossible lapses as a whole. The same offer (kind, parties and terms) is not opened again while
   one awaits answers.
 - **Outcomes without a map change.** Effects come from successful operations or from a supported
-  independent result. The adjudication schema requires `outcome_kind` on every outcome:
-  `reform`, `investment`, `negotiation`, `protest` or `none`. It follows `operations`, so the model
-  writes its operations first; placed before them, a `negotiation` label talked it out of writing
-  the treaty. An effort starts only from an outcome with no successful operation. A reform or investment starts an
-  effort (see below) unless the model rates it a setback. A negotiation keeps its text but moves no economy. A protest can only cost
-  stability. A world event keeps its text and its bounded consequence. An outcome marked `none`
-  with no successful operation reads "No validated change resulted from the proposed action.", and
-  one whose every operation failed reads "The proposed action could not be carried out."
+  independent result. The adjudication schema requires `outcome_kind` on every outcome. It follows
+  `operations`, so the model writes its operations first; placed before them, a `negotiation`
+  label talked it out of writing the treaty. An effort starts only from an outcome with no
+  successful operation. A reform or investment starts an effort (see below) unless the model rates
+  it a setback. A protest can only cost stability. A world event keeps its text and its bounded
+  consequence. An outcome whose every operation failed reads "The proposed action could not be
+  carried out."
+  - **Event text version 2** (plan 28; new turns). Every outcome does something. The kinds are
+    `reform`, `investment`, `negotiation`, `protest`, `security` (deployments, policing, martial
+    law) and `policy` (laws, decrees, appointments, statements); there is no `none`, and the
+    schema requires at least one effect that moves an axis (an entry may not be `none`/`none`).
+    Every outcome keeps its description. Without a map
+    change a `security` or `policy` outcome moves stability by at most a step and can cost the
+    economy a step but never grow it (growth is what a reform or investment pays for), and a
+    negotiation moves only its author's stability, by at most a step, and reads "… No agreement
+    was recorded." when it recorded no offer. So does any outcome without a successful operation
+    whose description narrates a signing, treaty, pact, accord, agreement or alliance. A
+    description the 160-character cap cut mid-sentence ends in "…". A `security`, `policy` or
+    `negotiation` outcome without a successful operation is felt slightly: its `decline` and
+    `growth` are recorded as `slight_decline` and `slight_growth`, half as heavy, so routine acts do
+    not add up to a crisis. When the model rates nothing usable for an act
+    without operations, its author gets the kind's small default and the event records
+    `effect_source: "default"`: security costs economy and steadies stability, policy and talks
+    steady stability, a protest costs it. A failed attempt gets no default, and a `security`,
+    `policy` or `negotiation` outcome whose every operation failed keeps no rating of its own either:
+    its consequence is the failure.
+  - **Version 1** (older turns, replayed unchanged). Kinds are the first four or `none`. An outcome
+    marked `none` with no successful operation reads "No validated change resulted from the
+    proposed action."; a negotiation moves nothing and, with no offer recorded, reads
+    "Preliminary diplomatic talks took place; no treaty offer or agreement was recorded."
 - **Hostile pairs.** A war records who fights whom (`hostile_pairs`) and each party's own posture
   (`postures`). A co-belligerent is never an enemy, and a ceasefire, peace treaty or
   non-aggression pact between two parties pauses only their pair. No single party can end the
@@ -198,7 +220,7 @@ Relevant regions show their population. The adjudication prompt asks the model t
 **Each month**, after the accepted delta:
 
 1. **Trend.** Region population and GDP grow by the owner's annual rates ÷ 12 (clamped to ±5% and ±10% a year).
-2. **Model effects.** Economy: −1.0 / −0.3 / 0 / +0.2 / +0.5% GDP. Stability: −6 / −2 / 0 / +1 / +3. Per-actor totals are capped at ±1.5% and ±8, and a quarter of the stability effect shifts the baseline.
+2. **Model effects.** Economy: −1.0 / −0.3 / 0 / +0.2 / +0.5% GDP. Stability: −6 / −2 / 0 / +1 / +3. The recorded `slight_decline` and `slight_growth` (event text version 2) are −0.15% / −1 and +0.1% / +0.5. Per-actor totals are capped at ±1.5% and ±8, and a quarter of the stability effect shifts the baseline.
 3. **Occupation.** Occupied regions lose 2% of output a month, down to 40% of their value when occupation began. Seeded occupations start at that floor.
 4. **Fronts.** Before drawing fronts, conventional wars advance from frozen force inputs where decisive superiority has accumulated enough pressure. Only control changes, and the defender can retake land if the balance reverses. Each open conflict's affected regions, capped at 12, are:
    - regions whose control changed between its parties this month;
@@ -452,6 +474,23 @@ reproduces it exactly. A delta still cannot write it.
   domestic path above (which no longer counts foreign occupation) and **ignored demands**: 20 per
   fully aged pending demand, capped at 40. That cap is enough to report a region as restive but
   never enough to arm it. Only a nation's real decline takes it further.
+- **Status version 5** (plan 28; new turns, older ones replay unchanged):
+  - **One climb for every occupier.** When the occupation target is the one being chased, unrest
+    rises by 30% of the gap a month whoever occupies. The occupier's vent describes how a regime
+    channels its own people's grievance, not a foreign population's. Scaling by it left a region
+    taken by a presidential republic calm for half a year; now an unstressed occupation (target
+    56–60) is restive in its third or fourth month. The fall is unchanged.
+  - **Old occupations start where they are.** An occupation recorded when the campaign began
+    (`cause: "recorded"`) starts at its target once, marked `seeded` on the control record, instead
+    of climbing from calm as if it began in January 2026.
+  - **Land held by armed movements.** A region held against its owner by an actor that owns no land
+    at all (the RSF in Darfur, the M23 in North Kivu) gets the same resistance target, though the
+    control history counts it as local rule. A rising the game raised is excluded: it takes ground
+    only where the population is already with it. No new rising forms against a movement, because
+    its own civil war already represents the region.
+  - **Map.** In the stability & unrest mode an occupied region still calm is filled "Occupied",
+    never in its occupier's stability colour, and its tooltip names who holds it. The regional
+    politics panel lists the land a nation occupies with its unrest, however low.
 - **Rising.** The duplicate guard now covers only the relevant rising. A region is skipped only when
   a civil war or insurgency its controller is fighting already reaches it, or when rebels against
   that controller hold neighbouring ground. Another war passing through no longer suppresses a
@@ -462,18 +501,25 @@ reproduces it exactly. A delta still cannot write it.
   the third party's forces stay. An `occupy` term cannot evict a controller that is not a party.
 
 Measured on deterministic fixtures (`tests/status/conquest.cpp`):
-- **Stable occupier:** two years under a stable occupier bring unrest to 46, or 37 with a strong
-  garrison. Under the legacy rules the same occupation stays at 0.
+- **Stable occupier:** four months of occupation bring unrest to 39 whether the occupier is a
+  republic or a junta (status version 5). Two years bring it to 60, or 48 with a strong garrison
+  (46 and 37 under status version 4). Under the legacy rules the same occupation stays at 0.
 - **Integration:** a cooperative annexed province integrates in 60 months, and its unrest falls
-  from 46 to 16 by month 31.
+  from 60 to 16 by month 31.
 - **War theatre:** an occupied, devastated and strained war theatre under a stable republic rises
-  after 46 months, once.
+  after 12 months, once (46 under status version 4).
+- **Armed movement:** land a movement holds through a civil war with its owner settles restive,
+  short of revolt, and raises no rising against the movement.
 - **Ignored demands:** five years of ignored demands in a steady junta plateau at 40.
 - **Invaded, not occupied:** a defended front stays at 0.
 
 On the real January 2026 world:
-- **Occupied Ukraine:** Crimea, Donetsk and Luhansk become restive in month 10 and reach "unrest"
-  (57 after two years, 68 after five). Russia's armed line is 84, so they never reach it.
+- **Occupied Ukraine:** under status version 4, Crimea, Donetsk and Luhansk became restive in
+  month 10 and reached "unrest" (57 after two years, 68 after five). Under version 5 they start at
+  their target and stand at 63.5 after two idle years. Russia's armed line is 84, so they never
+  reach it.
+- **Land held by armed movements:** the RSF's Darfur and West Kordofan and the M23's North Kivu,
+  calm under version 4, are in "unrest" (at least 55.5) after two idle years, short of revolt.
 - **Everything else:** unchanged. No actor, conflict, revolt or fallen government appears in 60
   idle months, and the front trajectories are identical to the build before this phase.
 

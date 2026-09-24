@@ -43,6 +43,11 @@ try {
   await page.route("**/flags/fr.svg", (r) =>
     r.fulfill({ status: 404, body: "" }),
   );
+  // The monthly decisions popup is modal; outside the steps that test it, answer it later.
+  const decisions = page.locator("dialog#decisions[open]");
+  await page.addLocatorHandler(decisions, async () => {
+    await page.locator("#decisions-close").click({ timeout: 5000 });
+  });
   await page.goto(base);
   await page.waitForSelector("#countries button");
   await page.locator("#search").fill("Portugal");
@@ -85,9 +90,13 @@ try {
   // both scales.
   await page.getByRole("button", { name: "Stability & unrest" }).click();
   await page.waitForFunction(() => mapMode === "unrest");
-  assert.match(await page.locator(".map-legend").innerText(), /Region in open rebellion[\s\S]*Nation collapsing/);
-  // Occupied Donetsk is calm enough to show its controller's band, which is Russia's.
-  assert.equal(await page.evaluate(() => { let fill; layers.eachLayer((l) => { if (l.feature.properties.name === "Donetsk Oblast") fill = l.options.fillColor; }); return fill; }), "#6d8f76");
+  assert.match(await page.locator(".map-legend").innerText(), /Region in open rebellion[\s\S]*Occupied, calm so far[\s\S]*Nation collapsing/);
+  // Occupied Donetsk, not yet restive in January, is shown as occupied, never in Russia's
+  // stability colour; unoccupied Lisbon keeps Portugal's.
+  const fillOf = (name) => page.evaluate((n) => { let fill; layers.eachLayer((l) => { if (l.feature.properties.name === n) fill = l.options.fillColor; }); return fill; }, name);
+  assert.equal(await fillOf("Donetsk Oblast"), "#6f5a86");
+  assert.notEqual(await fillOf("LISBOA"), undefined);
+  assert.notEqual(await fillOf("LISBOA"), "#6f5a86");
   await page.getByRole("button", { name: "Political" }).click();
   await page.waitForFunction(() => mapMode === "political" && document.querySelector(".map-legend").hidden);
   // Display geometry is small enough to keep the page light and restyles fast (Chromium reports heap size).
@@ -260,7 +269,13 @@ try {
   await page.waitForFunction(id=>state.territories[id].owner==="tagus-republic",rid);
   const changed = await page.locator("#journal .changes").first().innerText();
   assert.match(changed, /Fixture port \(port\) construction started/);
-  assert.match(changed, /: Portugal → Tagus Republic/);
+  assert.doesNotMatch(changed, /Portugal → Tagus Republic/);
+  // Land changing hands and the war tolls sit in the war report, collapsed by default.
+  const war = page.locator("#journal article").first().locator("details.war");
+  assert.equal(await war.evaluate((d) => d.open), false);
+  await war.evaluate((d) => (d.open = true));
+  assert.match(await war.locator(".hands").innerText({ timeout: 5000 }), /passed from Portugal to Tagus Republic/);
+  assert.match(await war.innerText({ timeout: 5000 }), /Russo-Ukrainian War \(high intensity\): about /);
   assert.equal(await page.evaluate(id=>{let owner;layers.eachLayer(l=>{if(l.feature.id===id)owner=l.feature.properties.owner;});return owner;},rid),"tagus-republic");
   await page.evaluate(()=>{const e=state.entities["e3-fixture-port"];map.setView([e.latitude,e.longitude],7);});
   await page.waitForFunction(()=>entityLayers.getLayers().some(l=>l.getPopup()?.getContent()?.textContent.includes("Fixture port")));
@@ -275,7 +290,37 @@ try {
   const regional = await page.evaluate(() => Object.keys(state.regional_politics)[0]);
   assert.ok(regional);
   await page.evaluate(async id => { await select(state.territories[id].controller); }, regional);
-  assert.match(await page.locator("#regional-politics").innerText(), /pending: Request a regional assembly/);
+  const politicsText = await page.locator("#regional-politics").innerText();
+  assert.match(politicsText, /Demands request a regional assembly · raised \w+ \d{4} · answer by \w+ \d{4}/);
+  assert.doesNotMatch(politicsText, /_|\(t\d+-/);
+  // Plan 28 C: a demand from one of the player's regions is answered with Grant or Refuse, in the
+  // regional politics panel and the decisions popup. This flow's regional slots go to other
+  // nations' war fronts, so one is staged in the page and cleared by a reload.
+  const staged = await page.evaluate(async () => {
+    const region = Object.keys(state.territories).find((id) => state.territories[id].controller === state.player && state.territories[id].owner === state.player);
+    state.regional_politics[region] = { agenda: "home_rule", relations: "neutral", supporting_events: [], demands: [{ id: `t${state.turn}-staged`, text: "sovereign_recognition", status: "pending" }] };
+    await select(state.player);
+    renderDecisions();
+    return { region, id: `t${state.turn}-staged`, by: month(state.turn + 3) };
+  });
+  await page.removeLocatorHandler(decisions);
+  await page.evaluate(() => showDecisions());
+  await decisions.waitFor({ state: "visible", timeout: 5000 });
+  const card = decisions.locator(".proposal").filter({ hasText: "Sovereign recognition" });
+  assert.match(await card.innerText({ timeout: 5000 }), new RegExp(`Regional demand · raised [\\s\\S]*Lapses if unanswered by the end of ${staged.by}`));
+  await card.getByRole("button", { name: "Grant", exact: true }).click({ timeout: 5000 });
+  await page.locator("#decisions-close").click({ timeout: 5000 });
+  const panel = await page.locator("#regional-politics").innerText({ timeout: 5000 });
+  assert.match(panel, new RegExp(`Demands sovereign recognition · raised \\w+ \\d{4} · answer by ${staged.by}`));
+  assert.doesNotMatch(panel, /_|staged/);
+  assert.equal(await page.locator("#regional-politics").getByRole("button", { name: "Grant", exact: true }).getAttribute("aria-pressed", { timeout: 5000 }), "true");
+  assert.deepEqual(await page.evaluate(() => turnResponses()), [{ demand: staged.id, region: staged.region, accept: true }]);
+  await page.evaluate(() => setAnswers({}));
+  await page.reload();
+  await page.waitForFunction(() => state && !busy);
+  await page.addLocatorHandler(decisions, async () => {
+    await page.locator("#decisions-close").click({ timeout: 5000 });
+  });
   await page.locator("#action-0").fill("Adopt the Atlantic Republic constitution: identity-fixture");
   await page.locator("#turn").click();
   await page.waitForFunction(() => state?.actors?.PT?.flag_revision === 1 && !busy);
@@ -320,13 +365,22 @@ try {
   const proposalTurn = await page.evaluate(() => state.turn);
   await page.locator("#action-0").fill("Send Spain a proposal-fixture request");
   await page.locator("#turn").click();
+  await page.removeLocatorHandler(decisions);
   await page.waitForFunction(t => state?.turn === t + 1 && !busy, proposalTurn);
+  // The month that brings an offer opens the decisions popup, once.
+  await decisions.waitFor({ state: "visible", timeout: 5000 });
+  assert.match(await decisions.innerText(), /Needs your decision[\s\S]*revision 1/);
+  await page.locator("#decisions-close").click({ timeout: 5000 });
   await page.locator("#proposals .proposal").waitFor({ state: "visible" });
   assert.match(await page.locator("#proposals").innerText(), /revision 1/);
   assert.match(await page.locator("#proposals").innerText(), /Lapses if unanswered/);
   await page.locator("#proposals").getByRole("button", { name: "Accept", exact: true }).click();
   await page.reload();
   await page.waitForFunction(() => state && !busy);
+  assert.equal(await decisions.count(), 0, "the popup opens once a month");
+  await page.addLocatorHandler(decisions, async () => {
+    await page.locator("#decisions-close").click({ timeout: 5000 });
+  });
   assert.equal(await page.locator("#proposals").getByRole("button", { name: "Accept", exact: true }).getAttribute("aria-pressed"), "true");
   await page.locator("#action-0").fill("Continue routine administration");
   await page.locator("#turn").click();

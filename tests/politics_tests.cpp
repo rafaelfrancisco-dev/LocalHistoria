@@ -232,6 +232,64 @@ int main() {
                   accepted.state.regionalPolitics["r"]["agenda"] ==
                       r.state.regionalPolitics["r"]["agenda"],
               "Control change preserves agenda and current authority responds");
+        // Plan 28 C: a demand has a deadline and is granted, refused or lapses.
+        {
+            auto v = w;
+            v.engine["lifecycle_version"] = 1;
+            v.engine["event_text_version"] = 2;
+            v.turn = 5;
+            auto raised = applyDelta({v, {}}, compileOperations(v, regional, {}), {}).state;
+            const auto demand = raised.regionalPolitics["r"]["demands"][0];
+            check(demand["answer_by_turn"] == 8,
+                  "A demand in the player's region must be answered within three months");
+            raised.regionalPolitics["r"]["relations"] = "neutral";
+            auto month = [&](WorldState s, int turn, const Json::Value &responses) {
+                s.turn = turn;
+                auto d = compileOperations(s, event("PT", parse("[]")), {}, responses);
+                return std::make_pair(applyDelta({s, {}}, d, {}).state, d);
+            };
+            auto quiet = Json::Value(Json::arrayValue);
+            check(month(raised, 7, quiet).first.regionalPolitics["r"]["demands"][0]["status"] ==
+                      "pending",
+                  "A demand waits until its deadline");
+            auto [lapsed, lapseDelta] = month(raised, 8, quiet);
+            check(lapsed.regionalPolitics["r"]["demands"][0]["status"] == "expired" &&
+                      lapsed.regionalPolitics["r"]["demands"][0]["lapse_reason"] == "unanswered" &&
+                      lapsed.regionalPolitics["r"]["relations"] == "strained" &&
+                      lapseDelta.events[0]["text"] ==
+                          "Local Region's demand lapsed unanswered: Negotiate autonomy.",
+                  "An unanswered demand lapses at its deadline as a refusal");
+            auto grant = parse(R"([{"demand":"","region":"r","accept":true}])");
+            grant[0]["demand"] = demand["id"];
+            auto [granted, grantDelta] = month(raised, 6, grant);
+            check(granted.regionalPolitics["r"]["demands"][0]["status"] == "accepted" &&
+                      granted.regionalPolitics["r"]["relations"] == "cooperative" &&
+                      grantDelta.events[0]["text"] ==
+                          "PT granted Local Region's demand: Negotiate autonomy.",
+                  "Granting a demand eases relations one step");
+            grant[0]["accept"] = false;
+            check(month(raised, 6, grant).first.regionalPolitics["r"]["relations"] == "strained",
+                  "Refusing a demand sours relations one step");
+            auto taken = raised;
+            taken.territories["r"]["controller"] = "ES";
+            auto handed = month(taken, 6, quiet).first.regionalPolitics["r"];
+            check(handed["demands"][0]["status"] == "expired" &&
+                      handed["demands"][0]["lapse_reason"] == "authority_changed" &&
+                      handed["relations"] == "neutral",
+                  "A demand to an authority that lost the region lapses without penalty");
+            rejects([&] { month(taken, 6, grant); });
+            auto stale = grant;
+            stale[0]["demand"] = "t1-unknown";
+            rejects([&] { month(raised, 6, stale); });
+            auto abroad = event("ES",
+                                parse(R"([{"action":"regional_initiative","region":"s",)"
+                                      R"("agenda":"Local rights","relations":"neutral",)"
+                                      R"("demand":"Language rights"}])"),
+                                "s");
+            check(applyDelta({v, {}}, compileOperations(v, abroad, {}), {})
+                          .state.regionalPolitics["s"]["demands"][0]["answer_by_turn"] == 11,
+                  "Another nation's region waits six months for an answer");
+        }
         auto design = parse(
             R"({"layout":"horizontal","palette":["#112233","#445566","#778899"],"emblem":"circle",)"
             R"("explanation":"Civic unity"})");

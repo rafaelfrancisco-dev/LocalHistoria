@@ -20,10 +20,14 @@ void checkEvents(const WorldDelta &d, const WorldState &w, std::set<std::string>
         require(!e.isMember("major") || e["major"].isBool(), "Invalid event significance");
         if (e.isMember("effects")) {
             require(e["effects"].isArray() && e["effects"].size() <= 3, "Invalid event effects");
+            // The compiler records a routine act's step at half weight (event text version 2).
+            auto recorded = [](const std::string &v) {
+                return validEffect(v) || v == "slight_decline" || v == "slight_growth";
+            };
             for (auto &x : e["effects"])
                 require(x.isObject() && x["actor"].isString() && x["economy"].isString() &&
-                            validEffect(x["economy"].asString()) && x["stability"].isString() &&
-                            validEffect(x["stability"].asString()),
+                            recorded(x["economy"].asString()) && x["stability"].isString() &&
+                            recorded(x["stability"].asString()),
                         "Invalid event effect");
         }
     }
@@ -96,7 +100,7 @@ void checkRegionalChange(const Json::Value &c, const std::string &id, WorldState
         require(demand["id"].isString() && demand["text"].isString() &&
                     demand["text"].asString().size() <= 500 &&
                     (demand["status"] == "pending" || demand["status"] == "accepted" ||
-                     demand["status"] == "rejected"),
+                     demand["status"] == "rejected" || demand["status"] == "expired"),
                 "Invalid regional demand");
 }
 void checkProposalChange(const Json::Value &c, WorldState &w) {

@@ -185,12 +185,26 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
         return;
     }
     validate(w, w.player, orders);
-    // Answers to treaties offered last month; each pending proposal to the player at
-    // most once.
+    // Answers to treaties offered last month, and to demands from regions the player governs;
+    // each pending one at most once.
     std::set<std::string> answered;
     if (b["responses"].size() > 8)
         throw ValidationError("Too many proposal responses");
     for (auto &r : b["responses"]) {
+        if (r.isObject() && r.isMember("demand")) {
+            if (r.getMemberNames() != std::vector<std::string>{"accept", "demand", "region"} ||
+                !r["accept"].isBool() || !r["demand"].isString() || !r["region"].isString())
+                throw ValidationError("Invalid demand response");
+            auto region = r["region"].asString(), id = r["demand"].asString();
+            bool open = false;
+            for (const auto &d : std::as_const(w.regionalPolitics)[region]["demands"])
+                open = open || (d["id"] == id && d["status"] == "pending");
+            if (!open || !w.territories.isMember(region) ||
+                w.territories[region]["controller"] != w.player ||
+                !answered.insert("demand:" + region + "/" + id).second)
+                throw ValidationError("No pending demand " + id);
+            continue;
+        }
         if (!r.isObject() ||
             r.getMemberNames() != std::vector<std::string>{"accept", "proposal", "revision"} ||
             !r["accept"].isBool() || !r["proposal"].isString() || !r["revision"].isInt())
