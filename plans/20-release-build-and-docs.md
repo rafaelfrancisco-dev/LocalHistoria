@@ -1,5 +1,9 @@
 # 20 · Release build by default, and documentation refresh
 
+**Superseded 2026-09-24 by [plan 29](29-optimized-play-builds.md).** The text below is historical;
+use plan 29 for implementation and verification. Do not follow the obsolete parallel-setting or
+completed-plan deletion instructions below.
+
 Do last (after the performance and simulation plans), so the numbers written into the docs are final.
 
 ## Goal
