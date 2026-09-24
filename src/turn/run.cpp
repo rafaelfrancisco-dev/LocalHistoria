@@ -4,7 +4,22 @@
 #include "localhistoria/turn.h"
 #include <algorithm>
 #include <chrono>
+#include <trantor/utils/Logger.h>
 namespace lh {
+void startSubmitted(Store &store, const std::string &id, const std::function<void()> &prepareAndQueue) {
+    try {
+        prepareAndQueue();
+    } catch (const std::exception &e) {
+        try {
+            store.execute("UPDATE jobs SET status='failed',error=? WHERE id=? AND status='running'",
+                          {e.what(), id});
+        } catch (const std::exception &cleanup) {
+            // Store::recover() marks the job interrupted at the next start.
+            LOG_ERROR << "Could not fail job " << id << ": " << cleanup.what();
+        }
+        throw;
+    }
+}
 // Only a few chronicles per month, to bound turn time.
 const unsigned maxChroniclesPerTurn = 3;
 void TurnRunner::run(const TurnPlan &p, const std::string &id) {
@@ -224,7 +239,11 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         if (!committed) {
             std::lock_guard l(mutex);
             store.recordInference(id, request.takeAudit());
-            store.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", {e.what(), id});
+            if (stopping)
+                store.execute("UPDATE jobs SET status='interrupted',error=? WHERE id=?",
+                              {"Interrupted before commit; submit again with a new key", id});
+            else
+                store.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", {e.what(), id});
         }
     }
     stage("post_commit_or_failure_ms");
@@ -238,6 +257,11 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
 void TurnRunner::cancel(const std::string &id) {
     cancelRequests.insert(id);
     if (id == current)
-        if (cancellation) *cancellation = true;
+        if (cancellation) cancellation->cancel();
+}
+void TurnRunner::interrupt() {
+    stopping = true;
+    if (!current.empty())
+        cancel(current);
 }
 } // namespace lh

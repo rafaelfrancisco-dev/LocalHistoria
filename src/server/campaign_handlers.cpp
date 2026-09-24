@@ -218,24 +218,21 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
     }
     auto job = s.store.submit(b["expected_turn"].asInt(), b["idempotency_key"].asString(), payload);
     auto id = job["id"].asString();
-    auto plan = s.turns.plan(w, orders);
-    plan.narrate = b.get("narration", true).asBool();
-    auto &refs = plan.refs;
-    if (b.isMember("responses"))
-        refs["proposal_responses"] = b["responses"];
-    if (backfill)
-        refs["status_seed"] = encode(s.statusSeed);
-    if (militaryBackfill)
-        refs["military_seed"] = encode(s.statusSeed);
-    if (governmentBackfill)
-        refs["government_seed"] = encode(s.statusSeed);
-    s.references.prepare(w);
-    try {
+    startSubmitted(s.store, id, [&] {
+        auto plan = s.turns.plan(w, orders);
+        plan.narrate = b.get("narration", true).asBool();
+        auto &refs = plan.refs;
+        if (b.isMember("responses"))
+            refs["proposal_responses"] = b["responses"];
+        if (backfill)
+            refs["status_seed"] = encode(s.statusSeed);
+        if (militaryBackfill)
+            refs["military_seed"] = encode(s.statusSeed);
+        if (governmentBackfill)
+            refs["government_seed"] = encode(s.statusSeed);
+        s.references.prepare(w);
         s.worker.add([&s, plan, id] { s.turns.run(plan, id); });
-    } catch (...) {
-        s.store.execute("UPDATE jobs SET status='failed',error='Queue full' WHERE id=?", {id});
-        throw;
-    }
+    });
     reply(cb, s.store.job(id), 202);
 }
 void cancelTurn(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {

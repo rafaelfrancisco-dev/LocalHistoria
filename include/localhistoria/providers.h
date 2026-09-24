@@ -3,12 +3,34 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <memory>
 namespace lh {
+// Shared by the requests of one month. cancel() is idempotent and thread-safe: it marks the month
+// cancelled, then runs each registered abort once, so a transport blocked on a live request
+// returns at once and closes its connection.
+class Cancellation {
+    mutable std::mutex m;
+    std::atomic<bool> flag{false};
+    std::map<unsigned, std::function<void()>> aborts;
+    unsigned next = 0;
+
+  public:
+    explicit operator bool() const { return flag; }
+    void cancel();
+    // Runs abort at once when already cancelled; release() the handle once the request is over.
+    unsigned onCancel(std::function<void()> abort);
+    void release(unsigned handle);
+};
 using Transport = std::function<Json::Value(const std::string &, const std::string &,
                                             const Json::Value &, double)>;
+// A transport the month's cancellation can interrupt mid-request.
+using ModelTransport = std::function<Json::Value(const std::string &, const std::string &,
+                                                 const Json::Value &, double, Cancellation &)>;
 Json::Value httpJson(const std::string &, const std::string &, const Json::Value &, double);
+Json::Value cancellableHttpJson(const std::string &, const std::string &, const Json::Value &,
+                                double, Cancellation &);
 struct Decision {
     TurnOrders orders;
     std::string status;
@@ -31,7 +53,7 @@ std::string validateEndpoint(const std::string &);
 // be shared by requests belonging to the same turn. Never shared between concurrent callers.
 struct InferenceRequest {
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
-    std::shared_ptr<std::atomic<bool>> cancelled = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<Cancellation> cancelled = std::make_shared<Cancellation>();
     Json::Value audit{Json::arrayValue};
     std::string retryReason;
     // Independent opt-in experiments; empty keeps the conservative production behavior.
@@ -41,7 +63,7 @@ struct InferenceRequest {
 class LocalProvider : public DecisionProvider, public NarrationProvider {
     std::string endpoint;
     double timeout;
-    Transport transport;
+    ModelTransport transport;
     mutable std::mutex inference, settings;
     // Share of the context below which a byte estimate replaces exact tokenization; 0 always
     // tokenizes.
@@ -57,8 +79,12 @@ class LocalProvider : public DecisionProvider, public NarrationProvider {
                            const std::string &kind, const std::string &actor, InferenceRequest &);
 
   public:
-    explicit LocalProvider(std::string endpoint, double timeout, Transport transport = httpJson,
+    explicit LocalProvider(std::string endpoint, double timeout,
+                           ModelTransport transport = cancellableHttpJson,
                            double estimateShare = 0.8);
+    // A transport that cannot be interrupted: cancellation takes effect between requests.
+    LocalProvider(std::string endpoint, double timeout, Transport transport,
+                  double estimateShare = 0.8);
     Decision decide(const WorldState &, const CountryContext &) override;
     Decision decide(const WorldState &, const CountryContext &, InferenceRequest &);
     std::string narrate(const std::vector<ResolvedEvent> &) override;

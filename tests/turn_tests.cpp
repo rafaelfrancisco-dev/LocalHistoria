@@ -1,7 +1,16 @@
 #include "localhistoria/turn.h"
+#include "turn/worker.h"
 #include <iostream>
 #include <thread>
 #include <cmath>
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <cerrno>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 using namespace lh;
 static void check(bool ok, const std::string &what) {
     if (!ok)
@@ -51,6 +60,109 @@ static Json::Value model(const std::string &, const std::string &path, const Jso
     response["choices"][0]["message"]["content"] = dump(result);
     return response;
 }
+#ifndef _WIN32
+// llama-server over a real socket. While `block` is set a completion reports that it started, then
+// holds its connection open until the client disconnects, as a long generation would.
+struct BlockingModel {
+    int listener = -1, port = 0;
+    std::atomic<bool> stop{false};
+    std::mutex m;
+    std::condition_variable cv;
+    bool block = true;
+    int completions = 0, started = 0, disconnected = 0;
+    std::thread acceptor;
+    std::vector<std::thread> connections;
+    BlockingModel() {
+        listener = ::socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in a{};
+        a.sin_family = AF_INET;
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t n = sizeof a;
+        check(::bind(listener, reinterpret_cast<sockaddr *>(&a), n) == 0 && ::listen(listener, 8) == 0 &&
+                  ::getsockname(listener, reinterpret_cast<sockaddr *>(&a), &n) == 0,
+              "Mock model listens");
+        port = ntohs(a.sin_port);
+        acceptor = std::thread([this] {
+            while (!stop) {
+                pollfd p{listener, POLLIN, 0};
+                if (::poll(&p, 1, 50) <= 0)
+                    continue;
+                int fd = ::accept(listener, nullptr, nullptr);
+                if (fd < 0)
+                    continue;
+                // Bounds a failing test instead of hanging it.
+                timeval limit{5, 0};
+                ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &limit, sizeof limit);
+                std::lock_guard l(m);
+                connections.emplace_back([this, fd] { serve(fd); });
+            }
+        });
+    }
+    ~BlockingModel() {
+        stop = true;
+        acceptor.join();
+        for (auto &t : connections)
+            t.join();
+        ::close(listener);
+    }
+    template <class P> bool waitFor(P done, double seconds) {
+        std::unique_lock l(m);
+        return cv.wait_for(l, std::chrono::duration<double>(seconds), done);
+    }
+    void serve(int fd) {
+        std::string in;
+        char buffer[4096];
+        size_t length = std::string::npos, head;
+        while ((head = in.find("\r\n\r\n")) == std::string::npos || in.size() < head + 4 + length) {
+            auto got = ::recv(fd, buffer, sizeof buffer, 0);
+            if (got <= 0) {
+                ::close(fd);
+                return;
+            }
+            in.append(buffer, got);
+            if ((head = in.find("\r\n\r\n")) != std::string::npos && length == std::string::npos) {
+                std::string headers = in.substr(0, head);
+                for (auto &ch : headers)
+                    ch = std::tolower(static_cast<unsigned char>(ch));
+                auto at = headers.find("content-length:");
+                length = at == std::string::npos ? 0 : std::stoul(headers.substr(at + 15));
+            }
+        }
+        auto path = in.substr(in.find(' ') + 1, in.find(' ', in.find(' ') + 1) - in.find(' ') - 1);
+        auto body = in.substr(head + 4, length);
+        Json::Value answer;
+        if (path == "/props")
+            answer = parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+        else {
+            bool hold = false;
+            {
+                std::lock_guard l(m);
+                if (path == "/v1/chat/completions") {
+                    ++completions;
+                    hold = block;
+                    started += hold;
+                }
+                cv.notify_all();
+            }
+            if (hold) {
+                // Returns 0 once the client shuts its side; a timeout means it never did.
+                auto got = ::recv(fd, buffer, 1, 0);
+                std::lock_guard l(m);
+                disconnected += got == 0 || (got < 0 && errno != EAGAIN && errno != EWOULDBLOCK);
+                cv.notify_all();
+                ::close(fd);
+                return;
+            }
+            answer = model("", path, parse(body), 0);
+        }
+        auto text = dump(answer);
+        auto out = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n"
+                   "Content-Length: " + std::to_string(text.size()) + "\r\n\r\n" + text;
+        ::send(fd, out.data(), out.size(), 0);
+        ::close(fd);
+    }
+};
+#endif
 int main() {
     try {
         WorldState w;
@@ -166,6 +278,107 @@ int main() {
             double total = 0;
             for (auto key : {"context_preparation_ms", "queue_ms", "chronicles_ms", "decisions_ms", "adjudication_preparation_ms", "adjudication_ms", "simulation_ms", "commit_ms", "post_commit_or_failure_ms"}) total += timing[key].asDouble();
             check(std::abs(total - timing["submission_to_finished_ms"].asDouble()) < 10, "Stage timings reconcile with elapsed time");
+        }
+        // Cancelling a month interrupts the model request it is waiting on: the connection closes,
+        // the month fails without committing, and the provider takes the next month at once.
+#ifndef _WIN32
+        {
+            BlockingModel server;
+            Store liveStore(":memory:");
+            liveStore.create(w, false);
+            std::mutex liveMutex;
+            LocalProvider live("http://127.0.0.1:" + std::to_string(server.port), 30);
+            ReferencePreparer liveReferences(liveStore, reference, liveMutex,
+                [](auto &, auto &, auto &, double) -> Json::Value { throw std::runtime_error("offline"); });
+            TurnRunner liveRunner({liveStore, reference, live, liveReferences, geography, adjacency, liveMutex, 60, 0});
+            std::string liveId;
+            TurnPlan livePlan;
+            {
+                std::lock_guard l(liveMutex);
+                liveId = liveStore.submit(0, "live-cancel", "{}")["id"].asString();
+                livePlan = liveRunner.plan(w, orders);
+            }
+            std::thread month([&] { liveRunner.run(livePlan, liveId); });
+            check(server.waitFor([&] { return server.started == 1; }, 5), "The model request starts");
+            const auto cancelled = std::chrono::steady_clock::now();
+            {
+                std::lock_guard l(liveMutex);
+                liveRunner.cancel(liveId);
+            }
+            month.join();
+            const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - cancelled).count();
+            check(seconds < 1, "Cancel releases the month within a second, took " + std::to_string(seconds));
+            check(server.waitFor([&] { return server.disconnected == 1; }, 1), "The model server sees the request dropped");
+            auto job = liveStore.job(liveId);
+            check(job["status"] == "failed" && job["error"] == "Cancelled by the player", "Cancelled job fails: " + dump(job));
+            check(decode(liveStore.campaign()).turn == 0 && liveStore.query("SELECT turn FROM turns").empty(), "A cancelled month never commits");
+            check(server.completions == 1, "No retry after cancellation");
+            bool audited = false;
+            for (auto &row : liveStore.query("SELECT record FROM inference WHERE job=?", {liveId}))
+                audited = audited || parse(row["record"].asString())["status"] == "cancelled";
+            check(audited, "The interrupted attempt keeps its audit");
+            server.block = false;
+            auto next = liveStore.submit(0, "live-after-cancel", "{}")["id"].asString();
+            liveRunner.run(liveRunner.plan(w, orders), next);
+            liveReferences.finish();
+            check(liveStore.job(next)["status"] == "complete" && decode(liveStore.campaign()).turn == 1,
+                  "The next month runs without a restart");
+        }
+        // Shutdown interrupts a running month the same way and leaves it for a new submission.
+        {
+            BlockingModel server;
+            Store liveStore(":memory:");
+            liveStore.create(w, false);
+            std::mutex liveMutex;
+            LocalProvider live("http://127.0.0.1:" + std::to_string(server.port), 30);
+            ReferencePreparer liveReferences(liveStore, reference, liveMutex,
+                [](auto &, auto &, auto &, double) -> Json::Value { throw std::runtime_error("offline"); });
+            TurnRunner liveRunner({liveStore, reference, live, liveReferences, geography, adjacency, liveMutex, 60, 0});
+            auto liveId = liveStore.submit(0, "live-shutdown", "{}")["id"].asString();
+            auto livePlan = liveRunner.plan(w, orders);
+            std::thread month([&] { liveRunner.run(livePlan, liveId); });
+            check(server.waitFor([&] { return server.started == 1; }, 5), "The model request starts");
+            {
+                std::lock_guard l(liveMutex);
+                liveRunner.interrupt();
+            }
+            month.join();
+            liveReferences.finish();
+            check(liveStore.job(liveId)["status"] == "interrupted" && decode(liveStore.campaign()).turn == 0,
+                  "Shutdown interrupts the month before commit");
+        }
+#endif
+        // Preparation or queueing that fails after the job exists ends it failed with the first
+        // error; its key repeats that answer and a new key can run.
+        {
+            Store failing(":memory:");
+            failing.create(w, false);
+            auto first = failing.submit(0, "prepare-fails", "{}")["id"].asString();
+            std::string error;
+            try {
+                startSubmitted(failing, first, [] { throw ValidationError("Reference snapshot unavailable"); });
+            } catch (const std::exception &e) {
+                error = e.what();
+            }
+            auto job = failing.job(first);
+            check(error == "Reference snapshot unavailable" && job["status"] == "failed" &&
+                      job["error"] == error, "Preparation failure fails the job: " + dump(job));
+            check(failing.submit(0, "prepare-fails", "{}")["status"] == "failed", "Its key repeats the failure");
+            check(decode(failing.campaign()).turn == 0, "No state advances");
+            Worker stopped(false);
+            stopped.finish();
+            auto second = failing.submit(0, "queue-rejects", "{}")["id"].asString();
+            try {
+                startSubmitted(failing, second, [&] { stopped.add([] {}); });
+                check(false, "Queue rejection propagates");
+            } catch (const ValidationError &e) {
+                check(std::string(e.what()) == "Work queue full; retry later", "Queue error kept");
+            }
+            check(failing.job(second)["status"] == "failed", "Queue rejection fails the job");
+            auto third = failing.submit(0, "queued", "{}")["id"].asString();
+            Worker queue(false);
+            startSubmitted(failing, third, [&] { queue.add([] {}); });
+            check(failing.job(third)["status"] == "running", "An accepted job stays with the worker");
         }
         std::cout << "Turn tests passed\n";
         return 0;

@@ -1,7 +1,13 @@
 #include "localhistoria/providers.h"
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <drogon/drogon.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#endif
 #include <trantor/net/EventLoopThread.h>
 namespace lh {
 // Optional fields are deliberately enumerated by request type. Current map facts, consent
@@ -73,13 +79,75 @@ std::string validateEndpoint(const std::string &e) {
         throw ValidationError("Model endpoint must be http://127.0.0.1:PORT");
     return e;
 }
+namespace {
+// Outlives httpJson when a cancelled request is still being torn down.
+struct PendingRequest {
+    std::mutex m;
+    std::condition_variable cv;
+    // Written on the transport loop under m.
+    bool done = false;
+    drogon::ReqResult result = drogon::ReqResult::NetworkFailure;
+    drogon::HttpResponsePtr response;
+    // Touched only on the transport loop.
+    int socket = -1;
+};
+// Runs on the transport loop. Shutting the socket down reaches the server as a disconnect, which
+// stops llama-server's generation, and fails the request through the client's usual error path.
+// Until the callback has run on this loop the connection and its descriptor are still open; one
+// still connecting is retried shortly, so a cancel never waits out the full request timeout.
+void abortRequest(const std::shared_ptr<PendingRequest> &pending, trantor::EventLoop *loop) {
+    {
+        std::lock_guard l(pending->m);
+        if (pending->done)
+            return;
+    }
+#ifdef _WIN32
+    const bool shut = pending->socket >= 0 && ::shutdown(pending->socket, SD_BOTH) == 0;
+#else
+    const bool shut = pending->socket >= 0 && ::shutdown(pending->socket, SHUT_RDWR) == 0;
+#endif
+    if (!shut)
+        loop->runAfter(.05, [pending, loop] { abortRequest(pending, loop); });
+}
+} // namespace
+void Cancellation::cancel() {
+    std::map<unsigned, std::function<void()>> run;
+    {
+        std::lock_guard l(m);
+        if (flag.exchange(true))
+            return;
+        run.swap(aborts);
+    }
+    for (auto &[handle, abort] : run)
+        abort();
+}
+unsigned Cancellation::onCancel(std::function<void()> abort) {
+    {
+        std::lock_guard l(m);
+        if (!flag) {
+            aborts.emplace(next, std::move(abort));
+            return next++;
+        }
+    }
+    abort();
+    return 0;
+}
+void Cancellation::release(unsigned handle) {
+    std::lock_guard l(m);
+    aborts.erase(handle);
+}
 Json::Value httpJson(const std::string &host, const std::string &path, const Json::Value &body,
                      double timeout) {
+    Cancellation never;
+    return cancellableHttpJson(host, path, body, timeout, never);
+}
+Json::Value cancellableHttpJson(const std::string &host, const std::string &path,
+                                const Json::Value &body, double timeout, Cancellation &cancellation) {
     // Dedicated transport loop keeps timeouts alive while the HTTP app shuts down.
     static trantor::EventLoopThread transportLoop("history-inference-http");
     static std::once_flag startLoop;
     std::call_once(startLoop, [] { transportLoop.run(); });
-    auto client = drogon::HttpClient::newHttpClient(host, transportLoop.getLoop());
+    auto *loop = transportLoop.getLoop();
     auto req = body.isNull() ? drogon::HttpRequest::newHttpRequest()
                              : drogon::HttpRequest::newHttpJsonRequest(body);
     req->setMethod(body.isNull() ? drogon::Get : drogon::Post);
@@ -88,7 +156,36 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
     req->setPath(path);
     req->addHeader("User-Agent",
                    "LocalHistoria/0.1 (local fictional sandbox; explicit reference download)");
-    auto [result, response] = client->sendRequest(req, timeout);
+    auto client = drogon::HttpClient::newHttpClient(host, loop);
+    auto pending = std::make_shared<PendingRequest>();
+    client->setSockOptCallback([pending](int fd) { pending->socket = fd; });
+    auto handle = cancellation.onCancel([pending, loop] {
+        loop->runInLoop([pending, loop] { abortRequest(pending, loop); });
+        std::lock_guard l(pending->m);
+        pending->cv.notify_all();
+    });
+    // The client keeps itself alive until this callback, which its timeout guarantees.
+    client->sendRequest(
+        req,
+        [pending](drogon::ReqResult result, const drogon::HttpResponsePtr &response) {
+            std::lock_guard l(pending->m);
+            pending->done = true;
+            pending->result = result;
+            pending->response = response;
+            pending->cv.notify_all();
+        },
+        timeout);
+    drogon::ReqResult result;
+    drogon::HttpResponsePtr response;
+    {
+        std::unique_lock l(pending->m);
+        pending->cv.wait(l, [&] { return pending->done || bool(cancellation); });
+        result = pending->result;
+        response = pending->response;
+    }
+    cancellation.release(handle);
+    if (cancellation && !response)
+        throw std::runtime_error("HTTP request cancelled");
     if (result != drogon::ReqResult::Ok || !response || response->statusCode() != drogon::k200OK)
         throw std::runtime_error(
             "HTTP request unavailable: transport=" + std::to_string(static_cast<int>(result)) +
@@ -97,8 +194,13 @@ Json::Value httpJson(const std::string &host, const std::string &path, const Jso
         throw std::runtime_error("Response exceeds bound");
     return parse(std::string(response->body()));
 }
-LocalProvider::LocalProvider(std::string e, double t, Transport tr, double share)
+LocalProvider::LocalProvider(std::string e, double t, ModelTransport tr, double share)
     : endpoint(validateEndpoint(e)), timeout(t), transport(std::move(tr)), estimateShare(share) {}
+LocalProvider::LocalProvider(std::string e, double t, Transport tr, double share)
+    : LocalProvider(std::move(e), t,
+                    [tr = std::move(tr)](const auto &h, const auto &p, const auto &b, double limit,
+                                         Cancellation &) { return tr(h, p, b, limit); },
+                    share) {}
 Json::Value LocalProvider::call(const std::string &url, const std::string &path,
                                 const Json::Value &body, InferenceRequest &request) {
     const auto until = request.deadline;
@@ -114,7 +216,7 @@ Json::Value LocalProvider::call(const std::string &url, const std::string &path,
         limit = std::min(
             limit, std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count());
     try {
-        auto result = transport(url, path, body, limit);
+        auto result = transport(url, path, body, limit, *request.cancelled);
         check();
         return result;
     } catch (const std::exception &) {

@@ -47,12 +47,17 @@ struct TurnDeps {
     double mandatoryReserveSeconds = 0;
     std::string experiment;
 };
+// Called under the mutex right after Store::submit created the running job. If preparing or
+// queueing throws, the job fails with that first error, which then propagates; once the worker
+// has accepted the job, the worker owns its terminal state.
+void startSubmitted(Store &, const std::string &jobId, const std::function<void()> &prepareAndQueue);
 class TurnRunner {
     TurnDeps d;
     // Guarded by the mutex: the job in run(), and jobs the player cancelled.
     std::string current;
-    std::shared_ptr<std::atomic<bool>> cancellation;
+    std::shared_ptr<Cancellation> cancellation;
     std::set<std::string> cancelRequests;
+    bool stopping = false;
 
   public:
     explicit TurnRunner(TurnDeps deps) : d(deps) {}
@@ -65,5 +70,8 @@ class TurnRunner {
     // Called under mutex for a running job: it fails before commit with "Cancelled by the player";
     // after commit only narration is skipped.
     void cancel(const std::string &jobId);
+    // Called under mutex at shutdown: cancels the running month, which ends interrupted like one
+    // Store::recover() finds after a crash.
+    void interrupt();
 };
 } // namespace lh

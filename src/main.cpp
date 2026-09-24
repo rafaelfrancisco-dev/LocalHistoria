@@ -118,7 +118,12 @@ int main(int argc, char **argv) {
         std::cout << "LocalHistoria: http://127.0.0.1:" << config.get("port", 8080).asInt()
                   << " (fictional sandbox)\n";
         app().run();
-        // Finish while captured callbacks and preparation state are still alive.
+        // Finish while captured callbacks and preparation state are still alive; a running month
+        // stops its model request rather than holding shutdown until it answers.
+        {
+            std::lock_guard lock(mutex);
+            turns.interrupt();
+        }
         worker.finish();
         references.finish();
         return 0;

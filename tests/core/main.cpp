@@ -172,9 +172,9 @@ int main(int argc, char **argv) {
                 }
                 return std::string();
             };
-            *request.cancelled = true;
+            request.cancelled->cancel();
             check(message() == "Cancelled by the player" && requests == 0, "Cancel before request");
-            *request.cancelled = false;
+            request.cancelled = std::make_shared<Cancellation>();
             request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
             check(message().empty() && longest > 0 && longest <= 2, "Deadline caps timeout");
             request.deadline = std::chrono::steady_clock::now() - std::chrono::seconds(1);

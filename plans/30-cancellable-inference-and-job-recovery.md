@@ -1,6 +1,6 @@
 # 30 · Prompt cancellation and exception-safe turn jobs
 
-**Status:** planned, 2026-09-24. **Priority:** P1.
+**Status:** implemented 2026-09-24, including the live llama-server check (macOS); Windows unverified. **Priority:** P1.
 **Audit coverage:** issues 4 and 6. **Dependencies:** none; use plan 29's build when available.
 
 ## Objective and evidence
@@ -67,3 +67,25 @@ The latter is a source-confirmed failure path, not a failure reproduced during t
 No gameplay or replay-rule change; retain existing API job states where possible. Never stop an
 unrelated model process or touch the user's campaign. No per-request CPU polling overhead.
 Do not claim completion if job cleanup passes but active generation still cannot be cancelled.
+
+## Implementation record (2026-09-24)
+
+- `Cancellation` (`providers.h`) replaces the month's atomic flag. `cancellableHttpJson` sends
+  asynchronously, waits on the response or the cancellation, and on cancel shuts the socket down
+  on the transport loop (retrying every 50 ms while it is still connecting). The late callback
+  only touches shared state it owns. `LocalProvider` takes a `ModelTransport`; a plain
+  `Transport` still works and is cancelled between requests only.
+- `startSubmitted` (`turn.h`) guards planning, reference preparation and queueing after
+  `Store::submit`, failing the job with the first error. `TurnRunner::interrupt()` cancels a
+  running month at shutdown, leaving it `interrupted`.
+- Tests (`tests/turn_tests.cpp`, POSIX only): a socket mock signals that completion started,
+  then holds the connection. Cancel releases `run()` within 1 s despite a 30 s timeout; the mock
+  sees the disconnect (disabling the shutdown fails that check); the job fails with no commit,
+  retry or lost audit; the next month completes with no restart. Shutdown interruption,
+  preparation failure, queue rejection, repeat-key and new-key recovery are covered too.
+  `make test` 17/17; `tests/integration.py` passed, including replay and restart.
+- Live, Qwen3.5-4B on llama.cpp build 11011 (aa39d7a3e), M1 Pro, disposable save: job
+  terminal 8 ms after cancel; server logged `stop: cancel task` and freed its slot about 1.5 s
+  later; a new month reached the model at once. Shutdown during generation: process exited in
+  0.79 s, job `interrupted`, server task cancelled.
+- Open: Windows (`SD_BOTH` path compiled only by inspection, socket mock test skipped).

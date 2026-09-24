@@ -71,6 +71,7 @@ target_compile_definitions(military_tests PRIVATE SOURCE_DIR="${CMAKE_SOURCE_DIR
 add_test(NAME military COMMAND military_tests)
 add_executable(turn_tests tests/turn_tests.cpp)
 target_link_libraries(turn_tests PRIVATE historia_services)
+target_include_directories(turn_tests PRIVATE src)
 add_test(NAME turn COMMAND turn_tests)
 
 foreach(version 0 2 3 4)

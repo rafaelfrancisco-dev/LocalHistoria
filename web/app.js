@@ -652,7 +652,7 @@ async function poll(id, withLog) {
     $("cancel-turn").onclick = protect(async () => {
       $("cancel-turn").disabled = true;
       cancelling = true;
-      status("Cancelling after the current model call…");
+      status("Cancelling…");
       sessionStorage.removeItem("pendingTurn");
       await api("turns/cancel", { job: String(id) });
     });
