@@ -64,6 +64,13 @@ The app reads the real context size from `/props` and needs at least 8,192 token
 
 Two slots do not make a month faster on this machine, so the app does not use them. Measured with llama.cpp build 11011 on the M1 Pro, `--parallel 2 --ctx-size 65536` (with or without `--no-kv-unified`): two requests at once each read prompts at 178 tokens/s and write 18 tokens/s, half the single-request speeds, so two 1,400-word prompts with 400 output tokens took 30.1 s together against 31.8 s one after the other. With decisions and chronicles sent two at a time, the time before adjudication over three probe months was 27.5, 50.8 and 33.9 s, against 25.9, 51.9 and 37.1 s serially. Prompt caching does not help adjudication either: `usage.prompt_tokens_details.cached_tokens` was 0 on every adjudication request, while decisions reused 215–224 tokens of their shared opening.
 
+The macOS/Linux game launcher now builds `RelWithDebInfo` in `build/`, including when
+that directory previously held Debug. Use `BUILD_TYPE=Debug ./start.sh` for an isolated
+`build-debug/` diagnosis build; `BUILD_DIR` can select another directory. This changes
+only the C++ application build, not model settings or the single inference slot.
+The historical measurements above and below predate this change; the application build
+type was not recorded alongside those runs. They are not Debug/optimized comparisons.
+
 ## Speed
 
 On a 16 GB M1 Pro, the 4B Q4_K_M model reads prompts at about 350 tokens/s and writes about 34 tokens/s, so a month's time is mostly generated tokens, then prompt tokens. `llama bench -p 4096 -n 128` found no gain from flash attention (`-fa`) or a larger micro-batch (`-ub 1024` or `2048`, slightly slower). Context size and KV cache type do not change speed either: work scales with the tokens actually used, Qwen3.5's hybrid layers keep the cache small, and a quantized cache is not faster on Metal. So the app keeps requests short:

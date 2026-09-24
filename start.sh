@@ -8,18 +8,21 @@
 # Environment overrides: MODEL (Hugging Face repo, default unsloth/Qwen3.5-4B-GGUF), MODEL_FILE (a local .gguf
 # instead of MODEL), MODEL_PORT (8081), CTX_SIZE (32768). An already running model server on MODEL_PORT is reused
 # and left running on exit; a model server started here is stopped with the game (Ctrl+C).
+# BUILD_TYPE defaults to RelWithDebInfo; BUILD_DIR defaults to build (build-debug for Debug).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 MODEL="${MODEL:-unsloth/Qwen3.5-4B-GGUF}"
 MODEL_PORT="${MODEL_PORT:-8081}"
 CTX_SIZE="${CTX_SIZE:-32768}"
+BUILD_TYPE="${BUILD_TYPE:-RelWithDebInfo}"
+BUILD_DIR="${BUILD_DIR:-$([[ "$BUILD_TYPE" == Debug ]] && echo build-debug || echo build)}"
 OPEN=1
 CONFIG=""
 for arg in "$@"; do
     case "$arg" in
         --no-open) OPEN=0 ;;
-        -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "Unknown option: $arg" >&2; exit 2 ;;
         *) CONFIG="$arg" ;;
     esac
@@ -46,12 +49,11 @@ trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM
 
 # 1. Build (a no-op when up to date).
-if [[ ! -f build/CMakeCache.txt ]]; then
-    echo "Configuring build…"
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(brew --prefix 2>/dev/null || true)" >/dev/null
-fi
+# Reconfigure even an existing cache so normal play upgrades old Debug builds in place.
+echo "Configuring $BUILD_TYPE in ${BUILD_DIR}…"
+cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-$(brew --prefix 2>/dev/null || true)}" >/dev/null
 echo "Building…"
-cmake --build build -j "$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)" --target localhistoria >/dev/null
+cmake --build "$BUILD_DIR" -j "$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)" --target localhistoria >/dev/null
 
 # 2. Model server: reuse a running one, otherwise start llama.cpp.
 if curl -sf -m 2 "$ENDPOINT/health" >/dev/null; then
@@ -86,7 +88,7 @@ fi
 
 # 3. Game server.
 echo "Starting LocalHistoria; log: logs/localhistoria.log"
-./build/localhistoria ${CONFIG:+"$CONFIG"} --llama-endpoint="$ENDPOINT" >logs/localhistoria.log 2>&1 &
+"$BUILD_DIR/localhistoria" ${CONFIG:+"$CONFIG"} --llama-endpoint="$ENDPOINT" >logs/localhistoria.log 2>&1 &
 GAME_PID=$!
 URL="http://127.0.0.1:${GAME_PORT}"
 until curl -sf -m 2 "$URL/api/v1/campaign" >/dev/null; do

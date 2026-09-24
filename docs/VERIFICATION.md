@@ -2,6 +2,21 @@
 
 Verified on macOS / Apple silicon on 2026-09-17, using AppleClang 21, Drogon 1.9.13, JsonCpp 1.9.8, SQLite and CMake. This describes executed checks, not a production-readiness claim.
 
+## Build selection
+
+Normal macOS/Linux builds now use `RelWithDebInfo`; `make debug` builds separately in
+`build-debug/`. C++ suites use throwing checks rather than `assert`, so `NDEBUG` does
+not disable their verification. Python integration rejects `-O` for the same reason.
+Select both executables when checking another build (including Windows Release):
+
+```sh
+python3 tests/integration.py --binary build-debug/localhistoria --replay-binary build-debug/replay_verify
+```
+
+`tools/living_world_probe.py` already supports the same two flags. Current build-change
+validation and remaining acceptance gates are recorded in
+[audit evidence](audits/2026-09-24-optimized-play-builds.md).
+
 ## Core and data
 
 `make test` builds the app and replay verifier and passes the core, data, world and context CTest suites. The core executable reports **68 checks passed**, covering identifier shapes, lowercasing, the conflict and adjacency helpers, month advance and scheduled construction completion, serialization, free-text action shape/length/target/duplicate validation, malformed/timeout model rejection, thinking and output budgets following the reported context size, invalid-endpoint construction rejection, constrained request shape, duplicate/idempotent submissions, overlap prevention, transaction rollback, narration isolation, save/reload, interrupted jobs, reference mappings and attribution, missing/ambiguous mappings, recorded Wikipedia response parsing, bounded introduction/history excerpts and the longer chronicle source, chronicles replacing history excerpts in brief references, and chronicle storage, event selection and clearing on a new campaign. The context suite also checks that chronicle calls run without thinking, trim the long history source first and reject extra fields, empty or over-long summaries.

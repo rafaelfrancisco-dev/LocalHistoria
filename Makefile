@@ -1,12 +1,18 @@
 CMAKE_PREFIX_PATH ?= $(shell brew --prefix 2>/dev/null)
 JOBS ?= 4
+BUILD_TYPE ?= RelWithDebInfo
+BUILD_DIR ?= $(if $(filter Debug,$(BUILD_TYPE)),build-debug,build)
 GEO_PYTHON ?= .venv-geography/bin/python
 CXX_SOURCES := $(shell find src include tests tools -name '*.cpp' -o -name '*.h')
 
-.PHONY: all test integration run start data display clean format format-check
-all: data
-	cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
-	cmake --build build -j $(JOBS)
+.PHONY: all build debug test integration run start data display clean format format-check
+all: data build
+# Build-only workflow uses existing imported data.
+build:
+	cmake -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE="$(BUILD_TYPE)" -DCMAKE_PREFIX_PATH="$(CMAKE_PREFIX_PATH)"
+	cmake --build "$(BUILD_DIR)" -j $(JOBS)
+debug:
+	$(MAKE) build BUILD_DIR=build-debug BUILD_TYPE=Debug
 data: data/world.sqlite web/regions.topojson data/.stats-imported data/.sea-routes
 data/world.sqlite: tools/import_data.py tools/import_regions.py tools/region_coastal.py data/source/countries.geojson data/source/json-cities.json.gz
 	$(GEO_PYTHON) -c "import shapely"
@@ -26,13 +32,13 @@ data/.stats-imported: tools/import_stats.py data/source/country_stats.json data/
 	python3 tools/import_stats.py
 	touch $@
 test: all
-	ctest --test-dir build --output-on-failure
+	ctest --test-dir "$(BUILD_DIR)" --output-on-failure
 integration: all
-	python3 tests/integration.py
+	python3 tests/integration.py --binary "$(BUILD_DIR)/localhistoria" --replay-binary "$(BUILD_DIR)/replay_verify"
 run: all
-	./build/localhistoria
+	"$(BUILD_DIR)/localhistoria"
 start:
-	./start.sh
+	BUILD_DIR="$(BUILD_DIR)" BUILD_TYPE="$(BUILD_TYPE)" ./start.sh
 clean:
 	rm -rf build
 format:

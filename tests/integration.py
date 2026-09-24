@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Real HTTP/SQLite integration; all campaigns use disposable temporary saves."""
-import concurrent.futures, http.server, json, os, pathlib, socket, sqlite3, subprocess, tempfile, threading, time, urllib.request, urllib.error
+import argparse, concurrent.futures, http.server, json, os, pathlib, socket, sqlite3, subprocess, tempfile, threading, time, urllib.request, urllib.error
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--binary',type=pathlib.Path,default=ROOT/'build/localhistoria')
+parser.add_argument('--replay-binary',type=pathlib.Path,default=ROOT/'build/replay_verify')
+options=parser.parse_args()
+GAME_BINARY=options.binary.resolve()
+REPLAY_BINARY=options.replay_binary.resolve()
+if not __debug__:parser.error('Run without -O: integration assertions must remain enabled')
 def port():
  with socket.socket() as s:s.bind(('127.0.0.1',0));return s.getsockname()[1]
 class Mock(http.server.BaseHTTPRequestHandler):
@@ -61,7 +68,7 @@ class Server:
   self.config.write_text(json.dumps({'port':self.p,'save_path':str(self.save),'timeout_seconds':timeout,'turn_budget_seconds':15,'mandatory_reserve_seconds':1,'reference_network':False,**extra}))
   self.endpoint=endpoint
  def start(self):
-  args=[str(ROOT/'build/localhistoria'),str(self.config)]
+  args=[str(GAME_BINARY),str(self.config)]
   if self.endpoint:args.append(f'--llama-endpoint={self.endpoint}')
   self.proc=subprocess.Popen(args,cwd=ROOT,stdout=self.log,stderr=self.log)
   # A debug build parses every region's geometry at start-up, which takes about five seconds.
@@ -164,12 +171,12 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    assert export['turns'][0]['reference']['lifecycle_migration']=={'from':0,'to':1}
    assert all(t['reference']['lifecycle_version']==1 and t['state']['engine']['lifecycle_version']==1 for t in export['turns'])
    assert all('lifecycle_migration' not in t['reference'] for t in export['turns'][1:])
-   replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],check=True)
+   replayfile=folder/'replay.json';replayfile.write_text(json.dumps(export));subprocess.run([str(REPLAY_BINARY),str(replayfile)],check=True)
    legacy_initial=json.loads(json.dumps(export['initial_state']))
    for key in ('regional_politics','activity'):legacy_initial.pop(key,None)
    legacy_state=json.loads(json.dumps(legacy_initial));legacy_state['turn']=1
    legacy={'initial_state':legacy_initial,'campaign':legacy_state,'geography':{},'turns':[{'state':legacy_state,'events':[],'intentions':{},'reference':{'delta':{'changes':[],'events':[]}}}]}
-   legacyfile=folder/'legacy-replay.json';legacyfile.write_text(json.dumps(legacy));subprocess.run([str(ROOT/'build/replay_verify'),str(legacyfile)],check=True)
+   legacyfile=folder/'legacy-replay.json';legacyfile.write_text(json.dumps(legacy));subprocess.run([str(REPLAY_BINARY),str(legacyfile)],check=True)
    with sqlite3.connect(s.save) as db:
     allocations=json.loads(db.execute('SELECT slots FROM monthly_allocations WHERE month=1').fetchone()[0])
    assert allocations==export['turns'][0]['reference']['allocations']
@@ -185,7 +192,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    chronicled=[json.loads(b['messages'][1]['content'])['facts']['actor_name'] for b in Mock.requests if 'campaign_events' in json.loads(b['messages'][1]['content'])]
    independent={current['actors'][slot['actor']]['name'] for turn in export['turns'] for slot in turn['reference']['allocations'] if slot['region']=='' and slot['actor'] not in bound}
    assert chronicled and set(chronicled)<=names and not set(chronicled)&independent,(chronicled,independent)
-   export['turns'][0]['state']['turn']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(ROOT/'build/replay_verify'),str(replayfile)],capture_output=True).returncode==1
+   export['turns'][0]['state']['turn']+=1;replayfile.write_text(json.dumps(export));assert subprocess.run([str(REPLAY_BINARY),str(replayfile)],capture_output=True).returncode==1
    current=s.get('campaign')['state'];s.stop();s.start();assert s.get('campaign')['state']==current
    Mock.mode='slow';j=s.get('turns',order(current,'interrupt-turn',[{'text':'Send envoys to France'}]),202)
    s.proc.kill();s.proc.wait();s.start();assert s.get('jobs?id='+str(j['id']))['status']=='interrupted';assert s.get('campaign')['state']==current
@@ -207,7 +214,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    l.start();assert 'national_status' in l.get('campaign')
    j=l.get('turns',order(old,'legacy-turn',[]),202);assert l.poll(j['id'])['status']=='complete'
    upgraded=l.get('campaign');assert upgraded['state']['actors']['PT']['status'] and upgraded['national_status']['PT']['population']>10_000_000 and not upgraded['state']['conflicts']
-   legacyexport=legacyfolder/'replay.json';legacyexport.write_text(json.dumps(l.get('replay')));subprocess.run([str(ROOT/'build/replay_verify'),str(legacyexport)],check=True)
+   legacyexport=legacyfolder/'replay.json';legacyexport.write_text(json.dumps(l.get('replay')));subprocess.run([str(REPLAY_BINARY),str(legacyexport)],check=True)
    print('Legacy save gained national status and replayed',flush=True)
   finally:l.stop()
 
@@ -233,7 +240,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
   try:
    Mock.mode='valid'
    subprocess.run(['node','tests/browser.mjs'],cwd=ROOT,env=dict(os.environ,LOCALHISTORIA_TEST_URL=b.base),check=True)
-   browser_export=folder/'browser-replay.json';browser_export.write_text(json.dumps(b.get('replay')));subprocess.run([str(ROOT/'build/replay_verify'),str(browser_export)],check=True)
+   browser_export=folder/'browser-replay.json';browser_export.write_text(json.dumps(b.get('replay')));subprocess.run([str(REPLAY_BINARY),str(browser_export)],check=True)
    saved=b.get('campaign')['state'];b.stop();b.start();assert b.get('campaign')['state']==saved
    print('Browser campaign also survived server restart')
   finally:b.stop()

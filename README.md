@@ -16,6 +16,14 @@ make test
 ./build/localhistoria --llama-endpoint=http://127.0.0.1:8081
 ```
 
+Normal single-configuration builds use `RelWithDebInfo` (`-O2` plus debug symbols) in
+`build/`; configuring again upgrades an existing Debug cache without deleting it.
+`make build` builds against the existing imported data without running data generation.
+For diagnosis, use `make debug` and `./build-debug/localhistoria`, or
+`BUILD_TYPE=Debug ./start.sh`. Override `BUILD_TYPE` and `BUILD_DIR` explicitly for other
+configurations; paths containing spaces are supported. Test the isolated Debug build with
+`make test BUILD_TYPE=Debug`. Windows continues to use Release.
+
 Or start the model and the game together with one command. It builds if needed, reuses a model server already running on port 8081, waits for the model to load and opens the browser. Ctrl+C stops both:
 
 ```sh

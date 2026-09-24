@@ -1,6 +1,6 @@
 # 29 · Optimized builds for normal play
 
-**Status:** planned, 2026-09-24. **Priority:** P1, small first delivery.
+**Status:** implementation started, 2026-09-24; build selection and executable overrides implemented, performance and Windows acceptance pending. **Priority:** P1, small first delivery.
 **Audit coverage:** issue 5. **Dependencies:** none. Supersedes plan 20.
 
 ## Objective and evidence
@@ -55,3 +55,9 @@ version change is required. Preserve prior plan files and historical benchmark e
 Record commands, selected binaries and measurements in a dated `docs/audits/` report, marking
 unavailable platform checks explicitly. This plan replaces plan 20's obsolete instructions to
 run the release change last, change parallel settings, and delete completed plans.
+
+## Implementation record
+
+See [September 24 evidence](../docs/audits/2026-09-24-optimized-play-builds.md) for
+implemented behavior, validation, and remaining acceptance gates. The plan is not yet
+accepted as a measured performance improvement.
