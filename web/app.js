@@ -326,6 +326,11 @@ function renderStats() {
       // On a phone the allowance folds into the construction count's tooltip, keeping the month's
       // actions near the top.
       ...(last.implementation && !phone.matches ? [["implementation", `${usd(last.implementation.allowance_usd)}/month`, implementationDetail(last)]] : []),
+      ...Object.values(last.projects || {}).map((p) => [p.category, p.objective,
+        `${p.target === selected ? "National" : state.territories[p.target]?.name || p.target} · ` +
+        (p.state === "completed" ? `Completed ${month(p.completed_turn - 1)}` :
+          `${p.state === "cancelled" ? "Cancelled · " : ""}${Math.floor(100 * p.paid / p.months)}% funded · ${usd(p.monthly_usd)}/month` +
+          (p.delay ? ` · delayed: ${p.delay}` : "")), true]),
       ...(military ? [
         ["Active troops" + (military.estimated ? " · estimate" : ""), military.active.toLocaleString(), [`${military.uncommitted_personnel.toLocaleString()} uncommitted`, national.forces].filter(Boolean).join(" · ")],
         ["Reserve", military.reserve.toLocaleString(), "Available for mobilisation"],
@@ -1476,13 +1481,18 @@ function eventCard(ev) {
     const arrow = { severe_decline: "⇊", decline: "↓", slight_decline: "↘", slight_growth: "↗", growth: "↑", strong_growth: "⇈" };
     for (const x of ev.effects)
       for (const [label, value] of [["economy", x.economy], ["stability", x.stability]]) {
-        if (!arrow[value]) continue;
+        if (!arrow[value] || x.weight === 0) continue;
         const badge = document.createElement("span");
         badge.className = `badge effect effect-${value}`;
-        badge.textContent = `${actorName(x.actor)} ${label} ${arrow[value]}`;
+        badge.textContent = `${actorName(x.actor)} ${label} ${arrow[value]}${x.weight !== undefined && x.weight < 1 ? " (diminished)" : ""}`;
         effects.append(badge);
       }
     card.append(effects);
+  }
+  if (ev.consequences?.some((c) => c.reason !== "distinct")) {
+    const reason = document.createElement("p");
+    reason.textContent = [...new Set(ev.consequences.filter((c) => c.reason !== "distinct").map((c) => c.reason))].join(" · ");
+    card.append(reason);
   }
   const links = document.createElement("div");
   links.className = "chips";
