@@ -1,4 +1,5 @@
 #include "world_tests.h"
+#include <filesystem>
 void WorldTests::events() {
     // Event sites appear at once and fade after a few months unless a later event involves them
     // or cites their incident.
@@ -78,8 +79,13 @@ void WorldTests::events() {
               reform.events[0]["conflicts"].empty(),
           "Events record their wars and treaties");
     {
-        // The event log: categories, places, scope and what is still on the map.
-        Store log(":memory:");
+        // The event log: categories, places, scope and what is still on the map. On disk, so an
+        // older save can be reopened below.
+        auto path =
+            (std::filesystem::temp_directory_path() / "localhistoria-event-log.sqlite").string();
+        for (auto suffix : {"", "-wal", "-shm"})
+            std::filesystem::remove(path + suffix);
+        Store log(path);
         auto start = opsBase.state;
         start.turn = 0;
         log.create(start, false);
@@ -145,16 +151,83 @@ void WorldTests::events() {
             check(journal.size() == Json::ArrayIndex(eventMapMonths + 1) &&
                       !journal[eventMapMonths]["structured_events"].empty(),
                   "Journal covers every month");
-            // The event log is cached per month; filters still apply to the cached items.
             auto once = log.eventLog(current, parse(R"({})"));
             check(dump(log.eventLog(current, parse(R"({})"))) == dump(once) &&
                       log.eventLog(current, parse(R"({"q":"harvest"})"))["events"].size() == 1 &&
                       dump(log.eventLog(current, parse(R"({})"))) == dump(once),
-                  "Cached event log");
+                  "Repeated event-log reads agree");
         }
         auto paged = log.eventLog(current, parse(R"({"limit":1,"before_turn":1})"));
         check(paged["events"].empty() && !paged["more"].asBool(),
               "Paging before the first month is empty");
+        // A finished city stays news after it is destroyed; where it stood follows today's map.
+        auto built = resolve(current);
+        built.state.entities["new-town"] =
+            parse(R"({"kind":"city","name":"New Town","region":"west","owner":"old-state"})");
+        built.events.push_back({"old-state", "completion", "new-town", "New Town is finished"});
+        log.commit(log.submit(current.turn, "log-city", "{}")["id"].asString(), built, {}, {});
+        current = built.state;
+        auto city = log.eventLog(current, parse(R"({"categories":["construction"],"limit":1})"));
+        check(city["events"].size() == 1 && city["events"][0]["major"].asBool() &&
+                  city["events"][0]["regions"] == parse(R"(["west"])") && !city["more"].asBool(),
+              "A page has more only when an older month matches its filters");
+        auto razed = resolve(current);
+        razed.state.entities.removeMember("new-town");
+        log.commit(log.submit(current.turn, "log-razed", "{}")["id"].asString(), razed, {}, {});
+        current = razed.state;
+        auto ruin = log.eventLog(current, parse(R"({"categories":["construction"]})"))["events"];
+        check(ruin.size() == 1 && ruin[0]["major"].asBool() && ruin[0]["regions"].empty(),
+              "A destroyed city's completion stays major");
+        auto whole = log.eventLog(current, parse(R"({"limit":1,"before_turn":2})"));
+        check(whole["events"].size() == 3 && whole["next_before_turn"] == 1 &&
+                  !whole["more"].asBool(),
+              "Pages hold whole months");
+        // A commit that fails after its month's items were written leaves none behind.
+        auto doomed = resolve(current);
+        doomed.events.push_back({"far", "unrest", "far", "Grumbling on the island"});
+        auto doomedJob = log.submit(current.turn, "log-doomed", "{}")["id"].asString();
+        log.execute("INSERT INTO narration VALUES(?,'taken',0)", {doomedJob});
+        bool failed = false;
+        try {
+            log.commit(doomedJob, doomed, {}, {});
+        } catch (const std::runtime_error &) {
+            failed = true;
+        }
+        check(failed, "The doomed commit fails");
+        log.execute("UPDATE jobs SET status='failed' WHERE id=?", {doomedJob});
+        auto doomedTurn = std::to_string(doomed.state.turn);
+        check(log.query("SELECT turn FROM history_items WHERE turn=? UNION SELECT turn FROM "
+                        "history_months WHERE turn=?",
+                        {doomedTurn, doomedTurn})
+                  .empty(),
+              "A failed commit leaves no event-log items");
+        // An older save gains its items when it opens, a few months at a time, and reads exactly
+        // like the log written month by month; an interrupted backfill resumes and replaces
+        // what it half wrote.
+        Json::Value written(Json::arrayValue);
+        auto filters = parse(R"([{}, {"major":true}, {"on_map":true}, {"q":"harvest"},
+            {"scope":"actor","actor":"far"}, {"scope":"actor","actor":"old-state"},
+            {"categories":["construction","world"]}, {"limit":1}])");
+        for (auto &f : filters)
+            written.append(log.eventLog(current, f));
+        log.sql("DROP TABLE history_items; DROP TABLE history_links; DROP TABLE history_months; "
+                "PRAGMA user_version = 1");
+        auto reads = [&](Store &store) {
+            Json::Value out(Json::arrayValue);
+            for (auto &f : filters)
+                out.append(store.eventLog(current, f));
+            return dump(out);
+        };
+        {
+            Store older(path);
+            check(reads(older) == dump(written), "A backfilled log reads like the written one");
+            older.sql("UPDATE history_items SET text='stale' WHERE turn=1; DELETE FROM "
+                      "history_months WHERE turn=1");
+        }
+        Store resumed(path);
+        check(reads(resumed) == dump(written) &&
+                  resumed.query("SELECT turn FROM history_items WHERE text='stale'").empty(),
+              "An interrupted backfill resumes");
     }
     {
         // Partial events: flagged in the log, and prompts read what actually happened while the

@@ -21,7 +21,7 @@ validation and remaining acceptance gates are recorded in
 
 `make test` builds the app and replay verifier and passes the core, data, world and context CTest suites. The core executable reports **68 checks passed**, covering identifier shapes, lowercasing, the conflict and adjacency helpers, month advance and scheduled construction completion, serialization, free-text action shape/length/target/duplicate validation, malformed/timeout model rejection, thinking and output budgets following the reported context size, invalid-endpoint construction rejection, constrained request shape, duplicate/idempotent submissions, overlap prevention, transaction rollback, narration isolation, save/reload, interrupted jobs, reference mappings and attribution, missing/ambiguous mappings, recorded Wikipedia response parsing, bounded introduction/history excerpts and the longer chronicle source, chronicles replacing history excerpts in brief references, and chronicle storage, event selection and clearing on a new campaign. The context suite also checks that chronicle calls run without thinking, trim the long history source first and reject extra fields, empty or over-long summaries.
 
-The world suite covers delta validation (occupation, secession, entity placement inside polygons with holes, construction schedules), history retrieval and atomic rollback. It also covers every feasibility rule: unreachable regions, the two-regions-per-month limit, annexation only after a month of occupation, one-region army moves, unfinished units, construction by decree, building without control, one new state per month, new states needing land, narrative-only events, partial and failed events (their flags, and the factual clause that related history, recent events and chronicle inputs read while the journal keeps the model's text), narrative world events that cannot act for the player, and schema alignment of one outcome per action. It also checks event sites: their expiry, quiet fading, renewal by a related or citing event, and invalid expiries. Events record their wars and treaties. The event log is checked for categories, heartland locations, scope, category and text filters, leaving the map after three months, and paging. Rolled-back events stay out of related history. Significance is checked too: map and war changes are always major, model-declared major events are capped at three a month (weightiest first), routine world developments are dropped, and only major events reach the map. The status suite checks:
+The world suite covers delta validation (occupation, secession, entity placement inside polygons with holes, construction schedules), history retrieval and atomic rollback. It also covers every feasibility rule: unreachable regions, the two-regions-per-month limit, annexation only after a month of occupation, one-region army moves, unfinished units, construction by decree, building without control, one new state per month, new states needing land, narrative-only events, partial and failed events (their flags, and the factual clause that related history, recent events and chronicle inputs read while the journal keeps the model's text), narrative world events that cannot act for the player, and schema alignment of one outcome per action. It also checks event sites: their expiry, quiet fading, renewal by a related or citing event, and invalid expiries. Events record their wars and treaties. The event log is checked for categories, heartland locations, scope, category and text filters, leaving the map after three months, and paging: whole-month pages, `more` only when an older month matches, and a destroyed city's completion staying major. Its projection is checked too: a commit that fails after writing a month's items leaves none behind, a save without the projection is backfilled on opening and reads exactly like the log written month by month, and an interrupted backfill resumes and replaces what it half wrote. Rolled-back events stay out of related history. Significance is checked too: map and war changes are always major, model-declared major events are capped at three a month (weightiest first), routine world developments are dropped, and only major events reach the map. The status suite checks:
 
 - exact regional sums and local-currency formatting;
 - annual growth over 12 months;
@@ -138,3 +138,46 @@ Full report: [re-audit](audits/2026-09-23-simulation-realism-reaudit.md).
 - **Fixed the same day:** these and N1, N2, N4–N6. After the fixes: 17/17 CTest (45.2 s),
   integration with browser, and a rerun of the six-month live campaign that replayed identically
   (blanked outcomes 37/60 → 4/65). Plan 26 is accepted.
+
+## Plan 33 bounded history reads (2026-09-25)
+
+`build/history_benchmark make <save> <months>` writes a disposable synthetic campaign: 3,420 regions,
+190 nations, ~0.9 MB of state per month and ~23 journal items a month (structured events with
+places and causes, front advances, war tolls, unrest, construction). `measure <save> 30` times reads
+on a copy, 30 repetitions each, and then commits five more months. Measured on an Apple M1 Pro with a
+RelWithDebInfo build. The "before" fixtures were written by the previous build; the "after" copies
+were backfilled when opened.
+
+| Read (p50 / p95 ms; statements) | 12 months before | 600 months before | 12 months after | 600 months after |
+|---|---|---|---|---|
+| First read after each commit | 28 (max 30) | 509 (max 519) | 7.0 (max 8.2) | 7.4 (max 8.0) |
+| First read after opening | 36; 14 stmts | 1,011; 602 stmts, 4.9 MB | 8.1; 2 stmts | 7.0; 2 stmts, 39 KB |
+| Common first page, repeated | 0.15 (cached) | 0.14 (cached) | 7.8 / 10.4; 2 | 7.1 / 7.5; 2 |
+| Map (`on_map`, limit 500) | 0.09 | 1.7 | 3.5 / 3.9 | 15.4 / 18.1 |
+| Related history (context) | 8.9 | 711 | 8.5 | 18.6 / 19.7 |
+| Handler lock hold (decode + first page) | 19 / 20 | 20 / 21 | 27 / 29 | 27 / 28 |
+| Peak RSS | 57 MB | 137 MB | 57 MB | 58 MB |
+
+- **Gates:** the 600-month common-page p95 is 7.5 ms, against the 200 ms target and 2× the 12-month
+  figure. A page costs 2 statements at every length, and the lock hold stays under 50 ms. Before,
+  every read after a commit rebuilt all months (one query each). The old cache made repeated reads
+  of one month faster (0.14 ms), but that cost was paid again after every commit.
+- **Remaining scans (worst cases):** a text search with few matches and an actor scope with few
+  events walk the whole projection in SQL. At 600 months, a rare word takes 10.7 ms and a nation
+  with 38 events takes 16.5 ms, up from 0.16 ms and 1.6 ms at 12 months. There is no FTS.
+- **Map and context:** the map returns its 500-item limit at 600 months because long open wars keep
+  their front advances on it. Related history was quadratic: each causes step scanned every cause
+  link through the `(kind,target)` index. Walking it by event key returns the same rows (checked on
+  the 600-month fixture).
+- **Backfill:** opening a save from before the projection backfills it once, 24 months per
+  transaction: 57 ms at 12 months, 224 ms at 120 and 1.2 s at 600. Commit time is unchanged
+  (~90 ms).
+- **Equivalence:** a one-off harness compared the previous implementation with the new one on all
+  three fixtures. It used 210 filter combinations covering scope, categories, text, major, map,
+  limits and `before_turn`, walking every page. It ran against the saved state and against a
+  changed current state: ended, reopened and removed wars, new war parties, land changing hands,
+  moved and destroyed entities, and a removed nation. Events matched on every page, with no
+  skipped or duplicated events. By design, `more` is now false when no older month matches, and a
+  destroyed city's completion stays major.
+- **Not measured:** the lock hold under real HTTP concurrency, and a real long campaign (none
+  exists). Windows was not measured.

@@ -1,6 +1,6 @@
 # 33 · Bounded history reads for long campaigns
 
-**Status:** planned, 2026-09-24. **Priority:** P2, performance scaling.
+**Status:** implemented 2026-09-25 (measurements in docs/VERIFICATION.md). Planned 2026-09-24. **Priority:** P2, performance scaling.
 **Audit coverage:** issue 7. **Dependencies:** none; benchmark with plan 29's optimized build.
 
 ## Objective and evidence

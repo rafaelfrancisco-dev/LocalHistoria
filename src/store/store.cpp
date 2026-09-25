@@ -63,6 +63,12 @@ Store::Store(const std::string &p, bool readOnly) {
         "CREATE TABLE IF NOT EXISTS initial_world(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT "
         "NOT NULL); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);");
     migrate();
+    try {
+        backfillHistory();
+    } catch (const std::exception &) {
+        // The save still opens; the next event-log read resumes the backfill and reports why it
+        // cannot finish.
+    }
 }
 void Store::migrate() {
     switch (query("PRAGMA user_version")[0]["user_version"].asInt()) {
@@ -71,6 +77,15 @@ void Store::migrate() {
         sql("PRAGMA user_version = 1");
         [[fallthrough]];
     case 1:
+        // Version 2: the event log's items, written as each month commits (see projectMonth).
+        sql("CREATE TABLE IF NOT EXISTS history_items(turn INTEGER,seq INTEGER,id TEXT,category "
+            "TEXT,major INTEGER,text TEXT,action TEXT,target TEXT,region TEXT,item TEXT,PRIMARY "
+            "KEY(turn,seq)); CREATE TABLE IF NOT EXISTS history_links(turn INTEGER,seq "
+            "INTEGER,kind TEXT,target TEXT,PRIMARY KEY(turn,seq,kind,target)) WITHOUT ROWID; "
+            "CREATE TABLE IF NOT EXISTS history_months(turn INTEGER PRIMARY KEY); PRAGMA "
+            "user_version = 2");
+        [[fallthrough]];
+    case 2:
         break;
     default:
         throw std::runtime_error("Save was written by a newer version");
@@ -78,6 +93,7 @@ void Store::migrate() {
 }
 Store::~Store() { sqlite3_close(db); }
 void Store::sql(const std::string &s) {
+    counters.statements++;
     char *e = nullptr;
     if (sqlite3_exec(db, s.c_str(), nullptr, nullptr, &e) != SQLITE_OK) {
         std::string m = e ? e : "SQLite error";
@@ -90,6 +106,7 @@ Json::Value Store::query(const std::string &s, const std::vector<std::string> &a
     if (sqlite3_prepare_v2(db, s.c_str(), -1, &raw, nullptr) != SQLITE_OK)
         throw std::runtime_error(sqlite3_errmsg(db));
     std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(raw, sqlite3_finalize);
+    counters.statements++;
     for (size_t i = 0; i < args.size(); i++)
         sqlite3_bind_text(raw, int(i + 1), args[i].c_str(), -1, SQLITE_TRANSIENT);
     Json::Value rows(Json::arrayValue);
@@ -110,6 +127,7 @@ Json::Value Store::query(const std::string &s, const std::vector<std::string> &a
                 break;
             default:
                 row[name] = reinterpret_cast<const char *>(sqlite3_column_text(raw, i));
+                counters.textBytes += sqlite3_column_bytes(raw, i);
             }
         }
         rows.append(row);
@@ -130,8 +148,8 @@ void Store::create(const WorldState &w, bool replace) {
         throw ValidationError("A turn is running");
     sql("BEGIN IMMEDIATE");
     try {
-        eventLogCache.reset();
-        sql("DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
+        sql("DELETE FROM history_items; DELETE FROM history_links; DELETE FROM history_months; "
+            "DELETE FROM narration; DELETE FROM turns; DELETE FROM jobs; DELETE FROM campaign; "
             "DELETE FROM initial_world; DELETE FROM monthly_allocations; DELETE FROM "
             "monthly_reactions; DELETE FROM event_links; "
             "DELETE FROM events; DELETE FROM inference; DELETE FROM chronicles;");
@@ -196,6 +214,7 @@ void Store::commit(const std::string &id, const Resolution &r, const Json::Value
                     execute("INSERT OR IGNORE INTO event_links VALUES(?,?,?)",
                             {eid, kind, target.asString()});
         }
+        projectMonth(r.state.turn, r.state);
         std::string summary;
         for (auto &e : r.events)
             summary += e.text + "\n";
@@ -296,11 +315,13 @@ CountryContext Store::campaignContext(const WorldState &w, const std::string &ac
         regions.append(id);
     for (auto &id : c.facts["entities"].getMemberNames())
         entities.append(id);
+    // +l.kind keeps SQLite on the event key: through the (kind,target) index each step scanned
+    // every cause link, which grew with the square of the campaign's history.
     auto older =
         query("WITH RECURSIVE related(id) AS (SELECT event FROM event_links WHERE (kind='actors' "
               "AND target=?) OR (kind='regions' AND target IN (SELECT value FROM json_each(?))) OR "
               "(kind='entities' AND target IN (SELECT value FROM json_each(?))) UNION SELECT "
-              "l.target FROM event_links l JOIN related r ON l.event=r.id WHERE l.kind='causes') "
+              "l.target FROM event_links l JOIN related r ON l.event=r.id WHERE +l.kind='causes') "
               "SELECT e.document FROM events e JOIN related r ON e.id=r.id WHERE " +
                   happened + " ORDER BY e.turn DESC LIMIT 20",
               {actor, dump(regions), dump(entities)});

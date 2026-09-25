@@ -5,18 +5,24 @@
 namespace lh {
 class Store {
     sqlite3 *db = nullptr;
-    // Every event-log item of one campaign month, unfiltered and newest month first:
-    // [{turn, items}]. Saved rows change only by committing a month or replacing the campaign.
-    std::optional<std::pair<std::pair<std::string, int>, Json::Value>> eventLogCache;
+    // Whether every saved month has its event-log items; set once an older save is backfilled.
+    bool historyReady = false;
     // Brings an older save's schema up to date; PRAGMA user_version records how far it got.
     void migrate();
-    Json::Value eventLogMonths(const WorldState &);
+    // Rewrites one month's event-log items from its saved events: history_items holds each item's
+    // fixed facts and history_links the actors, regions, entities and wars a read filters on.
+    void projectMonth(int turn, const WorldState &);
+    void backfillHistory();
 
   public:
     // Events rolled back as infeasible stay in the audit but never reach history as if they
     // happened.
     static inline const std::string happened =
         "json_extract(document,'$.blocked_by') IS NOT 'infeasible'";
+    // Statements run and text bytes read since opening: what the history benchmark reports.
+    struct Counters {
+        std::int64_t statements = 0, textBytes = 0;
+    } counters;
     explicit Store(const std::string &path, bool readOnly = false);
     ~Store();
     Store(const Store &) = delete;
