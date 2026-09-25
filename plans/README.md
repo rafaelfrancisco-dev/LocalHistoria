@@ -38,6 +38,7 @@ code, tests and docs describe them, and `git log` has the originals. Dependencie
 | 32 | [fulfillable-regional-demands](32-fulfillable-regional-demands.md) ([record](../docs/PLAN_32.md)) | simulation + UI + consent | L, phased | implemented 2026-09-25; 2-month live A/B done |
 | 33 | [bounded-history-queries](33-bounded-history-queries.md) | performance + storage | M | implemented 2026-09-25; measured in VERIFICATION.md |
 | 34 | [faster-reliable-adjudication](34-faster-reliable-adjudication.md) ([record](../docs/PLAN_34.md)) | inference performance + quality | L, measured | closed 2026-09-25: no experiment met the latency gate; project reliability fixes shipped; Windows unverified |
+| 35 | [grounded-player-offers-and-projects](35-grounded-player-offers-and-projects.md) (after 34) | inference quality + compiler | M | implemented 2026-09-25 ([record](../docs/PLAN_35.md)): reform projects adopted; offer narrowing opt-in (`offers`) after missing access in 2 live samples |
 
 ## September 24 audit follow-up
 

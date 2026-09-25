@@ -4,8 +4,9 @@
 #include <chrono>
 #include <functional>
 #include <map>
-#include <mutex>
 #include <memory>
+#include <mutex>
+#include <set>
 namespace lh {
 // Shared by the requests of one month. cancel() is idempotent and thread-safe: it marks the month
 // cancelled, then runs each registered abort once, so a transport blocked on a live request
@@ -47,6 +48,14 @@ class NarrationProvider {
     virtual std::string narrate(const std::vector<ResolvedEvent> &) = 0;
 };
 bool clearlyDomestic(const WorldState &, const std::string &actor, const std::string &text);
+// The nations an order clearly offers a treaty to; empty when it is not plainly an offer.
+std::set<std::string> treatyOffer(const WorldState &, const std::string &actor,
+                                  const std::string &text);
+// Narrows each clear reform's outcome to a funded project (plan 35). With `offers` (the opt-in
+// experiment) each clear offer's outcome must also record one treaty among its parties, and
+// treaty terms are named "clauses". Every other outcome is unchanged.
+void narrowIntentions(const WorldState &, Json::Value &schema, const Json::Value &intentions,
+                      bool offers = false);
 bool trimOptionalContext(Json::Value &, const std::string &kind);
 std::string validateEndpoint(const std::string &);
 // Owned by the caller. Optional requests get their own deadline and audit; cancellation can

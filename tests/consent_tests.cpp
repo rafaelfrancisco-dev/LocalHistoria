@@ -218,6 +218,36 @@ int main() {
         d = compileOperations(w, both, {});
         check(apply(w, d).proposals.size() == 1 && d.events[1]["failed"] == true,
               "An identical offer awaiting answers is not made again");
+        // Intent version 1: access terms alone never make a ceasefire or peace treaty.
+        auto accessOffer = offer("AA", R"([{"action":"grant_access","to":"AA"}])");
+        accessOffer["operations"][0]["kind"] = "peace_treaty";
+        auto intents = w;
+        intents.engine["intent_version"] = 1;
+        auto accessOnly = compile(intents, accessOffer);
+        auto relabelledState = apply(intents, accessOnly);
+        check(
+            relabelledState.proposals.size() == 1 &&
+                relabelledState.proposals[relabelledState.proposals.getMemberNames()[0]]["kind"] ==
+                    "other" &&
+                accessOnly.events[0]["text"].asString().find("only military access") !=
+                    std::string::npos,
+            "An access-only peace treaty is recorded as an agreement and says so");
+        auto textIntents = intents;
+        textIntents.engine["event_text_version"] = 2;
+        check(compile(textIntents, accessOffer)
+                      .events[0]["text"]
+                      .asString()
+                      .find("only military access") != std::string::npos,
+              "The relabel survives factual proposal text");
+        auto withPeace = offer(
+            "AA", R"([{"action":"grant_access","to":"AA"},{"action":"withdraw","region":"BB"}])");
+        withPeace["operations"][0]["kind"] = "peace_treaty";
+        auto kept = apply(intents, compile(intents, withPeace));
+        check(kept.proposals[kept.proposals.getMemberNames()[0]]["kind"] == "peace_treaty",
+              "A peace treaty with other terms keeps its kind");
+        auto oldKind = apply(w, compile(w, accessOffer));
+        check(oldKind.proposals[oldKind.proposals.getMemberNames()[0]]["kind"] == "peace_treaty",
+              "Before intent version 1 the drafted kind is kept");
         // Re-audit N7: land passes to another nation only by a treaty it signs.
         auto gift = event("BB", "Bland hands its land to Aland.",
                           R"([{"action":"transfer_territory","region":"BB","to":"AA"}])");

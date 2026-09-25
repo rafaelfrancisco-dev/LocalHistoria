@@ -1,3 +1,4 @@
+#include "localhistoria/domestic.h"
 #include "world/compiler/operation_compiler.h"
 #include <algorithm>
 namespace lh::detail {
@@ -22,6 +23,15 @@ void OperationCompiler::opOpen(EventScope &s, OpScope &op) {
     auto type = o["kind"].asString();
     if (kind == "conflict" ? !validConflictKind(type) : !validCommitmentKind(type))
         type = kind == "conflict" ? "war" : "other";
+    // A ceasefire or peace treaty pauses its parties' fighting, which access terms alone never
+    // say: the 4B once drafted an access offer as a peace treaty (intent version 1).
+    bool accessOnly = kind == "commitment" && groundedIntents(w) &&
+                      (type == "ceasefire" || type == "peace_treaty") && o["terms"].isArray() &&
+                      !o["terms"].empty();
+    for (const auto &t : o.get("terms", Json::Value(Json::arrayValue)))
+        accessOnly = accessOnly && t.isObject() && t["action"] == "grant_access";
+    if (accessOnly)
+        type = "other";
     v["name"] = treatyName(op, kind, type, members, v);
     v["kind"] = type;
     v["started_turn"] = w.turn;
@@ -51,8 +61,15 @@ void OperationCompiler::opOpen(EventScope &s, OpScope &op) {
     // model.
     int months =
         kind == "commitment" && o["months"].isInt() ? std::clamp(o["months"].asInt(), 0, 120) : 0;
-    if (op.proposal)
-        return propose(s, op, v, cid, months);
+    if (op.proposal) {
+        propose(s, op, v, cid, months);
+        // A verdict follows whatever text the proposal record gives the event.
+        if (accessOnly)
+            s.verdict = (s.verdict.empty() ? "" : s.verdict + " ") +
+                        "Its terms grant only military access, so it is recorded as an agreement, "
+                        "not a ceasefire or peace.";
+        return;
+    }
     if (kind == "commitment") {
         auto done = applyTerms(s, o["terms"], members, op.why);
         if (!done.empty()) {

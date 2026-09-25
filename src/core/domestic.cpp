@@ -8,6 +8,9 @@ bool groundedConsequences(const WorldState &w) {
 bool distinctProjects(const WorldState &w) {
     return w.engine.get("project_version", 0) == projectVersion;
 }
+bool groundedIntents(const WorldState &w) {
+    return w.engine.get("intent_version", 0) == intentVersion;
+}
 std::string consequenceText(const std::string &text) {
     std::string out;
     bool space = false;

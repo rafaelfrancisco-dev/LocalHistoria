@@ -16,7 +16,7 @@ p.add_argument('--schedule', type=pathlib.Path, help='JSON array of monthly {ord
 p.add_argument('--reference-cache', type=pathlib.Path, help='Frozen JSON map from actor ID to cached reference')
 p.add_argument('--prepare-only', type=pathlib.Path, help='Create a disposable starting fixture here, without inference')
 p.add_argument('--quality-scenario', type=pathlib.Path, help='Predeclared scenario gate; stop candidate after a hard violation (missing outcomes are judged against the baseline)')
-p.add_argument('--experiment', choices=['', 'reasoning', 'schema', 'compact', 'grounding', 'operations'], default='')
+p.add_argument('--experiment', choices=['', 'reasoning', 'schema', 'compact', 'grounding', 'operations', 'offers'], default='')
 p.add_argument('--reserve', type=float, default=0)
 p.add_argument('--budget', type=float, default=210)
 p.add_argument('--legacy-timing', action='store_true', help='Baseline lacks finished marker; wait for successful narration audit or record unavailable')

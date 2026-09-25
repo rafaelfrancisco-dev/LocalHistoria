@@ -67,7 +67,7 @@ def main():
     parser.add_argument('manifest', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--baseline-only', action='store_true', help='Measure all baseline scenarios without a candidate')
-    parser.add_argument('--experiment', nargs='+', default=['compact'], choices=['compact', 'schema', 'reasoning', 'grounding', 'operations'],
+    parser.add_argument('--experiment', nargs='+', default=['compact'], choices=['compact', 'schema', 'reasoning', 'grounding', 'operations', 'offers'],
                         help='One or more candidates; each scenario runs one shared baseline')
     parser.add_argument('--repeats', type=int, default=1)
     args = parser.parse_args()

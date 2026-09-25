@@ -151,6 +151,88 @@ int main() {
             check(dump(chosen.events) == dump(empty.events) && dump(chosen.changes) == dump(empty.changes),
                   "An explicit none compiles exactly like no operations");
         }
+        {
+            // The offers experiment: a clear offer must record a treaty among its parties; the
+            // schema's clauses arrive as the compiler's terms.
+            auto iberia = w;
+            iberia.actors["ES"]["name"] = "Spain";
+            // Under the realism lifecycle every treaty is a proposal awaiting signatures.
+            iberia.engine["lifecycle_version"] = 1;
+            Json::Value offer;
+            offer["facts"] = encode(iberia);
+            offer["intentions"] = parse(
+                R"([{"actor":"PT","action":"Offer Spain a six-month treaty granting Portuguese forces military access"}])");
+            Json::Value spec, defs;
+            std::string ops =
+                R"([{"action":"add_commitment","actors":["PT","ES"],"clauses":[{"action":"grant_access","to":"PT"}],)"
+                R"("kind":"other","months":6,"name":"Treaty of Elvas","text":"Access for Portuguese forces"}])";
+            LocalProvider offering(
+                "http://127.0.0.1:8081", 1,
+                [&](auto, auto path, auto body, double) {
+                    if (path == "/props")
+                        return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+                    if (path == "/apply-template")
+                        return parse(R"({"prompt":"offer"})");
+                    if (path == "/tokenize")
+                        return parse(R"({"tokens":[1,2,3]})");
+                    defs = body["response_format"]["json_schema"]["schema"]["$defs"];
+                    spec = body["response_format"]["json_schema"]["schema"]["properties"]["events"]
+                               ["prefixItems"][0]["properties"]["operations"];
+                    auto outcome = parse(
+                        R"({"events":[{"actor":"PT","action":"Offer Spain a six-month treaty granting…","blocked_by":"none",)"
+                        R"("causes":[],"description":"Portugal offered Spain an access treaty"}]})");
+                    outcome["events"][0]["operations"] = parse(ops);
+                    Json::Value result;
+                    result["choices"][0]["message"]["content"] = dump(outcome);
+                    return result;
+                },
+                0);
+            InferenceRequest plainOffer;
+            offering.adjudicate(iberia, offer, {}, Json::arrayValue, &plainOffer);
+            check(spec["minItems"].isNull() && !defs.isMember("op_add_commitment_offer_0") &&
+                      defs["op_add_commitment"]["properties"].isMember("terms"),
+                  "By default an offer's outcome keeps its full operations and treaty terms");
+            InferenceRequest offersExperiment;
+            offersExperiment.experiment = "offers";
+            auto offered =
+                offering.adjudicate(iberia, offer, {}, Json::arrayValue, &offersExperiment);
+            const auto &narrowed = defs["op_add_commitment_offer_0"];
+            check(spec["minItems"] == 1 && spec["maxItems"] == 1 &&
+                      spec["items"]["$ref"] == "#/$defs/op_add_commitment_offer_0" &&
+                      narrowed["properties"]["actors"]["items"]["enum"] ==
+                          parse(R"(["PT","ES"])") &&
+                      dump(narrowed["properties"]["clauses"]).find(R"("to":{"enum":["PT","ES"])") !=
+                          std::string::npos &&
+                      !narrowed["properties"].isMember("terms"),
+                  "A clear offer requires a treaty among the named parties: " + dump(spec));
+            auto keys = dump(narrowed["properties"]);
+            check(keys.find("\"clauses\"") < keys.find("\"kind\""),
+                  "Treaty clauses generate before the kind");
+            Json::Value proposal;
+            for (const auto &change : offered.changes)
+                if (change["kind"] == "proposal")
+                    proposal = change["after"];
+            check(proposal["terms"] == parse(R"([{"action":"grant_access","to":"PT"}])") &&
+                      !proposal.isMember("clauses"),
+                  "Schema clauses reach the compiler as treaty terms: " + dump(offered.events));
+            ops = R"([{"action":"add_commitment","actors":["PT","ES"],"clauses":[],"terms":[],)"
+                  R"("kind":"other","months":6,"name":"Treaty of Elvas","text":"Access"}])";
+            bool both = false;
+            try {
+                InferenceRequest again;
+                again.experiment = "offers";
+                offering.adjudicate(iberia, offer, {}, Json::arrayValue, &again);
+            } catch (const ValidationError &) {
+                both = true;
+            }
+            check(both, "A treaty carrying both clauses and terms is rejected");
+            check(treatyOffer(iberia, "PT", "Propose a ceasefire to Spain") ==
+                          std::set<std::string>{"ES"} &&
+                      treatyOffer(iberia, "PT", "Accept Spain's ceasefire offer").empty() &&
+                      treatyOffer(iberia, "PT", "Offer Spain grain").empty() &&
+                      treatyOffer(iberia, "PT", "Offer a ceasefire").empty(),
+                  "Only an explicit offer naming a counterparty is narrowed");
+        }
         c.facts["initiative_type"] = "independent_national";
         c.facts["action_count"] = 1;
         failed = false;
@@ -319,6 +401,23 @@ int main() {
                       fields.find("\"sector\"") != std::string::npos &&
                       fields.find("\"benefit\"") == std::string::npos,
                   "Project sector is generated after its objective");
+            // A clear reform must fund a project, new or one of its own; other outcomes keep null.
+            projectWorld.actors["PT"]["status"]["projects"]["p:known"]["state"] = "active";
+            std::vector<std::pair<std::string, std::string>> mixed{{"PT", "Reform the schools"},
+                                                                   {"PT", "Hold a parade"}};
+            auto plain = operationSchema(projectWorld, facts, mixed);
+            auto narrowed = plain;
+            narrowIntentions(
+                projectWorld, narrowed,
+                parse(
+                    R"([{"actor":"PT","action":"Reform the schools"},{"actor":"PT","action":"Hold a parade"}])"));
+            auto &items = narrowed["properties"]["events"]["prefixItems"];
+            check(items[0]["properties"]["project"]["$ref"] == "#/$defs/domestic_project_0" &&
+                      narrowed["$defs"]["domestic_project_0"]["properties"]["id"]["enum"] ==
+                          parse(R"(["","p:known"])") &&
+                      items[1] == plain["properties"]["events"]["prefixItems"][1],
+                  "A clear reform requires a project with a known or new id; other outcomes "
+                  "unchanged");
         }
 
         check(facts["actors"]["IT"]["entities"].isNull() &&

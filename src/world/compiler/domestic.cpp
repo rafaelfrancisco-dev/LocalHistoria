@@ -4,7 +4,11 @@
 namespace lh::detail {
 void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) {
     auto category = s.e.get("outcome_kind", "").asString();
-    if (category != "reform" && category != "investment")
+    // A reform order's outcome must carry a project (intent version 1), and the 4B sometimes
+    // labels that outcome a policy; the sector below decides the category.
+    const bool labelledPolicy = category == "policy" && groundedIntents(w) &&
+                                s.e.get("project", Json::nullValue).isObject();
+    if (category != "reform" && category != "investment" && !labelledPolicy)
         return;
     for (const auto &x : event.get("effects", Json::Value(Json::arrayValue)))
         if (x["actor"] == s.ev &&

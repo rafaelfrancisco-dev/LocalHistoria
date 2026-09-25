@@ -241,4 +241,22 @@ baseline, so all remain opt-in. The default adjudication now asks for a project'
 after its objective, instead of `benefit`, which was generated first. Education reforms had always
 come out as `administration`; five of five live project events were then correct. Unknown project
 ids resolve by the derived identity, and the sector decides the category. Player treaty
-offers are still often described without an `add_commitment`.
+offers were still often described without an `add_commitment`; plan 35 addresses that below.
+
+### Plan 35 grounded reforms and opt-in offers
+
+The adjudication schema is narrowed per intention, only for orders C++ classifies plainly; nothing
+is created from prose. An order `clearlyDomestic` accepts must carry a project; its `id` is `""`
+or one of that nation's own project ids. Every other outcome keeps `project: null`. Intent
+version 1 (new turns) keeps a project written on a `policy` outcome, and relabels a ceasefire or
+peace treaty whose only terms grant access as `other`, saying so in the event text.
+
+Offer narrowing is the opt-in `offers` experiment (`inference_experiment: "offers"`). An order
+that offers a treaty (an offer verb, a treaty word, a named counterparty, no accept/reject wording)
+must have exactly one `add_commitment`. Its parties and any `grant_access` recipient are the
+offering nation (listed first) and those it names. Treaty terms are named `clauses` so they
+generate before `kind`; the provider renames them back to `terms` and rejects both keys. It is off
+by default. In two live samples the 4B recorded a treaty for every offer, but with wrong clauses:
+access granted to the counterparty, a ceasefire ceding the player's region, access drafted as a
+clauseless trade agreement. The access scenario ran 15–26% slower. See `docs/PLAN_35.md`. The
+player still signs their own offer the following month.

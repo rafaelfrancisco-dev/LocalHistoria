@@ -264,6 +264,32 @@ int main(int argc, char **) {
         auto viaLabel = projects(step(w, list(mislabelled)).result.state);
         check(viaLabel.size() == 1 && viaLabel[viaLabel.getMemberNames().front()]["category"] == "reform",
               "The sector decides a mislabelled project's category");
+        auto unspecified = p1;
+        unspecified["project"] = Json::nullValue;
+        auto withoutProject = step(w, list(unspecified));
+        check(projects(withoutProject.result.state).empty() &&
+                  withoutProject.delta.events[0]["project_reason"] ==
+                      "unsupported or unspecified project",
+              "A reform without a project starts nothing and says why");
+        // Intent version 1: a reform order's project survives a policy label; older campaigns
+        // keep ignoring it.
+        auto policy = p1;
+        policy["outcome_kind"] = "policy";
+        policy["project"]["benefit"] = "public_services";
+        auto viaPolicy = projects(step(w, list(policy)).result.state);
+        check(viaPolicy.size() == 1 &&
+                  viaPolicy[viaPolicy.getMemberNames().front()]["category"] == "reform",
+              "A project on a policy outcome is funded by its sector");
+        auto older = beginTurn(w, lifecycleReference(w)).state;
+        older.engine.removeMember("intent_version");
+        Json::Value olderResponse;
+        olderResponse["events"] = list(policy);
+        check(!compileOperations(older, olderResponse, {}).events[0].isMember("project"),
+              "Before intent version 1 a policy outcome ignores its project");
+        auto plainPolicy = policy;
+        plainPolicy["project"] = Json::nullValue;
+        check(!step(w, list(plainPolicy)).delta.events[0].isMember("project_reason"),
+              "A policy without a project is not a rejected project");
         auto poor = started.result.state;
         poor.actors["AA"]["status"]["military_spend_usd"] = Json::Int64(100000000000LL);
         for (auto &p : poor.actors["AA"]["status"]["projects"])

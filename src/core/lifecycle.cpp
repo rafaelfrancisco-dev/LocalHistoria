@@ -78,14 +78,15 @@ LifecycleRules lifecycleRules(const Json::Value &reference) {
     }
     for (auto [key, value] : {std::pair{"consequence_version", &rules.consequences},
                               std::pair{"project_version", &rules.projects},
-                              std::pair{"demand_version", &rules.demands}}) {
+                              std::pair{"demand_version", &rules.demands},
+                              std::pair{"intent_version", &rules.intents}}) {
         if (reference.isMember(key)) {
             if (!reference[key].isInt() || reference[key].asInt() < 0 || reference[key].asInt() > 1)
                 throw ValidationError("Unsupported domestic rule version");
             *value = reference[key].asInt();
         }
     }
-    if ((rules.consequences || rules.projects) &&
+    if ((rules.consequences || rules.projects || rules.intents) &&
         (rules.lifecycle != realismLifecycleVersion || !rules.monthly))
         throw ValidationError("Domestic rules require monthly realism rules");
     // Funded demand terms are project records.
@@ -101,6 +102,7 @@ Json::Value lifecycleReference(const WorldState &w) {
     ref["consequence_version"] = consequenceVersion;
     ref["project_version"] = projectVersion;
     ref["demand_version"] = demandVersion;
+    ref["intent_version"] = intentVersion;
     const int prior = w.engine.get("lifecycle_version", legacyLifecycleVersion).asInt();
     if (prior != realismLifecycleVersion) {
         if (prior != legacyLifecycleVersion)
@@ -149,9 +151,10 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
         recordDisplacement(w);
         recordExhaustion(w);
     }
-    for (auto [key, selected] : {std::pair{"consequence_version", rules.consequences},
-                                 std::pair{"project_version", rules.projects},
-                                 std::pair{"demand_version", rules.demands}}) {
+    for (auto [key, selected] :
+         {std::pair{"consequence_version", rules.consequences},
+          std::pair{"project_version", rules.projects}, std::pair{"demand_version", rules.demands},
+          std::pair{"intent_version", rules.intents}}) {
         int prior = w.engine.get(key, 0).asInt();
         if (prior < 0 || prior > selected)
             throw ValidationError("Domestic rule downgrade or unsupported campaign version");

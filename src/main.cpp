@@ -52,7 +52,9 @@ int main(int argc, char **argv) {
         if (!std::isfinite(reserveSeconds) || reserveSeconds < 0 || reserveSeconds > budgetSeconds)
             throw ValidationError("Mandatory reserve must be zero or a measured p90 within the turn budget");
         auto experiment = config.get("inference_experiment", "").asString();
-        if (!experiment.empty() && experiment != "reasoning" && experiment != "schema" && experiment != "compact" && experiment != "grounding" && experiment != "operations")
+        if (!experiment.empty() && experiment != "reasoning" && experiment != "schema" &&
+            experiment != "compact" && experiment != "grounding" && experiment != "operations" &&
+            experiment != "offers")
             throw ValidationError("Unknown inference experiment");
         std::string save = config.get("save_path", "saves/campaign.sqlite").asString();
         auto parent = std::filesystem::path(save).parent_path();

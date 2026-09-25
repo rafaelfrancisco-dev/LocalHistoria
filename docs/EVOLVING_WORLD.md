@@ -110,12 +110,16 @@ Under the realism lifecycle (Plan 26 B and C), and as corrected by the
   a new revision that needs fresh answers. A settlement whose material terms have become
   impossible lapses as a whole. The same offer (kind, parties and terms) is not opened again while
   one awaits answers.
+- **Offer kind (intent version 1, plan 35).** A ceasefire or peace treaty whose only terms are
+  `grant_access` is recorded as kind `other`, with a sentence saying so: those kinds pause the
+  parties' fighting, and access terms do not.
 - **Outcomes without a map change.** Effects come from successful operations or from a supported
   independent result. The adjudication schema requires `outcome_kind` on every outcome. It follows
   `operations`, so the model writes its operations first; placed before them, a `negotiation`
   label talked it out of writing the treaty. Under the older project rules an effort starts only from an outcome with no
   successful operation. Under project version 1, validated project terms start funded work; an
-  accompanying event-site marker does not replace the project. A setback starts no project. A protest can only cost stability. A world event keeps its text and its bounded
+  accompanying event-site marker does not replace the project. Under intent version 1 a project
+  written on a `policy` outcome also counts; its sector decides the category. A setback starts no project. A protest can only cost stability. A world event keeps its text and its bounded
   consequence. An outcome whose every operation failed reads "The proposed action could not be
   carried out."
   - **Event text version 2** (plan 28; new turns). Every outcome does something. The kinds are

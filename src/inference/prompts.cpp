@@ -1,3 +1,4 @@
+#include "localhistoria/domestic.h"
 #include "localhistoria/providers.h"
 #include "localhistoria/turn.h"
 #include <algorithm>
@@ -32,6 +33,93 @@ bool clearlyDomestic(const WorldState &w, const std::string &actor, const std::s
         if (containsWord(lower, cue)) return false;
     auto targets = mentioned(w, actor, {{text, {}}});
     return targets.actors.empty() && targets.regions.empty();
+}
+std::set<std::string> treatyOffer(const WorldState &w, const std::string &actor,
+                                  const std::string &text) {
+    const auto lower = lowercase(text);
+    auto any = [&](std::initializer_list<const char *> words) {
+        return std::any_of(words.begin(), words.end(),
+                           [&](const char *word) { return containsWord(lower, word); });
+    };
+    // Only an order that makes an offer: answering someone else's offer is not one.
+    if (!any({"offer", "offers", "offering", "propose", "proposes", "proposing", "proposal"}) ||
+        !any({"treaty", "treaties", "ceasefire", "cease-fire", "armistice", "truce", "pact",
+              "alliance", "agreement", "accord", "access", "peace", "deal"}) ||
+        any({"accept", "accepts", "reject", "rejects", "decline", "declines", "refuse", "refuses",
+             "answer", "respond", "ignore"}))
+        return {};
+    return mentioned(w, actor, {{text, {}}}).actors;
+}
+void narrowIntentions(const WorldState &w, Json::Value &schema, const Json::Value &intentions,
+                      bool offers) {
+    auto &defs = schema["$defs"];
+    auto &items = schema["properties"]["events"]["prefixItems"];
+    auto ref = [](const std::string &name) {
+        Json::Value j;
+        j["$ref"] = "#/$defs/" + name;
+        return j;
+    };
+    if (offers)
+        // Keys generate alphabetically: as "clauses", treaty terms are drafted before the kind.
+        // The provider renames them back to terms.
+        for (const auto &name : defs.getMemberNames()) {
+            auto &properties = defs[name]["properties"];
+            const auto action = properties["action"]["enum"][0];
+            if ((action == "add_commitment" || action == "amend_commitment") &&
+                properties.isMember("terms")) {
+                properties["clauses"] = properties["terms"];
+                properties.removeMember("terms");
+            }
+        }
+    for (Json::ArrayIndex n = 0; n < intentions.size() && n < items.size(); ++n) {
+        const auto &intent = intentions[n];
+        if (intent["regional_actor"].isString())
+            continue;
+        const auto actor = intent["actor"].asString(), text = intent["action"].asString();
+        auto &item = items[n];
+        auto parties = offers ? treatyOffer(w, actor, text) : std::set<std::string>{};
+        if (!parties.empty() && defs.isMember("op_add_commitment")) {
+            // A clear offer records one: the 4B otherwise describes it and closes an empty
+            // operations array. Parties are the offering nation and those it names. The 4B takes
+            // the first enum value, which had it grant access to the counterparty; the offering
+            // nation comes first.
+            Json::Value names(Json::arrayValue);
+            names.append(actor);
+            for (const auto &p : parties)
+                names.append(p);
+            auto offer = defs["op_add_commitment"];
+            auto &actors = offer["properties"]["actors"];
+            actors["items"] = Json::objectValue;
+            actors["items"]["type"] = "string";
+            actors["items"]["enum"] = names;
+            actors["maxItems"] = std::min<Json::UInt>(names.size(), 6);
+            for (auto &clause : offer["properties"]["clauses"]["items"]["anyOf"])
+                if (clause["properties"]["action"]["enum"][0] == "grant_access")
+                    clause["properties"]["to"] = actors["items"];
+            auto name = "op_add_commitment_offer_" + std::to_string(n);
+            defs[name] = offer;
+            auto &operations = item["properties"]["operations"];
+            operations["items"] = ref(name);
+            // One treaty holds several clauses; a second slot drew a duplicate offer.
+            operations["minItems"] = 1;
+            operations["maxItems"] = 1;
+        } else if (distinctProjects(w) && item["properties"].isMember("project") &&
+                   defs.isMember("domestic_project") && clearlyDomestic(w, actor, text)) {
+            // A clear reform funds a project: null was the 4B's first and easiest answer. Its id
+            // is new ("") or one of this nation's own records, never an invented one.
+            auto project = defs["domestic_project"];
+            auto &id = project["properties"]["id"];
+            id = Json::objectValue;
+            id["type"] = "string";
+            id["enum"].append("");
+            for (const auto &known :
+                 std::as_const(w.actors)[actor]["status"]["projects"].getMemberNames())
+                id["enum"].append(known);
+            auto name = "domestic_project_" + std::to_string(n);
+            defs[name] = project;
+            item["properties"]["project"] = ref(name);
+        }
+    }
 }
 Decision LocalProvider::decide(const WorldState &w, const CountryContext &c) {
     InferenceRequest request;
@@ -203,6 +291,7 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
             item["properties"]["operations"]["minItems"] = 1;
             item["properties"]["operations"]["maxItems"] = 1;
         }
+    narrowIntentions(w, schema, input["intentions"], request.experiment == "offers");
     if (request.experiment == "operations") {
         // An empty array is the 4B's default even after describing a treaty offer; an explicit
         // "none" makes it choose. The entry is removed before compilation.
@@ -403,6 +492,14 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
                 if (o["action"] != "none")
                     kept.append(o);
             event["operations"] = kept;
+            // The offers experiment names treaty terms "clauses" so they generate before the kind.
+            for (auto &o : event["operations"])
+                if (o.isObject() && o.isMember("clauses")) {
+                    if (o.isMember("terms"))
+                        throw ValidationError("Treaty carries both clauses and terms");
+                    o["terms"] = o["clauses"];
+                    o.removeMember("clauses");
+                }
         }
         for (auto k : {"initiative_type", "regional_actor"}) {
             event.removeMember(k);
