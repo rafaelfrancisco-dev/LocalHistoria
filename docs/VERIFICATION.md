@@ -187,3 +187,6 @@ Plan 34 benchmark fixtures have a deterministic live-WAL regression:
 versus uncommitted data and rejects overwrites. The paired runner and remaining live-model,
 semantic-quality and two-platform acceptance gates are documented in [PLAN_34.md](PLAN_34.md).
 Fixture integrity and deterministic replay do not establish real-model operation reliability.
+Plan 34 live results (single samples per arm, M1 Pro, Qwen3.5-4B Q4_K_M, llama b11011) and the
+stopped final screen are recorded in [PLAN_34.md](PLAN_34.md). HTTP/browser integration and
+restart/replay passed before screening. Windows was not measured.

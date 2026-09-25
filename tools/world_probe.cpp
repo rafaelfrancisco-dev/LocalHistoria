@@ -12,11 +12,12 @@ using namespace lh;
 // Interior (ES, borders only East).
 int main(int argc, char **argv) {
     if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: world_probe output.json [scenario|all] [reasoning|schema|compact|grounding]\n";
+        std::cerr << "Usage: world_probe output.json [scenario|all] [reasoning|schema|compact|grounding|operations]\n";
         return 1;
     }
     if (argc == 4 && std::string(argv[3]) != "reasoning" && std::string(argv[3]) != "schema" &&
-        std::string(argv[3]) != "compact" && std::string(argv[3]) != "grounding") {
+        std::string(argv[3]) != "compact" && std::string(argv[3]) != "grounding" &&
+        std::string(argv[3]) != "operations") {
         std::cerr << "Unknown experiment\n";
         return 1;
     }

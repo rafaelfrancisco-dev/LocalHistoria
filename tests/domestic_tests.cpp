@@ -258,6 +258,12 @@ int main(int argc, char **) {
               "Schema sector is stored as the project's benefit");
         sector["project"]["benefit"] = "administration";
         check(projects(step(w, list(sector)).result.state).empty(), "Sector with a second benefit rejected");
+        auto mislabelled = p1;
+        mislabelled["outcome_kind"] = "investment";
+        mislabelled["project"]["benefit"] = "public_services";
+        auto viaLabel = projects(step(w, list(mislabelled)).result.state);
+        check(viaLabel.size() == 1 && viaLabel[viaLabel.getMemberNames().front()]["category"] == "reform",
+              "The sector decides a mislabelled project's category");
         auto poor = started.result.state;
         poor.actors["AA"]["status"]["military_spend_usd"] = Json::Int64(100000000000LL);
         for (auto &p : poor.actors["AA"]["status"]["projects"])

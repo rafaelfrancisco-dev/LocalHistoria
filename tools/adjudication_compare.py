@@ -67,7 +67,8 @@ def main():
     parser.add_argument('manifest', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--baseline-only', action='store_true', help='Measure all baseline scenarios without a candidate')
-    parser.add_argument('--experiment', default='compact', choices=['compact', 'schema', 'reasoning', 'grounding'])
+    parser.add_argument('--experiment', nargs='+', default=['compact'], choices=['compact', 'schema', 'reasoning', 'grounding', 'operations'],
+                        help='One or more candidates; each scenario runs one shared baseline')
     parser.add_argument('--repeats', type=int, default=1)
     args = parser.parse_args()
     if not 1 <= args.repeats <= 10:
@@ -84,9 +85,24 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     (args.output/'manifest.json').write_text(json.dumps(manifest, indent=2))
     rows = []
+    active, stopped = list(dict.fromkeys(args.experiment)), {}
+
+    def write_summary():
+        names = [s['name'] for s in manifest['scenarios']]
+        (args.output/'summary.json').write_text(json.dumps(dict(
+            runs=[{k: v for k, v in r.items() if k != 'months'} for r in rows], summary=summarize(rows),
+            stopped=stopped, adoption={e: adoption_gate(rows, e, names, args.repeats) for e in args.experiment}), indent=2))
+
     for repeat in range(args.repeats):
         for index, scenario in enumerate(manifest['scenarios']):
-            for arm in (['baseline'] if args.baseline_only else ['baseline', args.experiment] if repeat % 2 == 0 else [args.experiment, 'baseline']):
+            if not args.baseline_only and not active:
+                break
+            arms = ['baseline'] + ([] if args.baseline_only else list(active))
+            # Rotate so neither the baseline nor any candidate always runs first.
+            shift = repeat % len(arms)
+            for arm in arms[shift:] + arms[:shift]:
+                if arm != 'baseline' and arm not in active:
+                    continue
                 report = args.output/f'{index}-{repeat}-{arm}.json'
                 command = [sys.executable, str(pathlib.Path(__file__).with_name('living_world_probe.py')), str(report),
                            '--months', '2', '--budget', str(manifest.get('budget', 210))]
@@ -107,15 +123,19 @@ def main():
                 quality.setdefault('issues', []).extend(check_attribution(months))
                 quality['passed'] = quality.get('passed', False) and not quality['issues']
                 rows.append(dict(scenario=scenario['name'], repeat=repeat, arm=arm, returncode=result.returncode, report=report.name, months=months, quality=quality))
-                (args.output/'summary.json').write_text(json.dumps(dict(runs=[{k:v for k,v in r.items() if k != 'months'} for r in rows], summary=summarize(rows), adoption=adoption_gate(rows, args.experiment, [s['name'] for s in manifest['scenarios']], args.repeats)), indent=2))
                 # A failed run or hard violation is evidence, never a quick successful sample.
                 if arm != 'baseline' and (result.returncode or hard_issues(quality)):
-                    return 1
-            # Non-inferiority: stop when the candidate lost an outcome its paired baseline achieved.
+                    active.remove(arm)
+                    stopped[arm] = scenario['name'] + ': failed run or hard quality violation'
+                write_summary()
+            # Non-inferiority: stop a candidate that lost an outcome its paired baseline achieved.
             pair = {r['arm']: r for r in rows if r['scenario'] == scenario['name'] and r['repeat'] == repeat}
-            if not args.baseline_only and pair['baseline']['quality']['passed'] and not pair[args.experiment]['quality']['passed']:
-                return 1
-    return 0
+            for arm in list(active):
+                if arm in pair and pair['baseline']['quality']['passed'] and not pair[arm]['quality']['passed']:
+                    active.remove(arm)
+                    stopped[arm] = scenario['name'] + ': lost an outcome the baseline achieved'
+            write_summary()
+    return 0 if args.baseline_only or active else 1
 
 
 if __name__ == '__main__':

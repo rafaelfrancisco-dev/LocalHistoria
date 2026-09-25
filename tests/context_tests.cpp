@@ -114,6 +114,43 @@ int main() {
         }
         if (!failed)
             throw std::runtime_error("Missing agenda operation accepted");
+        {
+            // The operations experiment requires an explicit choice; "none" compiles as no operations.
+            Json::Value domestic;
+            domestic["facts"] = encode(w);
+            domestic["intentions"] = parse(R"([{"actor":"PT","action":"Reform the schools"}])");
+            Json::Value none;
+            none["events"] = parse(R"([{"actor":"PT","action":"Reform the schools","blocked_by":"none",)"
+                                   R"("causes":[],"description":"Schools reformed","operations":[]}])");
+            std::string answer = R"([{"action":"none"}])";
+            bool shaped = false;
+            LocalProvider explicitOps("http://127.0.0.1:8081", 1, [&](auto, auto path, auto body, double) {
+                if (path == "/props")
+                    return parse(R"({"default_generation_settings":{"n_ctx":8192}})");
+                if (path == "/apply-template")
+                    return parse(R"({"prompt":"operations"})");
+                if (path == "/tokenize")
+                    return parse(R"({"tokens":[1,2,3]})");
+                const auto &schema = body["response_format"]["json_schema"]["schema"];
+                const auto &spec = schema["properties"]["events"]["prefixItems"][0]["properties"]["operations"];
+                shaped = spec["minItems"] == 1 && schema["$defs"].isMember("op_none") &&
+                         dump(spec["items"]["anyOf"]).find("#/$defs/op_none") != std::string::npos;
+                auto outcome = none;
+                outcome["events"][0]["operations"] = parse(answer);
+                Json::Value result;
+                result["choices"][0]["message"]["content"] = dump(outcome);
+                return result;
+            }, 0);
+            InferenceRequest experiment;
+            experiment.experiment = "operations";
+            auto chosen = explicitOps.adjudicate(w, domestic, {}, Json::arrayValue, &experiment);
+            check(shaped, "Operations experiment requires one entry and offers none");
+            answer = "[]";
+            InferenceRequest plain;
+            auto empty = explicitOps.adjudicate(w, domestic, {}, Json::arrayValue, &plain);
+            check(dump(chosen.events) == dump(empty.events) && dump(chosen.changes) == dump(empty.changes),
+                  "An explicit none compiles exactly like no operations");
+        }
         c.facts["initiative_type"] = "independent_national";
         c.facts["action_count"] = 1;
         failed = false;

@@ -203,6 +203,20 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
             item["properties"]["operations"]["minItems"] = 1;
             item["properties"]["operations"]["maxItems"] = 1;
         }
+    if (request.experiment == "operations") {
+        // An empty array is the 4B's default even after describing a treaty offer; an explicit
+        // "none" makes it choose. The entry is removed before compilation.
+        schema["$defs"]["op_none"] = parse(R"({"type":"object","additionalProperties":false,"required":["action"],"properties":{"action":{"type":"string","enum":["none"]}}})");
+        for (auto &item : schema["properties"]["events"]["prefixItems"]) {
+            auto &operations = item["properties"]["operations"];
+            if (!operations["items"].isMember("anyOf"))
+                continue;
+            Json::Value none;
+            none["$ref"] = "#/$defs/op_none";
+            operations["items"]["anyOf"].append(none);
+            operations["minItems"] = 1;
+        }
+    }
     static const std::string head =
         "You are the game master of a fictional monthly strategy sandbox. Adjudicate this month's "
         "actions (intentions) against the facts. Context version 2 shares event, entity, "
@@ -352,7 +366,10 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         "target:acting actor ID,sector:public_services}; operations may be empty. Continuing work -> "
         "the existing project's exact id and terms. If infeasible, record the feasible partial outcome "
         "or explain the obstacle; never invent consent or successful completion. " : "";
-    const auto prompt = instruction + grounding + (request.experiment == "compact" ?
+    const auto explicitOps = request.experiment == "operations" ?
+        " operations lists at least one entry: each concrete offer, construction, movement or "
+        "seizure is its operation; use {action:none} only when nothing is recorded. " : "";
+    const auto prompt = instruction + grounding + explicitOps + (request.experiment == "compact" ?
         " For mechanical operations keep description to a short action label; do not repeat treaty "
         "parties, duration, terms or results already encoded by operations. Keep authored names and "
         "interpretive outcomes. The compiler describes recorded proposals and their signatures." : "");
@@ -380,6 +397,13 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
              event["operations"][0]["action"] != "regional_initiative" ||
              event["operations"][0]["region"] != intent["regional_actor"]))
             throw ValidationError("Regional outcome requires its bounded agenda operation");
+        if (event["operations"].isArray()) {
+            Json::Value kept(Json::arrayValue);
+            for (const auto &o : event["operations"])
+                if (o["action"] != "none")
+                    kept.append(o);
+            event["operations"] = kept;
+        }
         for (auto k : {"initiative_type", "regional_actor"}) {
             event.removeMember(k);
             if (intent.isMember(k))

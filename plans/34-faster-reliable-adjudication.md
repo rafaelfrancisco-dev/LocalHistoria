@@ -1,6 +1,6 @@
 # 34 · Faster adjudication with reliable operations
 
-**Status:** measurement foundation implemented, acceptance pending, 2026-09-25. See [implementation status](../docs/PLAN_34.md). **Priority:** P1, largest documented latency opportunity.
+**Status:** closed 2026-09-25: no latency experiment adopted; reliability fixes shipped. See [record](../docs/PLAN_34.md). **Priority:** P1, largest documented latency opportunity.
 **Audit coverage:** issue 1. **Dependencies:** measurement can start immediately; use plan 29 for
 matched optimized builds and repeat final acceptance after plans 31–32 change schemas/semantics.
 

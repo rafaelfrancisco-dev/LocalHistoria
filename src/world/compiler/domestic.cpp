@@ -34,6 +34,11 @@ void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) 
         request["benefit"] = request["sector"];
         request.removeMember("sector");
     }
+    // Each simulated benefit belongs to one category; the 4B sometimes labels an education
+    // reform an investment. The chosen sector decides.
+    for (const auto *kind : {"reform", "investment"})
+        if (supportedProject(kind, request.get("benefit", "").asString()))
+            category = kind;
     if (!domesticProjects.isMember(s.ev))
         domesticProjects[s.ev] =
             std::as_const(w.actors)[s.ev]["status"].get("projects", Json::Value(Json::objectValue));

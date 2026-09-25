@@ -235,5 +235,10 @@ samples, and once wrote `demand: "none"`, which C++ now treats as no demand (see
 
 Plan 34 measurement tooling now uses WAL-aware disposable snapshots, replay-before-timing,
 210-second default month budgets and alternating paired experiment runs. See
-[Plan 34 status and manifest](PLAN_34.md). No new live-model latency or operation-success
-measurement is established by this tooling change; all three reductions remain opt-in.
+[Plan 34 status and manifest](PLAN_34.md). The final screen (M1 Pro, one sample per arm)
+found every experiment (compact, schema, reasoning, grounding, operations) 2–17% slower than the
+baseline, so all remain opt-in. The default adjudication now asks for a project's `sector`, generated
+after its objective, instead of `benefit`, which was generated first. Education reforms had always
+come out as `administration`; five of five live project events were then correct. Unknown project
+ids resolve by the derived identity, and the sector decides the category. Player treaty
+offers are still often described without an `add_commitment`.

@@ -22,6 +22,9 @@ measured quality and timing gates pass. Windows acceptance is deferred at the us
 - `grounding`: independently tests short explicit-offer/access/project examples. It distinguishes
   an actual offer from mentioning or discussing an agreement and permits feasible partial
   outcomes. It neither creates operations deterministically from text nor reconstructs signatures.
+- `operations`: requires at least one entry in each outcome's `operations`, with an explicit
+  `{action:none}` choice that the provider strips before compilation. The 4B otherwise closes the
+  array after describing a treaty offer; player offers were never recorded as operations.
 
 Only independently successful reductions may be combined. If no candidate passes screening,
 no combination or finalist repeats are justified and the baseline remains the default.
@@ -57,6 +60,8 @@ manifest. Keep hashes of reference data, schedules and fixture files alongside t
 ```sh
 python3 tools/adjudication_compare.py /tmp/plan34-fixtures/manifest.json /tmp/plan34-baseline --baseline-only
 python3 tools/adjudication_compare.py /tmp/plan34-fixtures/manifest.json /tmp/plan34-compact --experiment compact
+# Several candidates against one shared baseline per scenario (arm order rotates per repeat):
+python3 tools/adjudication_compare.py /tmp/plan34-fixtures/manifest.json /tmp/plan34-screen --experiment compact schema reasoning grounding operations
 # Only for a candidate which passed independent screening:
 python3 tools/adjudication_compare.py /tmp/plan34-fixtures/manifest.json /tmp/plan34-finalist --experiment compact --repeats 3
 ```
@@ -134,6 +139,42 @@ Live check (same fixtures, current build): peace 2/2 and regional 1/1 passed, wi
 and identical replay. No run produced an invented id, so the fallback is unit-tested only.
 Timings: 82–103 s (peace), 101–114 s (regional). The setback self-rating remains open. It
 is Plan 31 behaviour (a rated stability decline starts no project), not a compiler defect.
+
+## Project category from sector (2026-09-25)
+
+Each benefit belongs to one category, so the chosen sector now decides the project category. The
+screen baseline labelled a continued education reform `investment` with `sector: public_services`,
+and the project was rejected. `project: null` on a reform still starts nothing; C++ cannot supply
+missing terms.
+
+## Final screen (2026-09-25, stopped after 2 of 6 scenarios)
+
+Frozen build `2a461174…` (sector and invented-id fixes, plus the `operations` experiment), same
+fixtures, model and llama build. All five candidates ran against one shared baseline per scenario.
+The screen was stopped after peace and invasion (grounding and operations: peace only) because the
+machine was overheating. The remaining scenarios could not change the adoption result.
+
+| Arm | Peace outcome | Peace median s/month | Invasion outcome | Invasion median s/month |
+|---|---|---|---|---|
+| baseline | missed (null project; investment label) | 88.8 | passed | 107.2 |
+| compact | passed | 90.8 (+2%) | passed, 1 retry | 119.5 (+11%) |
+| schema | passed | 92.9 (+5%) | passed, 1 retry | 118.0 (+10%) |
+| reasoning | missed | 97.2 (+9%) | passed | 122.0 (+14%) |
+| grounding | passed | 94.0 (+6%) | not run | — |
+| operations | month 2 only | 104.2 (+17%) | not run | — |
+
+One sample per arm; outcome differences on peace are within the observed run-to-run variation
+(the baseline passed peace in 2/2 earlier runs with the invented-id fix). No candidate was faster in any
+scenario, so none can meet the 15% median-improvement gate; finalist repeats are not justified.
+A separate `operations` access run recorded Portugal's first player treaty operation. Its terms
+were wrong (a `peace_treaty` granting access to Spain), month 1 truncated and retried (163 s),
+and the access outcome still failed.
+
+**Decision:** no experiment is adopted; the baseline (`inference_experiment: ""`) stays default and
+all five remain opt-in. Plan 34's delivered gains are reliability fixes in the default path: project
+sector ordering, invented-id resolution and category from sector. Latency is unchanged. Remaining
+reliability gaps are player treaty offers (access especially) and null projects. Windows is untested,
+deferred by the user.
 
 ## Evidence and adoption
 
