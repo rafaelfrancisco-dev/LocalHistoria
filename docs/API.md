@@ -8,7 +8,7 @@ All routes except the SVG flag endpoint use JSON at `http://127.0.0.1:8080/api/v
 | `/campaign` | POST | `{country:"PT",confirm_replace:false}`; confirmation required for existing campaign |
 | `/countries` | GET | Country codes and names; no cities or national populations. During a campaign each row also has `has_flag` (a bundled static flag exists), `government` (the campaign's current system, readable) and `neighbor: true` for the player's land neighbors |
 | `/country?code=PT` | GET | Metadata, top 15 city records, cached reference and, during a campaign, `status` |
-| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders,responses?,narration?}`, where `narration: false` skips the optional model narration (the journal keeps the factual summary), and `orders` is the month's free-text actions and optional `responses` (at most 8 in all) answers pending treaty proposals in `state.proposals` (`{proposal,accept,revision}`, the revision answered) and pending demands from regions the player controls (`{demand,region,accept}`, the demand's ID and its territory); unanswered proposals lapse, and an unanswered demand lapses at its `answer_by_turn`. Returns persisted job ID, HTTP 202 |
+| `/turns` | POST | `{campaign_id,expected_turn,idempotency_key,orders,responses?,narration?}`, where `narration: false` skips the optional model narration (the journal keeps the factual summary), and `orders` is the month's free-text actions and optional `responses` (at most 8 in all) answers pending treaty proposals in `state.proposals` (`{proposal,accept,revision}`, the revision answered) and pending demands from regions the player controls (`{demand,region,accept,revision}`, the demand's ID, its territory and, for a demand with `terms`, its exact `revision`; a legacy demand without terms is answered without `revision`); unanswered proposals lapse, and an unanswered demand lapses at its `answer_by_turn`. Returns persisted job ID, HTTP 202 |
 | `/turns/cancel` | POST | `{job:"<id>"}` cancels a running month, HTTP 202. A model request already in flight is dropped at once: its connection closes, which makes llama-server stop generating, and the worker is free for the next month. The job then fails with "Cancelled by the player" and no state change. A cancel accepted before commit always prevents the commit. A job that is not running (already complete, failed or unknown) is refused with 409 |
 | `/jobs?id=1` | GET | `running`, `complete`, `failed` or `interrupted`; error message on failure; auxiliary jobs also contain results |
 | `/model-config` | POST | `{llama_endpoint:"http://127.0.0.1:8081"}`; validates format, updates the live provider and persists it for future launches |
@@ -62,7 +62,7 @@ Retry an uncertain turn submission with the same UUID key and identical body. A 
 
 Independent activity adds no turn submission fields. The server reserves two non-player national initiatives and one regional initiative per month, redistributing missing slots when possible (maximum three). Every intention has a persisted outcome. `reference.allocations` records the selected slots; retries in the same campaign month reuse the persisted allocation.
 
-State additionally contains `regional_politics` keyed by permanent territory ID and `activity` for selection cooldowns. Regional politics contains `agenda`, `relations`, up to eight demands (`pending`, `accepted`, `rejected`, `expired`) and bounded `supporting_events`. Since event text version 2 a demand records `answer_by_turn` (its last month for an answer: three months after it was raised in a region the player controls, six elsewhere); answered and lapsed ones record `answered_turn`, and lapsed ones `lapse_reason` (`unanswered`, or `authority_changed` when the region changed controller). Current governing authority is the territory's controller. Actors may contain `identity_revisions` and `flag_revision`; IDs never change with names. Journal entries include `structured_events`, with `initiative_type`, optional `regional_actor`, and `identity_changes` linking actor IDs to flag revisions. Structured events carry `partial` or `failed` when some or all of their operations were dropped; the matching journal event then has `prompt_text`, its text plus the factual clause later prompts read (see docs/EVOLVING_WORLD.md).
+State additionally contains `regional_politics` keyed by permanent territory ID and `activity` for selection cooldowns. Regional politics contains `agenda`, `relations`, up to eight demands (`pending`, `accepted`, `rejected`, `expired`; accepted work still in progress is never evicted to make room) and bounded `supporting_events`. Since event text version 2 a demand records `answer_by_turn` (its last month for an answer: three months after it was raised in a region the player controls, six elsewhere); answered and lapsed ones record `answered_turn`, and lapsed ones `lapse_reason` (`unanswered`, or `authority_changed` when the region changed controller). Current governing authority is the territory's controller. Actors may contain `identity_revisions` and `flag_revision`; IDs never change with names. Journal entries include `structured_events`, with `initiative_type`, optional `regional_actor`, and `identity_changes` linking actor IDs to flag revisions. Structured events carry `partial` or `failed` when some or all of their operations were dropped; the matching journal event then has `prompt_text`, its text plus the factual clause later prompts read (see docs/EVOLVING_WORLD.md).
 
 `GET /flag?campaign=<campaign_id>&actor=<actor_id>&revision=<revision>` serves SVG with immutable caching and restrictive content security policy. `revision=fallback` provides a deterministic legacy fictional flag. Existing countries retain their static `/flags/<code>.svg` until a qualifying identity event. `/countries` and `/country` return current campaign names.
 
@@ -94,3 +94,39 @@ migrate transactionally to `benefit: "legacy"` records, retaining their old bene
 carry `consequences` (actor, key, kind, envelope, weight, reason), and each rated effect has its
 applied `weight` (0, 0.25, 0.5 or 1). Replay rechecks ledger updates before applying the weight.
 A zero-weight event remains in history; it does not apply its rated statistical change.
+
+### Plan 32 regional demand terms
+
+New turn references and campaign `engine` include `demand_version: 1`, which requires
+`project_version: 1`. Missing fields replay the earlier demand rules.
+
+A demand filed under version 1 has `revision: 1` and immutable `terms`, one of:
+
+- `{kind: "political"}`: a request the ruler may agree to negotiate. Accepting changes no law,
+  border or budget.
+- `{kind: "regional_project", category, benefit, objective, months, estimated_cost_usd,
+  required_consent}`: funded work in the region, with the plan 31 categories and purposes. The
+  cost is an estimate at filing (0.6% or 0.3% of the region's annual output). The funded project
+  itself prices from output at acceptance.
+- `{kind: "independence", new_state, regions, required_consent}`: the one demanding region
+  becomes a new state named after it. Only `required_consent[0]`, the owner at filing, can grant
+  it, and only while it owns and holds the region.
+
+`status` is still `pending`, `accepted`, `rejected` or `expired`. An accepted demand under
+version 1 adds `fulfillment`, with `turn` (the acceptance month) and `state`:
+
+| `state` | Meaning |
+|---|---|
+| `political` | Accepted for negotiation only (political terms, and every legacy demand without terms) |
+| `blocked` | Accepted, but the rules forbid carrying it out; `reason` says why. No relations gain |
+| `in_progress` | Funded work under way: `project` (the ruler's project ID) and `deadline_turn` (twice the work's months) |
+| `fulfilled` | Delivered: the project completed, or for independence, `actor` is the new state |
+| `failed` | A broken promise: the work was cancelled, or its deadline passed while the ruler held the region |
+| `lapsed` | Void without blame: the region passed to another owner, or was occupied at the deadline |
+
+Outcomes after `in_progress` add `settled_turn`, `event` and, except on fulfilment, `reason`.
+Terms, revision, text and deadlines never change after filing, and an outcome is final. A
+settlement event that starts funded work carries `demand_project`, the new project record, which
+the month's economy pass adds to the ruler's `status.projects`. An answer that names the wrong
+revision, names one for a legacy demand, repeats, or arrives after the demand is settled is
+rejected with HTTP 409 and no state change.

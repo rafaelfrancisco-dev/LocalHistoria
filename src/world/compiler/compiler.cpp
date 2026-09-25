@@ -254,6 +254,8 @@ void OperationCompiler::apply(EventScope &s, OpScope &op) {
         opSettle(s, op);
     else if (name == "settle_demand")
         opSettleDemand(s, op);
+    else if (name == "fulfill_demand")
+        opFulfillDemand(s, op);
     else if (name == "set_conflict_intensity")
         opIntensity(s, op);
     else if (name == "build")

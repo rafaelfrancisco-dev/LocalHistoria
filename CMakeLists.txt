@@ -9,7 +9,7 @@ find_package(SQLite3 REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_library(historia_core src/core/domestic.cpp src/core/lifecycle.cpp src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
+add_library(historia_core src/core/demands.cpp src/core/domestic.cpp src/core/lifecycle.cpp src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
   src/world/delta.cpp src/world/delta_checks.cpp src/world/geometry.cpp src/world/schema.cpp
   src/world/compiler/compiler.cpp src/world/compiler/helpers.cpp src/world/compiler/identity_ops.cpp
   src/world/compiler/treaty_ops.cpp src/world/compiler/treaty_terms.cpp src/world/compiler/proposals.cpp
@@ -104,6 +104,12 @@ add_test(NAME domestic COMMAND domestic_tests)
 set_tests_properties(domestic PROPERTIES FIXTURES_SETUP domestic_replay_fixture)
 add_test(NAME domestic_replay COMMAND replay_verify ${CMAKE_BINARY_DIR}/domestic-replay.json)
 set_tests_properties(domestic_replay PROPERTIES FIXTURES_REQUIRED domestic_replay_fixture)
+add_executable(demand_tests tests/demand_tests.cpp)
+target_link_libraries(demand_tests PRIVATE historia_core)
+add_test(NAME demands COMMAND demand_tests)
+set_tests_properties(demands PROPERTIES FIXTURES_SETUP demand_replay_fixture)
+add_test(NAME demand_replay COMMAND replay_verify ${CMAKE_BINARY_DIR}/demand-replay.json)
+set_tests_properties(demand_replay PROPERTIES FIXTURES_REQUIRED demand_replay_fixture)
 # Every suite runs in well under a second; a hang fails instead of running forever.
 get_property(all_tests DIRECTORY PROPERTY TESTS)
 set_tests_properties(${all_tests} PROPERTIES TIMEOUT 60)

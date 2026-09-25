@@ -34,8 +34,8 @@ code, tests and docs describe them, and `git log` has the originals. Dependencie
 | 28 | [consequential-events-and-occupation](28-consequential-events-and-occupation.md) (after 26, 27) | simulation + schema + UI | L, phased | implemented 2026-09-24 |
 | 29 | [optimized-play-builds](29-optimized-play-builds.md) | performance + build | S | build changes implemented; performance/Windows gates pending |
 | 30 | [cancellable-inference-and-job-recovery](30-cancellable-inference-and-job-recovery.md) | responsiveness + reliability | M | implemented 2026-09-24; Windows unverified |
-| 31 | [grounded-consequences-and-project-identity](31-grounded-consequences-and-project-identity.md) | simulation + replay | L, phased | planned; P1 rewards, P2 project depth |
-| 32 | [fulfillable-regional-demands](32-fulfillable-regional-demands.md) (funded fulfillment after 31B) | simulation + UI + consent | L, phased | planned; P1 |
+| 31 | [grounded-consequences-and-project-identity](31-grounded-consequences-and-project-identity.md) ([record](../docs/PLAN_31.md)) | simulation + replay | L, phased | implemented 2026-09-25 |
+| 32 | [fulfillable-regional-demands](32-fulfillable-regional-demands.md) ([record](../docs/PLAN_32.md)) | simulation + UI + consent | L, phased | implemented 2026-09-25; 2-month live A/B done |
 | 33 | [bounded-history-queries](33-bounded-history-queries.md) | performance + storage | M | planned; P2 |
 | 34 | [faster-reliable-adjudication](34-faster-reliable-adjudication.md) (final acceptance after 31–32) | inference performance + quality | L, measured | planned; P1 |
 

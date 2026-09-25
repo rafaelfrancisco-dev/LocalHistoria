@@ -42,7 +42,9 @@ class Mock(http.server.BaseHTTPRequestHandler):
     if 'trade talks' in i['action']:e['outcome_kind']='negotiation'
     if 'railway' in i['action']:e['outcome_kind']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}];e['project']={'id':'','objective':'National railway network','target':'PT','benefit':'infrastructure'}
     if i.get('regional_actor'):
-     e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
+     # Plan 32: Portugal's own regions ask for funded work; others make a political request.
+     ask=('Build a coastal railway','regional_project','infrastructure') if i['actor']=='PT' else ('Request a regional assembly','political','none')
+     e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':ask[0],'demand_kind':ask[1],'project_benefit':ask[2]}]
     if 'war-fixture' in i['action']:
      e['operations']=[{'action':'open_conflict','actors':['PT','ES'],'kind':'war','intensity':'medium','name':'War','text':'Border war with Spain'}]
      e['effects']=[{'actor':'PT','economy':'decline','stability':'decline'}]
@@ -165,6 +167,30 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    s.get('turns',dict(order(current,'bad-response',[]),responses=[{'proposal':'k0-9','accept':True,'revision':1}]),409)
    j=s.get('turns',dict(order(current,'fourth-turn',[]),responses=[{'proposal':offers[0],'accept':True,'revision':1}]),202);accepted_job=s.poll(j['id']);assert accepted_job['status']=='complete',accepted_job
    current=s.get('campaign')['state'];assert current['proposals'][offers[0]]['status']=='accepted' and current['commitments'][offers[0]]['name']=='Fixture Accord' and current['commitments'][offers[0]]['expires_turn']==current['turn']+6,current['commitments']
+   # Plan 32: a typed demand the server itself filed, answered at its revision, then funded.
+   def typed_demand(state):
+    return next(((r,d) for r,p in state['regional_politics'].items() if state['territories'][r]['controller']=='PT' for d in p['demands'] if d['status']=='pending' and d.get('terms',{}).get('kind')=='regional_project'),None)
+   found=typed_demand(current)
+   for n in range(4):
+    if found:break
+    j=s.get('turns',order(current,f'demand-wait-{n}',[]),202);assert s.poll(j['id'])['status']=='complete';current=s.get('campaign')['state'];found=typed_demand(current)
+   assert found,'no Portuguese region filed a demand within four extra months'
+   region,d=found;terms=d['terms']
+   assert d['revision']==1 and terms['category']=='investment' and terms['benefit']=='infrastructure' and terms['objective']=='Build a coastal railway' and terms['required_consent']==['PT'] and terms['estimated_cost_usd']>0,d
+   s.get('turns',dict(order(current,'stale-demand',[]),responses=[{'demand':d['id'],'region':region,'accept':True,'revision':2}]),409)
+   s.get('turns',dict(order(current,'unrevised-demand',[]),responses=[{'demand':d['id'],'region':region,'accept':True}]),409)
+   j=s.get('turns',dict(order(current,'grant-demand',[]),responses=[{'demand':d['id'],'region':region,'accept':True,'revision':1}]),202);assert s.poll(j['id'])['status']=='complete'
+   current=s.get('campaign')['state'];granted=next(x for x in current['regional_politics'][region]['demands'] if x['id']==d['id']);f=granted['fulfillment']
+   project=current['actors']['PT']['status']['projects'][f['project']]
+   assert granted['status']=='accepted' and f['state']=='in_progress' and f['deadline_turn']==f['turn']+24 and project['target']==region and project['objective']=='Build a coastal railway',(granted,project)
+   texts=[e['text'] for e in s.get('campaign')['journal'][0]['events']];assert any('accepted' in t and 'fulfilled only when it completes' in t for t in texts) and not any('granted' in t and 'Build a coastal railway' in t for t in texts),texts
+   s.get('turns',dict(order(current,'regrant-demand',[]),responses=[{'demand':d['id'],'region':region,'accept':True,'revision':1}]),409)
+   j=s.get('turns',order(current,'fund-demand',[]),202);assert s.poll(j['id'])['status']=='complete'
+   current=s.get('campaign')['state'];later=current['actors']['PT']['status']['projects'][f['project']]
+   assert later['paid']>project['paid'] or later.get('delay')=='funding',(project,later)
+   assert next(x for x in current['regional_politics'][region]['demands'] if x['id']==d['id'])['fulfillment']['state']=='in_progress'
+   s.stop();s.start();assert s.get('campaign')['state']==current
+   print('Server-filed typed demand answered at its revision, funded and reloaded',flush=True)
    with sqlite3.connect(s.save) as db:db.execute('UPDATE background SET document=? WHERE code=?',(json.dumps({'available':True,'revision':88,'excerpt':'new fixture'}),'PT'))
    export=s.get('replay');assert export['turns'][-1]['reference']['PT']['revision']==77
    assert 'engine' not in export['initial_state']

@@ -392,11 +392,17 @@ function renderStats() {
       const line = document.createElement("p");
       line.className = "demand";
       const { raised, by } = demandTurns(id, d);
-      const outcome = { accepted: "Granted", rejected: "Refused", expired: "Lapsed" }[d.status];
+      const outcome = d.status === "pending" ? "" : demandOutcome(d);
       line.textContent = outcome
         ? `${outcome}: ${humanize(d.text)}`
         : `Demands ${humanize(d.text).replace(/^./, (c) => c.toLowerCase())} · raised ${month(raised)} · answer by ${month(by)}`;
       politics.append(line);
+      if (d.status === "pending") {
+        const terms = document.createElement("small");
+        terms.className = "demand-terms";
+        terms.textContent = demandTerms(id, d);
+        politics.append(terms);
+      }
       const mine = answerable.get(`${id}/${d.id}`);
       if (mine) politics.append(answerChips(mine.key, "Grant", "Refuse", by <= state.turn ? "Lapses if unanswered this month" : `Lapses if unanswered by the end of ${month(by)}`));
     }
@@ -834,6 +840,27 @@ function demandTurns(region, d) {
   const controller = state.territories[region]?.controller;
   return { raised, by: d.answer_by_turn ?? raised + (controller === state.player ? 3 : 6) };
 }
+// What a demand asks for, what granting it costs or needs, and whose agreement it takes. Demands
+// raised before terms existed (and political ones) are only a promise to negotiate.
+function demandTerms(region, d) {
+  const t = d.terms, place = state.territories[region]?.name || region;
+  if (t?.kind === "regional_project")
+    return `Funded ${humanize(t.benefit).toLowerCase()} work (${t.category}) in ${place} · about ${t.months} months, est. ${usd(t.estimated_cost_usd)} from the national allowance · fulfilled only when the work completes`;
+  if (t?.kind === "independence")
+    return `Independence: ${place} becomes the state of ${t.new_state} · only ${actorName(t.required_consent[0])}, owning and holding it, can grant this`;
+  return "Political request · granting agrees to negotiate; no law, border or budget changes";
+}
+// An answered demand's record: accepting is not delivering.
+function demandOutcome(d) {
+  if (d.status !== "accepted") return { rejected: "Refused", expired: "Lapsed" }[d.status] || humanize(d.status);
+  const f = d.fulfillment;
+  if (!f) return "Granted";
+  if (f.state === "in_progress") {
+    const p = state.actors[d.responding_authority]?.status?.projects?.[f.project];
+    return `Accepted · funded work ${p ? `${Math.floor((100 * p.paid) / p.months)}% done` : "under way"}, due by ${month(f.deadline_turn)}`;
+  }
+  return { political: "Accepted for negotiation", fulfilled: "Fulfilled", failed: `Promise broken (${f.reason})`, blocked: `Accepted but blocked (${f.reason})`, lapsed: `Accepted, then lapsed (${f.reason})` }[f.state] || humanize(f.state);
+}
 // Pending demands from regions the player governs; answers are keyed "demand:<region>/<id>".
 function pendingDemands() {
   const out = [];
@@ -874,8 +901,11 @@ function demandCard({ key, region, d }) {
   meta.textContent = `Regional demand · raised ${month(raised)}`;
   const text = document.createElement("p");
   text.textContent = humanize(d.text);
+  const terms = document.createElement("p");
+  terms.className = "demand-terms";
+  terms.textContent = demandTerms(region, d);
   const note = by <= state.turn ? "Lapses if unanswered this month" : `Lapses if unanswered by the end of ${month(by)}`;
-  card.append(cardHead(state.territories[region]?.name || region, [["Demand", ""]]), meta, text, answerChips(key, "Grant", "Refuse", note));
+  card.append(cardHead(state.territories[region]?.name || region, [["Demand", ""]]), meta, text, terms, answerChips(key, "Grant", "Refuse", note));
   return card;
 }
 function decisionCards() {
@@ -908,7 +938,11 @@ function turnResponses() {
   const answers = Object.entries(readAnswers());
   return [
     ...answers.filter(([id]) => offered.has(id)).map(([proposal, accept]) => ({ proposal, accept, revision: state.proposals[proposal].revision || 1 })),
-    ...answers.filter(([key]) => demands.has(key)).map(([key, accept]) => ({ demand: demands.get(key).d.id, region: demands.get(key).region, accept })),
+    // A demand with terms is answered at its revision, so a changed demand cannot take a stale answer.
+    ...answers.filter(([key]) => demands.has(key)).map(([key, accept]) => {
+      const { d, region } = demands.get(key);
+      return { demand: d.id, region, accept, ...(d.revision ? { revision: d.revision } : {}) };
+    }),
   ];
 }
 function decisionKeys() {

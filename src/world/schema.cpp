@@ -1,6 +1,7 @@
+#include "localhistoria/demands.h"
+#include "localhistoria/domestic.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
-#include "localhistoria/domestic.h"
 #include "world/world_internal.h"
 #include <algorithm>
 namespace lh {
@@ -153,6 +154,14 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         p["agenda"] = string(500);
         p["relations"] = parse(R"({"type":"string","enum":["neutral","cooperative","strained"]})");
         p["demand"] = parse(R"({"type":"string","maxLength":500})");
+        // Required, not optional: the small model leaves optional fields out. C++ derives the
+        // terms from the kind; "political" asks only for negotiation.
+        if (typedDemands(w)) {
+            p["demand_kind"] = parse(
+                R"({"type":"string","enum":["political","regional_project","independence","none"]})");
+            p["project_benefit"] = parse(
+                R"({"type":"string","enum":["infrastructure","production","administration","public_services","none"]})");
+        }
         op("regional_initiative", p);
         p = Json::objectValue;
         p["region"] = region;

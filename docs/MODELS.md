@@ -217,3 +217,18 @@ monthly limits and diminishing repetition weights, to positive and negative rati
 Free-text descriptions cannot prove a project complete or grant unsupported benefits. Both
 nation decisions and adjudication see bounded authoritative project summaries, including paid
 months, delays and completion. See `docs/PLAN_31.md` for measured validation and limitations.
+
+### Plan 32 regional demand contract
+
+With demand version 1, `regional_initiative` requires `demand_kind` (`political`,
+`regional_project`, `independence`, `none`) and `project_benefit` (a plan 31 purpose or `none`).
+Both are required because the 4B model leaves optional fields out, and `none` is listed last
+because it tends to answer a required enum with its first value. The instruction adds one clause
+naming the three kinds. C++ derives every term: category, cost, months, the new state's name,
+regions and required consent. An empty `demand` text with a funded or independence kind gets a
+generated one. The schema grows by 244 bytes for these two fields. A typed demand adds up to
+about 300 bytes to `regional_politics` facts, which only central actors receive. Acceptance and
+fulfilment need no extra decision or adjudication call. A two-month A/B against the previous
+prompt showed no echo regression. The model filled both fields but chose only `political` in two
+samples, and once wrote `demand: "none"`, which C++ now treats as no demand (see
+`docs/PLAN_32.md`).

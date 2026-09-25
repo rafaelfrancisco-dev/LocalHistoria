@@ -1,7 +1,8 @@
 #include "localhistoria/conflicts.h"
+#include "localhistoria/demands.h"
+#include "localhistoria/domestic.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
-#include "localhistoria/domestic.h"
 #include "world/delta_internal.h"
 #include <utility>
 namespace lh::detail {
@@ -20,6 +21,36 @@ void checkEvents(const WorldDelta &d, const WorldState &w, std::set<std::string>
         if (e["background"].asBool())
             ++background;
         require(!e.isMember("major") || e["major"].isBool(), "Invalid event significance");
+        // Funded work an accepted demand started: a new project of the answering ruler, in the
+        // demanding region it owns and holds.
+        if (e.isMember("demand_project")) {
+            const auto &p = e["demand_project"];
+            const auto actor = e["actor"].asString();
+            require(typedDemands(w) && distinctProjects(w) && p.isObject() && p["id"].isString() &&
+                        p["category"].isString() && p["benefit"].isString() &&
+                        p["target"].isString() && p["objective"].isString(),
+                    "Invalid demand project");
+            if (!projects.isMember(actor))
+                projects[actor] =
+                    w.actors[actor]["status"].get("projects", Json::Value(Json::objectValue));
+            auto id = p["id"].asString(), target = p["target"].asString();
+            const auto &t = w.territories[target];
+            require(!projects[actor].isMember(id) && projects[actor].size() < projectCapacity &&
+                        supportedProject(p["category"].asString(), p["benefit"].asString()) &&
+                        id == domesticProjectId(actor, p["category"].asString(), target,
+                                                p["benefit"].asString()) &&
+                        t["owner"] == actor && t["controller"] == actor &&
+                        !p["objective"].asString().empty() &&
+                        p["objective"].asString().size() <= 120 && p["started"] == w.turn &&
+                        p["origin_event"] == e["id"] && p["state"] == "active" &&
+                        p["completion_condition"] == "paid_months" &&
+                        p.getMemberNames() ==
+                            std::vector<std::string>{"benefit", "category", "completion_condition",
+                                                     "id", "objective", "origin_event", "started",
+                                                     "state", "target"},
+                    "Invalid demand project");
+            projects[actor][id] = p;
+        }
         if (distinctProjects(w) && e.isMember("project")) {
             const auto &p = e["project"];
             auto action = e.get("project_action", "start").asString();
@@ -148,12 +179,49 @@ void checkRegionalChange(const Json::Value &c, const std::string &id, WorldState
                 p["demands"].isArray() && p["demands"].size() <= 8 &&
                 p["supporting_events"].isArray() && p["supporting_events"].size() <= 12,
             "Invalid regional politics");
-    for (auto &demand : p["demands"])
+    std::map<std::string, Json::Value> prior;
+    for (const auto &demand : c["before"]["demands"])
+        prior[demand["id"].asString()] = demand;
+    static const std::set<std::string> fulfillments{"political", "blocked", "in_progress",
+                                                    "fulfilled", "failed",  "lapsed"};
+    for (auto &demand : p["demands"]) {
         require(demand["id"].isString() && demand["text"].isString() &&
                     demand["text"].asString().size() <= 500 &&
                     (demand["status"] == "pending" || demand["status"] == "accepted" ||
                      demand["status"] == "rejected" || demand["status"] == "expired"),
                 "Invalid regional demand");
+        const bool typed = demand.isMember("terms") || demand.isMember("revision") ||
+                           demand.isMember("fulfillment");
+        require(!typed || typedDemands(w), "Demand terms require demand version 1");
+        if (!typedDemands(w))
+            continue;
+        const auto &f = demand["fulfillment"];
+        require(!demand.isMember("fulfillment") ||
+                    (demand["status"] == "accepted" && f.isObject() && f["state"].isString() &&
+                     fulfillments.contains(f["state"].asString()) && f["turn"].isInt()),
+                "Invalid demand fulfillment");
+        auto was = prior.find(demand["id"].asString());
+        if (was == prior.end()) {
+            // Every demand filed under version 1 has terms, and starts pending at revision 1.
+            require(demand["status"] == "pending" && demand["revision"] == demandRevision &&
+                        validDemandTerms(demand["terms"]) && !demand.isMember("fulfillment"),
+                    "Invalid new regional demand");
+            continue;
+        }
+        const auto &old = was->second;
+        // What was asked, and when it must be answered, never changes after filing.
+        for (auto k : {"text", "terms", "revision", "authority_at_creation", "answer_by_turn"})
+            require(old.isMember(k) == demand.isMember(k) && old[k] == demand[k],
+                    "Demand terms are immutable");
+        if (old["status"] != "pending")
+            require(old["status"] == demand["status"], "A settled demand stays settled");
+        // Only work under way reaches an outcome, and an outcome is final.
+        if (old.isMember("fulfillment") && old["fulfillment"] != f)
+            require(old["fulfillment"]["state"] == "in_progress" && f["state"] != "in_progress" &&
+                        f["state"] != "political" && f["state"] != "blocked" &&
+                        f["turn"] == old["fulfillment"]["turn"],
+                    "Demand fulfillment is final");
+    }
 }
 void checkProposalChange(const Json::Value &c, WorldState &w) {
     if (w.engine.get("lifecycle_version", 0).asInt() == 1) {

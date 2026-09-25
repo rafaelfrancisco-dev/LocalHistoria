@@ -1,3 +1,5 @@
+#include "localhistoria/demands.h"
+#include "localhistoria/domestic.h"
 #include "world/compiler/operation_compiler.h"
 #include <algorithm>
 namespace lh::detail {
@@ -19,17 +21,21 @@ std::string demandText(const Json::Value &d) {
     std::replace(text.begin(), text.end(), '_', ' ');
     return text.substr(0, 200);
 }
+const std::vector<std::string> relationSteps{"strained", "neutral", "cooperative"};
+long relationStep(const Json::Value &v) {
+    auto at = std::find(relationSteps.begin(), relationSteps.end(), v.asString());
+    return at == relationSteps.end() ? -1 : at - relationSteps.begin();
+}
 } // namespace
 void OperationCompiler::stepRelations(const std::string &r, Json::Value &p, int direction) const {
-    static const std::vector<std::string> steps{"strained", "neutral", "cooperative"};
     // One step a month, whatever else happened to the region this month.
     if (!direction || p["relations"] != regionalState(w, r)["relations"])
         return;
-    auto at = std::find(steps.begin(), steps.end(), p["relations"].asString());
-    if (at == steps.end())
+    auto at = relationStep(p["relations"]);
+    if (at < 0)
         return;
-    auto next = std::clamp<long>(at - steps.begin() + direction, 0, long(steps.size()) - 1);
-    p["relations"] = steps[size_t(next)];
+    auto next = std::clamp<long>(at + direction, 0, long(relationSteps.size()) - 1);
+    p["relations"] = relationSteps[size_t(next)];
 }
 // Answers the player gave to their regions' demands are applied as the month opens; a demand
 // past its deadline lapses as a refusal, and one whose region changed hands lapses with no
@@ -43,8 +49,11 @@ int OperationCompiler::settleDemands(Json::Value &all, const Json::Value &respon
             continue;
         auto r = a["region"].asString(), id = a["demand"].asString();
         bool open = false;
+        // A typed demand is answered at its exact revision; a legacy one has none.
         for (const auto &d : std::as_const(w.regionalPolitics)[r]["demands"])
-            open = open || (d["id"] == id && d["status"] == "pending");
+            open = open || (d["id"] == id && d["status"] == "pending" &&
+                            (d.isMember("revision") ? a["revision"] == d["revision"]
+                                                    : !a.isMember("revision")));
         if (!a["accept"].isBool() || !open || w.territories[r]["controller"] != w.player ||
             !answered.insert(r + "/" + id).second)
             throw ValidationError("Invalid or stale demand answer");
@@ -79,8 +88,11 @@ int OperationCompiler::settleDemands(Json::Value &all, const Json::Value &respon
             e["background"] = false;
             e["causes"] = Json::arrayValue;
             e["causes"].append(d["id"]);
+            // Under typed demands accepting is not granting: the settlement adds what was done.
             e["description"] =
-                answer == "accepted"   ? ruler + " granted " + place + "'s demand: " + text + "."
+                answer == "accepted" && typedDemands(w)
+                    ? ruler + " accepted " + place + "'s demand: " + text + "."
+                : answer == "accepted" ? ruler + " granted " + place + "'s demand: " + text + "."
                 : answer == "rejected" ? ruler + " refused " + place + "'s demand: " + text + "."
                 : lapse == "unanswered"
                     ? place + "'s demand lapsed unanswered: " + text + "."
@@ -97,6 +109,65 @@ int OperationCompiler::settleDemands(Json::Value &all, const Json::Value &respon
             ++count;
         }
     }
+    if (!typedDemands(w))
+        return count;
+    // Accepted funded work is kept or broken as the month opens: fulfilled once its project has
+    // completed; broken when the ruler cancelled it or let the deadline pass while holding the
+    // region; lapsed without blame when the region passed to another owner, or was occupied at
+    // the deadline.
+    for (const auto &r : w.regionalPolitics.getMemberNames())
+        for (const auto &d : w.regionalPolitics[r]["demands"]) {
+            const auto &f = d["fulfillment"];
+            if (d["status"] != "accepted" || f["state"] != "in_progress")
+                continue;
+            const auto &t = w.territories[r];
+            auto authority = d["responding_authority"].asString();
+            auto actor = w.hasActor(authority) ? authority : t["controller"].asString();
+            if (!w.hasActor(actor))
+                continue;
+            const auto &project =
+                w.actors[authority]["status"]["projects"][f["project"].asString()];
+            std::string outcome, reason;
+            if (t["owner"] != authority) {
+                outcome = "lapsed";
+                reason = "the region passed to another authority";
+            } else if (project["state"] == "completed")
+                outcome = "fulfilled";
+            else if (project["state"] != "active") {
+                outcome = "failed";
+                reason = "the funded work was cancelled";
+            } else if (w.turn > f["deadline_turn"].asInt()) {
+                outcome = t["controller"] == authority ? "failed" : "lapsed";
+                reason = t["controller"] == authority ? "the work was not completed in time"
+                                                      : "the region was occupied at the deadline";
+            }
+            if (outcome.empty())
+                continue;
+            auto place = t["name"].asString(), ruler = w.actors[actor]["name"].asString(),
+                 text = demandText(d);
+            Json::Value e;
+            e["actor"] = actor;
+            e["blocked_by"] = "none";
+            e["background"] = false;
+            e["causes"] = Json::arrayValue;
+            e["causes"].append(d["id"]);
+            e["description"] =
+                outcome == "fulfilled" ? ruler + " fulfilled " + place + "'s demand: " + text +
+                                             "; the funded work is complete."
+                : outcome == "failed"
+                    ? ruler + " broke its promise to " + place + ": " + text + " (" + reason + ")."
+                    : place + "'s accepted demand lapsed: " + text + " (" + reason + ").";
+            Json::Value op;
+            op["action"] = "fulfill_demand";
+            op["region"] = r;
+            op["demand"] = d["id"];
+            op["outcome"] = outcome;
+            if (!reason.empty())
+                op["reason"] = reason;
+            e["operations"].append(op);
+            all.append(e);
+            ++count;
+        }
     return count;
 }
 void OperationCompiler::opSettleDemand(EventScope &s, OpScope &op) {
@@ -107,6 +178,11 @@ void OperationCompiler::opSettleDemand(EventScope &s, OpScope &op) {
     if (p.isNull())
         p = regionalState(w, r);
     bool found = false;
+    // Ignoring a demand is never better than refusing it; one addressed to a vanished authority
+    // costs no one.
+    int direction = answer == "accepted"                                    ? 1
+                    : answer == "rejected" || op.o["lapse"] == "unanswered" ? -1
+                                                                            : 0;
     for (auto &d : p["demands"])
         if (d["id"] == id && d["status"] == "pending") {
             d["status"] = answer;
@@ -117,22 +193,156 @@ void OperationCompiler::opSettleDemand(EventScope &s, OpScope &op) {
                 d["response_event"] = s.id;
                 d["responding_authority"] = s.ev;
             }
+            if (answer == "accepted" && typedDemands(w))
+                direction = grantDemand(s, r, d);
             found = true;
         }
     if (!found)
         throw Infeasible("no pending demand to settle");
-    // Ignoring a demand is never better than refusing it; one addressed to a vanished authority
-    // costs no one.
-    stepRelations(r, p,
-                  answer == "accepted"                                 ? 1
-                  : answer == "rejected" || op.o["lapse"] == "unanswered" ? -1
-                                                                        : 0);
+    stepRelations(r, p, direction);
     p["supporting_events"].append(s.id);
     if (p["supporting_events"].size() > 12)
         p["supporting_events"].removeIndex(0, nullptr);
     pending.touch("regional", r, w.regionalPolitics[r], s.id, op.why) = p;
     s.regions.insert(r);
     op.done = true;
+}
+void OperationCompiler::opFulfillDemand(EventScope &s, OpScope &op) {
+    if (!s.trusted)
+        throw Infeasible("unknown operation " + op.name);
+    auto r = region(op), id = str(op, "demand"), outcome = str(op, "outcome");
+    auto p = pending.current("regional", w.regionalPolitics, r);
+    if (p.isNull())
+        p = regionalState(w, r);
+    bool found = false;
+    for (auto &d : p["demands"])
+        if (d["id"] == id && d["status"] == "accepted" &&
+            std::as_const(d)["fulfillment"]["state"] == "in_progress") {
+            auto &f = d["fulfillment"];
+            f["state"] = outcome;
+            f["settled_turn"] = w.turn;
+            f["event"] = s.id;
+            if (op.o["reason"].isString())
+                f["reason"] = op.o["reason"];
+            found = true;
+        }
+    if (!found)
+        throw Infeasible("no accepted demand awaiting fulfillment");
+    // Delivery earns what acceptance did not; a broken promise costs what acceptance earned.
+    stepRelations(r, p, outcome == "fulfilled" ? 1 : outcome == "failed" ? -1 : 0);
+    p["supporting_events"].append(s.id);
+    if (p["supporting_events"].size() > 12)
+        p["supporting_events"].removeIndex(0, nullptr);
+    pending.touch("regional", r, w.regionalPolitics[r], s.id, op.why) = p;
+    s.regions.insert(r);
+    op.done = true;
+}
+int OperationCompiler::grantDemand(EventScope &s, const std::string &r, Json::Value &d) {
+    // Read through a const view: a legacy demand has no terms, and naming them must not add any.
+    const auto terms = std::as_const(d)["terms"];
+    const auto kind = terms.get("kind", "political").asString();
+    const auto &t = w.territories[r];
+    const auto place = t["name"].asString();
+    Json::Value f;
+    f["turn"] = w.turn;
+    auto blocked = [&](const std::string &why) {
+        f["state"] = "blocked";
+        f["reason"] = why;
+        d["fulfillment"] = f;
+        s.verdict = "It cannot be carried out: " + why + ".";
+        return 0;
+    };
+    // A legacy free-text demand is never read as permission to change anything.
+    if (kind == "political") {
+        f["state"] = "political";
+        d["fulfillment"] = f;
+        s.verdict = "Accepted for negotiation only; no law, border or budget changed.";
+        return 1;
+    }
+    if (t["owner"] != s.ev)
+        return blocked("only " +
+                       w.actors[t["owner"].asString()].get("name", "its owner").asString() +
+                       ", which owns " + place + ", can agree to this; holding it is not enough");
+    if (kind == "regional_project") {
+        auto category = terms["category"].asString(), benefit = terms["benefit"].asString();
+        auto id = domesticProjectId(s.ev, category, r, benefit);
+        if (!domesticProjects.isMember(s.ev))
+            domesticProjects[s.ev] = std::as_const(w.actors)[s.ev]["status"].get(
+                "projects", Json::Value(Json::objectValue));
+        auto &projects = domesticProjects[s.ev];
+        if (projects.isMember(id)) {
+            // Work already under way answers the demand; finished or abandoned work cannot.
+            if (projects[id]["state"] != "active")
+                return blocked("that work was already " + projects[id]["state"].asString());
+        } else {
+            if (projects.size() >= projectCapacity)
+                return blocked("the government's project record is full");
+            Json::Value p;
+            p["benefit"] = benefit;
+            p["category"] = category;
+            p["completion_condition"] = "paid_months";
+            p["id"] = id;
+            p["objective"] = terms["objective"];
+            p["origin_event"] = s.id;
+            p["started"] = w.turn;
+            p["state"] = "active";
+            p["target"] = r;
+            projects[id] = p;
+            s.demandProject = p;
+        }
+        f["state"] = "in_progress";
+        f["project"] = id;
+        f["deadline_turn"] = w.turn + fulfillmentMonths(terms);
+        d["fulfillment"] = f;
+        s.verdict = "Funded " + category + " work in " + place +
+                    " begins from the national allowance; the demand is fulfilled only when it "
+                    "completes.";
+        return 1;
+    }
+    // Independence: the owner, holding the region, founds the state and cedes this region alone.
+    bool remaining = false;
+    for (const auto &id : w.territories.getMemberNames())
+        if (id != r && (pending.contains("territory", id)
+                            ? pending.current("territory", w.territories, id)["owner"] == s.ev
+                            : w.territories[id]["owner"] == s.ev)) {
+            remaining = true;
+            break;
+        }
+    if (!remaining)
+        return blocked("it would leave " + w.actors[s.ev]["name"].asString() +
+                       " without territory");
+    auto name = terms["new_state"].asString();
+    auto before = snapshot();
+    Touched touched = s;
+    pending.open();
+    try {
+        Json::Value create;
+        create["actor_id"] = slug(name, 30);
+        create["name"] = name;
+        OpScope founding(create);
+        founding.name = "create_actor";
+        founding.why = "Independence granted to " + place;
+        opCreateActor(s, founding);
+        Json::Value cession;
+        cession["region"] = r;
+        cession["to"] = aliases.at("~" + alphanumeric(name));
+        OpScope transfer(cession);
+        transfer.name = "transfer_territory";
+        transfer.why = founding.why;
+        opTerritory(s, transfer);
+        pending.commit();
+        f["actor"] = cession["to"];
+    } catch (const Infeasible &x) {
+        pending.rollback();
+        restore(std::move(before));
+        static_cast<Touched &>(s) = std::move(touched);
+        return blocked(x.what());
+    }
+    s.structural = true;
+    f["state"] = "fulfilled";
+    d["fulfillment"] = f;
+    s.verdict = "Independence took effect: " + name + " now governs " + place + ".";
+    return 0;
 }
 void OperationCompiler::opRegional(EventScope &s, OpScope &op) {
     auto &o = op.o;
@@ -146,11 +356,31 @@ void OperationCompiler::opRegional(EventScope &s, OpScope &op) {
         if (s.regional != r)
             throw Infeasible("only the selected regional actor can set its agenda");
         p["agenda"] = str(op, "agenda");
-        p["relations"] = str(op, "relations");
-        if (o["demand"].isString() && !o["demand"].asString().empty()) {
+        auto kind = o.get("demand_kind", "none").asString();
+        auto text = o.get("demand", "").asString();
+        if (typedDemands(w)) {
+            // A region moves its own stance one step a month, and cannot erase a settlement's.
+            auto want = relationStep(o["relations"]), have = relationStep(p["relations"]);
+            if (want < 0)
+                throw Infeasible("unknown regional relations");
+            stepRelations(r, p, want > have ? 1 : want < have ? -1 : 0);
+            // A small model writes "none" for no demand, and often names the kind but leaves the
+            // text empty.
+            if (lowercase(text) == "none")
+                text.clear();
+            if (text.empty() && kind == "independence")
+                text = "Independence for " + w.territories[r]["name"].asString();
+            else if (text.empty() && kind == "regional_project")
+                text = "Funded " + o.get("project_benefit", "public works").asString() + " for " +
+                       w.territories[r]["name"].asString();
+        } else
+            p["relations"] = str(op, "relations");
+        if (!text.empty()) {
             if (p["demands"].size() >= 8) {
+                // Settled records make room; accepted work still under way never does.
                 for (Json::ArrayIndex n = 0; n < p["demands"].size(); ++n)
-                    if (p["demands"][n]["status"] != "pending") {
+                    if (p["demands"][n]["status"] != "pending" &&
+                        std::as_const(p["demands"][n])["fulfillment"]["state"] != "in_progress") {
                         p["demands"].removeIndex(n, nullptr);
                         break;
                     }
@@ -159,11 +389,16 @@ void OperationCompiler::opRegional(EventScope &s, OpScope &op) {
                 throw Infeasible("regional pending demand capacity reached");
             Json::Value demand;
             demand["id"] = s.id;
-            demand["text"] = o["demand"];
+            demand["text"] = text;
             demand["status"] = "pending";
             demand["authority_at_creation"] = s.ev;
             if (consequential())
                 demand["answer_by_turn"] = answerBy(w, r, demand);
+            if (typedDemands(w)) {
+                demand["revision"] = demandRevision;
+                demand["terms"] =
+                    demandTerms(w, r, kind, o.get("project_benefit", "none").asString(), text);
+            }
             p["demands"].append(demand);
         }
     } else {
@@ -183,7 +418,10 @@ void OperationCompiler::opRegional(EventScope &s, OpScope &op) {
                 found = true;
                 // Granting eases relations with the capital; refusing sours them.
                 if (consequential())
-                    stepRelations(r, p, response == "accepted" ? 1 : -1);
+                    stepRelations(r, p,
+                                  response != "accepted" ? -1
+                                  : typedDemands(w)      ? grantDemand(s, r, d)
+                                                         : 1);
             }
         if (!found)
             throw Infeasible("no pending demand to answer");

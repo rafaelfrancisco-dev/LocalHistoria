@@ -38,6 +38,10 @@ class OperationCompiler {
         std::set<std::string> warParties, tradeParties, seizedOwners;
         // Parties to a trade treaty or union that ended here: their economies lose what it brought.
         std::set<std::string> tradeLoss;
+        // What granting a typed demand did, appended to the event text, and the funded project it
+        // started (demand version 1).
+        std::string verdict;
+        Json::Value demandProject;
     };
     struct EventScope : Touched {
         explicit EventScope(const Json::Value &e) : e(e) {}
@@ -94,6 +98,10 @@ class OperationCompiler {
 
     void opRegional(EventScope &s, OpScope &op);
     void opSettleDemand(EventScope &s, OpScope &op);
+    void opFulfillDemand(EventScope &s, OpScope &op);
+    // Carries out an accepted typed demand's terms as far as the rules allow, recording its
+    // fulfillment state; returns the relations step the acceptance earns.
+    int grantDemand(EventScope &s, const std::string &r, Json::Value &d);
     // Moves a region's relations one step toward cooperative (+1) or strained (-1), at most once
     // a month.
     void stepRelations(const std::string &r, Json::Value &p, int direction) const;

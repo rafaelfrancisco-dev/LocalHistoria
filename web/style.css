@@ -664,6 +664,11 @@ h2 .badge {
 #regional-politics .demand {
   margin: 2px 0;
 }
+.demand-terms {
+  display: block;
+  margin: 2px 0 4px;
+  color: var(--muted);
+}
 #regional-politics .chips {
   margin: 2px 0 8px;
 }

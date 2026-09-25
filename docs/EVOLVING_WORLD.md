@@ -670,3 +670,43 @@ The inspector, journal and model context show the same authoritative progress an
 On upgrade, each category-keyed effort becomes a deterministic legacy project. Its paid work,
 remaining paid months, monthly price and old national completion benefit are preserved. Its label
 explicitly says the objective was not recorded; no objective is inferred from historical prose.
+
+### Fulfillable regional demands (Plan 32)
+
+Turn references and `engine` record `demand_version: 1`, which requires project version 1.
+Missing versions select the earlier rules, and historical state and event replay is unchanged.
+
+**Agreeing to a demand is not delivering it.** A regional initiative names its demand's kind:
+`political`, `regional_project` (with a supported purpose) or `independence`. C++ derives
+bounded, immutable terms from that kind and the region. A funded request without a supported
+purpose becomes a political one. Regions only propose; they never execute national powers.
+Answer windows are unchanged: three months in the player's regions and six elsewhere.
+
+What accepting does depends on the terms:
+
+- **Political** (and every demand filed before terms existed, such as a free-text
+  `sovereign_recognition`): accepted for negotiation only. No law, border or budget changes, and
+  the event says so. Relations ease one step, as before.
+- **Regional project:** the answering ruler must own and hold the region. Acceptance starts, or
+  links to an active, plan 31 project with the region as its target and the demand's purpose. It
+  competes for the same monthly allowance as other work, stalls when underfunded and pauses
+  while the region is lost. Relations ease one step on acceptance. The demand is **fulfilled**
+  as the month after completion opens, with one more step. It **fails** (a broken promise, one
+  step back) if the ruler cancels the work, or still holds the region when the deadline
+  passes (twice the work's months). It **lapses** without blame if the region passes to another
+  owner, or is occupied at the deadline. Work that is already completed or cancelled cannot
+  answer a new demand, and a full project record blocks it.
+- **Independence:** only the owner, holding the region and keeping other land, can grant it.
+  Acceptance founds the state and cedes that one region in the same month, through the ordinary
+  `create_actor` and `transfer_territory` rules (one new state a month; civilian works pass with
+  the land). If any rule refuses, the whole grant rolls back and the demand is recorded as
+  **blocked** with the reason, with no relations gain. An occupier cannot give away another
+  country's sovereignty.
+
+A blocked acceptance earns nothing, so accepting what cannot be done is never a free gain.
+Relations still move at most one step a month. Under version 1 a regional initiative also moves
+its own stance only one step, so it cannot erase a settlement's step in the same month.
+AI rulers answering with `respond_regional` follow the same rules. The compiler appends what
+actually happened to their description. Demand records stay bounded at eight per region, and an
+accepted demand whose work is under way is never evicted. Acceptance and fulfilment use no
+extra model call.

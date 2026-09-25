@@ -192,13 +192,19 @@ void turns(Server &s, const HttpRequestPtr &, Json::Value b, const CB &cb) {
         throw ValidationError("Too many proposal responses");
     for (auto &r : b["responses"]) {
         if (r.isObject() && r.isMember("demand")) {
-            if (r.getMemberNames() != std::vector<std::string>{"accept", "demand", "region"} ||
-                !r["accept"].isBool() || !r["demand"].isString() || !r["region"].isString())
+            // A demand with terms is answered at its exact revision; a legacy one without.
+            auto names = r.getMemberNames();
+            if ((names != std::vector<std::string>{"accept", "demand", "region"} &&
+                 names != std::vector<std::string>{"accept", "demand", "region", "revision"}) ||
+                !r["accept"].isBool() || !r["demand"].isString() || !r["region"].isString() ||
+                (r.isMember("revision") && !r["revision"].isInt()))
                 throw ValidationError("Invalid demand response");
             auto region = r["region"].asString(), id = r["demand"].asString();
             bool open = false;
             for (const auto &d : std::as_const(w.regionalPolitics)[region]["demands"])
-                open = open || (d["id"] == id && d["status"] == "pending");
+                open = open || (d["id"] == id && d["status"] == "pending" &&
+                                (d.isMember("revision") ? r["revision"] == d["revision"]
+                                                        : !r.isMember("revision")));
             if (!open || !w.territories.isMember(region) ||
                 w.territories[region]["controller"] != w.player ||
                 !answered.insert("demand:" + region + "/" + id).second)

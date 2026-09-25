@@ -296,14 +296,16 @@ try {
   assert.ok(regional);
   await page.evaluate(async id => { await select(state.territories[id].controller); }, regional);
   const politicsText = await page.locator("#regional-politics").innerText();
-  assert.match(politicsText, /Demands request a regional assembly · raised \w+ \d{4} · answer by \w+ \d{4}/);
+  assert.match(politicsText, /Demands (request a regional assembly|build a coastal railway) · raised \w+ \d{4} · answer by \w+ \d{4}/);
   assert.doesNotMatch(politicsText, /_|\(t\d+-/);
   // Plan 28 C: a demand from one of the player's regions is answered with Grant or Refuse, in the
   // regional politics panel and the decisions popup. This flow's regional slots go to other
   // nations' war fronts, so one is staged in the page and cleared by a reload.
   const staged = await page.evaluate(async () => {
     const region = Object.keys(state.territories).find((id) => state.territories[id].controller === state.player && state.territories[id].owner === state.player);
-    state.regional_politics[region] = { agenda: "home_rule", relations: "neutral", supporting_events: [], demands: [{ id: `t${state.turn}-staged`, text: "sovereign_recognition", status: "pending" }] };
+    // Plan 32: a legacy free-text demand beside one with typed terms and a revision.
+    const typed = { id: `t${state.turn}-typed`, text: "Coastal railway", status: "pending", revision: 1, terms: { kind: "regional_project", category: "investment", benefit: "infrastructure", objective: "Coastal railway", months: 12, estimated_cost_usd: 600000000, required_consent: [state.player] } };
+    state.regional_politics[region] = { agenda: "home_rule", relations: "neutral", supporting_events: [], demands: [{ id: `t${state.turn}-staged`, text: "sovereign_recognition", status: "pending" }, typed] };
     await select(state.player);
     renderDecisions();
     return { region, id: `t${state.turn}-staged`, by: month(state.turn + 3) };
@@ -313,13 +315,18 @@ try {
   await decisions.waitFor({ state: "visible", timeout: 5000 });
   const card = decisions.locator(".proposal").filter({ hasText: "Sovereign recognition" });
   assert.match(await card.innerText({ timeout: 5000 }), new RegExp(`Regional demand · raised [\\s\\S]*Lapses if unanswered by the end of ${staged.by}`));
+  assert.match(await card.innerText(), /Political request · granting agrees to negotiate; no law, border or budget changes/);
   await card.getByRole("button", { name: "Grant", exact: true }).click({ timeout: 5000 });
+  const typedCard = decisions.locator(".proposal").filter({ hasText: "Coastal railway" });
+  assert.match(await typedCard.innerText({ timeout: 5000 }), /Funded infrastructure work \(investment\) in .+ · about 12 months, est\. US\$600 million from the national allowance · fulfilled only when the work completes/);
+  await typedCard.getByRole("button", { name: "Refuse", exact: true }).click({ timeout: 5000 });
   await page.locator("#decisions-close").click({ timeout: 5000 });
   const panel = await page.locator("#regional-politics").innerText({ timeout: 5000 });
   assert.match(panel, new RegExp(`Demands sovereign recognition · raised \\w+ \\d{4} · answer by ${staged.by}`));
   assert.doesNotMatch(panel, /_|staged/);
-  assert.equal(await page.locator("#regional-politics").getByRole("button", { name: "Grant", exact: true }).getAttribute("aria-pressed", { timeout: 5000 }), "true");
-  assert.deepEqual(await page.evaluate(() => turnResponses()), [{ demand: staged.id, region: staged.region, accept: true }]);
+  assert.equal(await page.locator("#regional-politics").getByRole("button", { name: "Grant", exact: true }).first().getAttribute("aria-pressed", { timeout: 5000 }), "true");
+  assert.match(panel, /Funded infrastructure work \(investment\)/);
+  assert.deepEqual(await page.evaluate(() => turnResponses()), [{ demand: staged.id, region: staged.region, accept: true }, { demand: staged.id.replace("staged", "typed"), region: staged.region, accept: false, revision: 1 }]);
   await page.evaluate(() => setAnswers({}));
   await page.reload();
   await page.waitForFunction(() => state && !busy);

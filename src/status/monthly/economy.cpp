@@ -143,27 +143,34 @@ void MonthlyStatus::fund(const std::string &a) {
     const bool projects = distinctProjects(w);
     const char *work = projects ? "projects" : "efforts";
     if (projects)
-        for (const auto &e : delta.events) {
-            if (e["actor"] != a || !e["project"].isObject()) continue;
-            const auto &p = e["project"];
-            auto id = p["id"].asString();
-            if (s[work].isMember(id)) {
-                if (s[work][id]["state"] != "completed") {
-                    if (e["project_action"] == "cancel") s[work][id]["state"] = "cancelled";
-                    else if (e["project_action"] == "continue") s[work][id]["state"] = "active";
+        for (const auto &e : delta.events)
+            // Work an accepted demand started comes first; the event's own project may continue it.
+            for (const std::string key : {"demand_project", "project"}) {
+                if (e["actor"] != a || !e[key].isObject())
+                    continue;
+                const auto &p = e[key];
+                auto id = p["id"].asString();
+                if (s[work].isMember(id)) {
+                    if (key == "project" && s[work][id]["state"] != "completed") {
+                        if (e["project_action"] == "cancel")
+                            s[work][id]["state"] = "cancelled";
+                        else if (e["project_action"] == "continue")
+                            s[work][id]["state"] = "active";
+                    }
+                    continue;
                 }
-                continue;
+                bool investment = p["category"] == "investment";
+                auto item = p;
+                int months = investment ? rate::investmentMonths : rate::reformMonths;
+                item["months"] = months;
+                item["paid"] = 0;
+                item["paid_usd"] = Json::Int64(0);
+                auto target = p["target"].asString();
+                double output = target == a ? effective[a] : number(cT[target], "gdp_usd");
+                item["monthly_usd"] = Int(std::llround(
+                    (investment ? rate::investmentCost : rate::reformCost) * output / months));
+                s[work][id] = item;
             }
-            bool investment = p["category"] == "investment";
-            auto item = p;
-            int months = investment ? rate::investmentMonths : rate::reformMonths;
-            item["months"] = months; item["paid"] = 0; item["paid_usd"] = Json::Int64(0);
-            auto target = p["target"].asString();
-            double output = target == a ? effective[a] : number(cT[target], "gdp_usd");
-            item["monthly_usd"] = Int(std::llround(
-                (investment ? rate::investmentCost : rate::reformCost) * output / months));
-            s[work][id] = item;
-        }
     // Efforts the month's events started. Equivalent requests continue the one already open.
     for (const auto &e : delta.events)
         if (!projects && e["actor"] == a && e["effort"].isString()) {

@@ -1,5 +1,6 @@
-#include "world/compiler/operation_compiler.h"
+#include "localhistoria/demands.h"
 #include "localhistoria/domestic.h"
+#include "world/compiler/operation_compiler.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -151,6 +152,11 @@ void OperationCompiler::buildEvent(EventScope &s) {
                                 : "Preliminary diplomatic talks took place; no treaty offer or "
                                   "agreement was recorded.";
     }
+    // What granting a typed demand actually did, after whatever the description claimed.
+    if (happened && !s.verdict.empty())
+        event["text"] = withVerdict(event["text"].asString(), s.verdict).substr(0, 2000);
+    if (happened && s.demandProject.isObject())
+        event["demand_project"] = s.demandProject;
     event["identity_changes"] = Json::arrayValue;
     for (const auto &c : pending)
         if (c.kind == "actor" && c.event == s.id && c.after["flag_revision"].isUInt() &&
@@ -200,6 +206,8 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     if (inert)
         for (const auto &o : (realism() ? s.successfulOps : s.seenOps)) {
             if (!o["demand"].asString().empty() ||
+                (typedDemands(w) &&
+                 (o["demand_kind"] == "regional_project" || o["demand_kind"] == "independence")) ||
                 (o["relations"].isString() &&
                  o["relations"] != regionalState(w, s.regional)["relations"]))
                 inert = false;

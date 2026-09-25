@@ -112,6 +112,7 @@ int main(int argc, char **) {
                 if (!rules) {
                     refs.removeMember("consequence_version");
                     refs.removeMember("project_version");
+                    refs.removeMember("demand_version");
                 }
                 auto base = beginTurn(w, refs);
                 Json::Value response;
@@ -293,6 +294,7 @@ int main(int argc, char **) {
         exportDoc["geography"] = Json::objectValue;
         auto oldRefs = lifecycleReference(w);
         oldRefs.removeMember("project_version");
+        oldRefs.removeMember("demand_version");
         oldRefs.removeMember("consequence_version");
         auto old = finishTurn(beginTurn(w, oldRefs), {}, {}, {}, oldRefs);
         auto append = [&](const Resolution &r, const Json::Value &refs) {

@@ -18,7 +18,8 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
             if (isOpen(v) || v["status"] == "pending") links(v);
     for (const auto &region : state["regional_politics"])
         for (const auto &demand : region["demands"])
-            if (demand["status"] == "pending") links(demand);
+            if (demand["status"] == "pending" || demand["fulfillment"]["state"] == "in_progress")
+                links(demand);
     struct Candidate { Json::Value event; int turn, priority; Json::Int64 row; };
     std::vector<Candidate> candidates;
     // EXISTS avoids duplicate event links; select priority before the 40-event cap.
