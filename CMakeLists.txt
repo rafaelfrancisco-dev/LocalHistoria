@@ -112,6 +112,14 @@ add_test(NAME demands COMMAND demand_tests)
 set_tests_properties(demands PROPERTIES FIXTURES_SETUP demand_replay_fixture)
 add_test(NAME demand_replay COMMAND replay_verify ${CMAKE_BINARY_DIR}/demand-replay.json)
 set_tests_properties(demand_replay PROPERTIES FIXTURES_REQUIRED demand_replay_fixture)
+
+# Disposable SQLite benchmark fixture regression; no live-model calls.
+add_test(NAME benchmark_fixture COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/benchmark_fixture_tests.py)
+
 # Every suite runs in well under a second; a hang fails instead of running forever.
 get_property(all_tests DIRECTORY PROPERTY TESTS)
 set_tests_properties(${all_tests} PROPERTIES TIMEOUT 60)
+
+add_executable(adjudication_fixtures tools/adjudication_fixtures.cpp)
+target_include_directories(adjudication_fixtures PRIVATE src)
+target_link_libraries(adjudication_fixtures PRIVATE historia_services)

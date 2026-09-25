@@ -16,7 +16,7 @@ void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) 
     // Starting or restating funded work grants no immediate statistical reward.
     event.removeMember("effort");
     event.removeMember("effects");
-    const auto &request = s.e["project"];
+    auto request = s.e["project"];
     auto reject = [&](const std::string &why) {
         event["project_reason"] = why;
         event["text"] = event["text"].asString() + " No funded project was recorded: " + why + ".";
@@ -24,6 +24,15 @@ void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) 
     if (!s.regional.empty() || !request.isObject()) {
         reject("unsupported or unspecified project");
         return;
+    }
+    // The schema names the benefit "sector" so it generates after the objective.
+    if (request.isMember("sector")) {
+        if (request.isMember("benefit")) {
+            reject("unknown project field");
+            return;
+        }
+        request["benefit"] = request["sector"];
+        request.removeMember("sector");
     }
     if (!domesticProjects.isMember(s.ev))
         domesticProjects[s.ev] =

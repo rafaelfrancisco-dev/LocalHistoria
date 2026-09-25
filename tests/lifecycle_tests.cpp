@@ -57,6 +57,28 @@ int main() {
         tampered.changes = parse(R"([{"kind":"engine","id":"accounting","event":"t1-tamper",
           "before":null,"after":{"budget":100},"rationale":"Model injection"}])");
         rejects([&] { finishTurn(first, tampered, {}, fixture["geography"], refs); });
+        // Compact compiler text comes only from accepted changes; legacy text stays unchanged.
+        {
+            auto v2 = first.state, v3 = first.state;
+            v2.engine["event_text_version"] = 2;
+            v3.engine["event_text_version"] = 3;
+            auto response = parse(R"({"events":[{"actor":"AA","blocked_by":"none","causes":[],
+              "description":"Misleading duplicated description","operations":[{"action":"build","actor":"AA",
+              "kind":"base","name":"Test Base","region":"AA"}]}]})");
+            auto oldText = compileOperations(v2, response, {});
+            auto compact = compileOperations(v3, response, {});
+            check(oldText.events[0]["text"].asString().find("Misleading duplicated") != std::string::npos,
+                  "Version 2 preserves historical mechanical prose");
+            check(compact.events[0]["text"].asString().find("Test Base") != std::string::npos &&
+                  compact.events[0]["text"].asString().find("construction is underway") != std::string::npos &&
+                  compact.events[0]["text"].asString().find("Misleading") == std::string::npos,
+                  "Version 3 renders accepted construction and its actual status");
+            response["events"][0]["operations"][0]["region"] = "BB";
+            auto rejected = compileOperations(v3, response, {});
+            check(rejected.events[0]["text"].asString().find("construction is underway") == std::string::npos &&
+                  rejected.events[0]["text"].asString().find("Rejected build") != std::string::npos,
+                  "Rejected construction cannot be narrated as accepted");
+        }
         // A real mixed-version export is also checked by the replay executable in CTest.
         Adjacency adj;
         for (auto &id : fixture["adjacency"].getMemberNames())
@@ -65,6 +87,7 @@ int main() {
         w = decode(fixture["campaign"]);
         for (int month = 0; month < 3; ++month) {
             refs = lifecycleReference(w);
+            if (month == 1) refs["event_text_version"] = 3;
             auto result = finishTurn(beginTurn(w, refs), {}, adj, fixture["geography"], refs);
             auto replay = finishTurn(beginTurn(decode(encode(w)), parse(dump(refs))), {}, adj,
                                      fixture["geography"], refs);

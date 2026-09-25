@@ -67,6 +67,7 @@ void TurnRunner::run(const TurnPlan &p, const std::string &id) {
         auto turnContexts = contexts;
         auto turnIndependent = independentContexts;
         auto turnRefs = refs;
+        if (request.experiment == "compact") turnRefs["event_text_version"] = 3;
         // Engaged nations ground their choices in a chronicle, written when
         // missing, a year old or source-less.
         std::set<std::string> chronicled;

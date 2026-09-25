@@ -346,7 +346,10 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
         }
     }
     if (distinctProjects(w)) {
-        auto project = parse(R"({"type":"object","additionalProperties":false,"required":["id","objective","target","benefit","action"],"properties":{"action":{"type":"string","enum":["start","continue","cancel"]},"id":{"type":"string","maxLength":256},"objective":{"type":"string","maxLength":120},"target":{"type":"string","maxLength":120},"benefit":{"type":"string","enum":["administration","public_services","infrastructure","production","legacy"]}}})");
+        // Keys generate alphabetically. As "benefit", the 4B chose it before writing the objective
+        // and took the first enum value; "sector" follows the objective. The compiler stores it
+        // as the project's benefit.
+        auto project = parse(R"({"type":"object","additionalProperties":false,"required":["id","objective","target","sector","action"],"properties":{"action":{"type":"string","enum":["start","continue","cancel"]},"id":{"type":"string","maxLength":256},"objective":{"type":"string","maxLength":120},"target":{"type":"string","maxLength":120},"sector":{"type":"string","enum":["administration","public_services","infrastructure","production","legacy"]}}})");
         event["properties"]["project"]["anyOf"].append(parse(R"({"type":"null"})"));
         defs["domestic_project"] = project;
         event["properties"]["project"]["anyOf"].append(ref("domestic_project"));
@@ -486,6 +489,24 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     schema["properties"]["world_events"]["type"] = "array";
     schema["properties"]["world_events"]["maxItems"] = 2;
     schema["properties"]["world_events"]["items"] = development;
+    if (narrow) {
+        // Share repeated outcome fields without changing their position or accepted values.
+        // Actor/action attribution and per-actor operations remain on each ordered item.
+        for (auto key : {"outcome_effects", "project", "causes"}) {
+            std::map<std::string, std::string> shared;
+            for (auto &item : outcomes["prefixItems"]) {
+                if (!item["properties"].isMember(key)) continue;
+                auto &property = item["properties"][key];
+                auto encoded = dump(property);
+                if (!shared.contains(encoded)) {
+                    auto name = std::string("outcome_") + key + "_" + std::to_string(shared.size());
+                    shared[encoded] = name;
+                    defs[name] = property;
+                }
+                property = ref(shared.at(encoded));
+            }
+        }
+    }
     schema["$defs"] = defs;
     return schema;
 }

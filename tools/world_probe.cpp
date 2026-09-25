@@ -1,4 +1,5 @@
 #include "localhistoria/providers.h"
+#include "localhistoria/lifecycle.h"
 #include "localhistoria/status.h"
 #include "localhistoria/turn.h"
 #include <algorithm>
@@ -11,7 +12,12 @@ using namespace lh;
 // Interior (ES, borders only East).
 int main(int argc, char **argv) {
     if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: world_probe output.json [scenario|all] [reasoning|schema|compact]\n";
+        std::cerr << "Usage: world_probe output.json [scenario|all] [reasoning|schema|compact|grounding]\n";
+        return 1;
+    }
+    if (argc == 4 && std::string(argv[3]) != "reasoning" && std::string(argv[3]) != "schema" &&
+        std::string(argv[3]) != "compact" && std::string(argv[3]) != "grounding") {
+        std::cerr << "Unknown experiment\n";
         return 1;
     }
     Json::Value report(Json::arrayValue);
@@ -130,7 +136,9 @@ int main(int argc, char **argv) {
                 R"({"treaty-1":{"actors":["PT","ES"],"status":"open",)"
                 R"("text":"Treaty signed in turn 1 forbids construction of military bases in )"
                 R"(West until turn 120."}})");
-        auto base = resolve(w);
+        auto refs = lifecycleReference(w);
+        if (argc == 4 && std::string(argv[3]) == "compact") refs["event_text_version"] = 3;
+        auto base = beginTurn(w, refs);
         std::map<std::string, CountryContext> contexts;
         for (auto a : {"PT", "ES"})
             contexts[a] = context(base.state, a, {}, {});
@@ -140,6 +148,7 @@ int main(int argc, char **argv) {
         row["scenario"] = name;
         auto started = std::chrono::steady_clock::now();
         InferenceRequest request;
+        request.deadline = started + std::chrono::seconds(210);
         if (argc == 4) request.experiment = argv[3];
         try {
             auto delta = provider.adjudicate(base.state, input, adjacency, Json::arrayValue, &request);
@@ -173,7 +182,7 @@ int main(int argc, char **argv) {
             if (name == "reform") {
                 expected = delta.changes.empty() && !delta.events.empty() &&
                            std::any_of(delta.events.begin(), delta.events.end(),
-                                       [](const Json::Value &e) { return e.isMember("effort"); });
+                                       [](const Json::Value &e) { return e.isMember("project") && e["project"]["benefit"] == "public_services"; });
             }
             if (name == "overreach" || name == "weak_raid")
                 expected = s.territories["region-interior"]["controller"] == "ES" &&

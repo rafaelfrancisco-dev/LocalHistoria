@@ -121,6 +121,42 @@ void OperationCompiler::buildEvent(EventScope &s) {
     if (realism() && !consequential() && happened && !failed && s.successfulOps.empty() &&
         s.e.get("outcome_kind", "none") == "none" && !s.e.get("background", false).asBool())
         event["text"] = "No validated change resulted from the proposed action.";
+    if (w.engine.get("event_text_version", 0).asInt() >= 3) {
+        // Compact output omits duplicated prose. Describe only committed pending changes;
+        // an operation rolled back for infeasibility cannot appear as a success here.
+        std::string factual;
+        auto add = [&](const std::string &text) { if (!factual.empty()) factual += " "; factual += text; };
+        auto actorName = [&](const Json::Value &id) { return pending.current("actor", w.actors, id.asString()).get("name", id).asString(); };
+        auto regionName = [&](const Json::Value &id) { return w.territories[id.asString()].get("name", id).asString(); };
+        if (happened) for (const auto &change : pending) {
+            if (change.event != s.id || change.before == change.after) continue;
+            const auto &before = change.before, &after = change.after;
+            if (change.kind == "territory") {
+                if (before["owner"] != after["owner"])
+                    add(regionName(change.id) + " became territory of " + actorName(after["owner"]) + ".");
+                if (before["controller"] != after["controller"])
+                    add(actorName(after["controller"]) + " took control of " + regionName(change.id) + ".");
+            } else if (change.kind == "entity") {
+                auto name = after.get("name", change.id).asString();
+                if (before.isNull())
+                    add(name + " was established in " + regionName(after["region"]) +
+                        (after["status"] == "under_construction" ? "; construction is underway." : "."));
+                else {
+                    if (before["region"] != after["region"]) add(name + " moved to " + regionName(after["region"]) + ".");
+                    if (before["status"] != after["status"]) add(name + " is now " + after["status"].asString() + ".");
+                }
+            } else if (change.kind == "conflict") {
+                add(after.get("name", change.id).asString() + ": " + after.get("status", "open").asString() +
+                    (after["intensity"].isString() ? ", " + after["intensity"].asString() + " intensity." : "."));
+            } else if (change.kind == "actor" && (before.isNull() || before["name"] != after["name"])) {
+                add(after["name"].asString() + (before.isNull() ? " became a new state." : " is the state's new name."));
+            } else if (change.kind == "commitment") {
+                add(after.get("name", change.id).asString() + ": " + after.get("status", "open").asString() + ".");
+            }
+        }
+        if (!factual.empty()) event["text"] = factual.substr(0, 2000);
+
+    }
     if (w.engine.get("event_text_version", 0).asInt() >= 1 && happened && !failed) {
         std::string factual;
         for (const auto &change : pending) {
@@ -152,6 +188,10 @@ void OperationCompiler::buildEvent(EventScope &s) {
                                 : "Preliminary diplomatic talks took place; no treaty offer or "
                                   "agreement was recorded.";
     }
+    if (w.engine.get("event_text_version", 0).asInt() >= 3)
+        for (const auto &dropped : s.dropped)
+            event["text"] = (event["text"].asString() + " Rejected " + dropped["action"].asString() +
+                             ": " + dropped["reason"].asString() + ".").substr(0, 2000);
     // What granting a typed demand actually did, after whatever the description claimed.
     if (happened && !s.verdict.empty())
         event["text"] = withVerdict(event["text"].asString(), s.verdict).substr(0, 2000);

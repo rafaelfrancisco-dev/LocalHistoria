@@ -232,3 +232,8 @@ fulfilment need no extra decision or adjudication call. A two-month A/B against 
 prompt showed no echo regression. The model filled both fields but chose only `political` in two
 samples, and once wrote `demand: "none"`, which C++ now treats as no demand (see
 `docs/PLAN_32.md`).
+
+Plan 34 measurement tooling now uses WAL-aware disposable snapshots, replay-before-timing,
+210-second default month budgets and alternating paired experiment runs. See
+[Plan 34 status and manifest](PLAN_34.md). No new live-model latency or operation-success
+measurement is established by this tooling change; all three reductions remain opt-in.

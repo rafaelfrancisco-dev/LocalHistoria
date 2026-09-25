@@ -117,7 +117,7 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
         // 1: factual proposal text. 2: every outcome keeps its description and a consequence.
         if (!reference["event_text_version"].isInt() ||
             reference["event_text_version"].asInt() < 1 ||
-            reference["event_text_version"].asInt() > 2)
+            reference["event_text_version"].asInt() > 3)
             throw ValidationError("Unsupported event text version");
         w.engine["event_text_version"] = reference["event_text_version"];
     }

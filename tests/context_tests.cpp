@@ -1,3 +1,4 @@
+#include "localhistoria/domestic.h"
 #include "localhistoria/providers.h"
 #include "localhistoria/turn.h"
 #include <iostream>
@@ -256,6 +257,33 @@ int main() {
             schemaRead = dump(schema).find("ev-FR0") != std::string::npos;
         } catch (const std::exception &) {}
         check(schemaRead, "Operation schema reads shared adjudication context and keeps event causes");
+        {
+            std::vector<std::pair<std::string, std::string>> actions(4, {"PT", "Fund public education"});
+            auto baseline = operationSchema(e, facts, actions);
+            auto compact = operationSchema(e, facts, actions, {}, true);
+            for (Json::ArrayIndex n = 0; n < 4; ++n) {
+                auto &b = baseline["properties"]["events"]["prefixItems"][n];
+                auto &c = compact["properties"]["events"]["prefixItems"][n];
+                check(b["required"] == c["required"] && b["properties"]["action"] == c["properties"]["action"] &&
+                      b["properties"]["actor"] == c["properties"]["actor"], "Schema reduction preserves ordered attribution");
+                for (auto key : {"causes", "project", "outcome_effects"}) {
+                    if (!b["properties"].isMember(key)) continue;
+                    auto ref = c["properties"][key]["$ref"].asString();
+                    check(ref.starts_with("#/$defs/") && compact["$defs"][ref.substr(8)] == b["properties"][key],
+                          "Factored schema accepts identical project/effect/cause values");
+                }
+            }
+            check(dump(compact).size() < dump(baseline).size(), "Repeated outcome definitions shrink schema bytes");
+            // Keys generate alphabetically: the objective must precede the chosen sector.
+            auto projectWorld = e;
+            projectWorld.engine["project_version"] = projectVersion;
+            auto fields = dump(operationSchema(projectWorld, facts, actions)["$defs"]["domestic_project"]["properties"]);
+            check(fields.find("\"objective\"") < fields.find("\"sector\"") &&
+                      fields.find("\"sector\"") != std::string::npos &&
+                      fields.find("\"benefit\"") == std::string::npos,
+                  "Project sector is generated after its objective");
+        }
+
         check(facts["actors"]["IT"]["entities"].isNull() &&
                   !facts["actors"]["IT"].isMember("regional_politics") &&
                   facts["actors"]["IT"]["related_history"].size() == 4 &&

@@ -231,6 +231,15 @@ int main(int argc, char **) {
         distinct["project"]["benefit"] = "public_services";
         check(projects(step(done, list(distinct)).result.state).size() == 3,
               "Different supported purpose has its own identity");
+        auto sector = p1;
+        sector["project"].removeMember("benefit");
+        sector["project"]["sector"] = "public_services";
+        auto viaSector = projects(step(w, list(sector)).result.state);
+        check(viaSector.size() == 1 && viaSector[viaSector.getMemberNames().front()]["benefit"] == "public_services" &&
+                  !viaSector[viaSector.getMemberNames().front()].isMember("sector"),
+              "Schema sector is stored as the project's benefit");
+        sector["project"]["benefit"] = "administration";
+        check(projects(step(w, list(sector)).result.state).empty(), "Sector with a second benefit rejected");
         auto poor = started.result.state;
         poor.actors["AA"]["status"]["military_spend_usd"] = Json::Int64(100000000000LL);
         for (auto &p : poor.actors["AA"]["status"]["projects"])

@@ -337,14 +337,22 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
         (w.engine.get("project_version", 0) == 1 ?
         " Domestic projects: set project=null except for funded reform/investment. For a new project "
         "supply action=start, id=empty string, a short objective, target=your actor ID or a region you own and control, "
-        "and benefit: administration/public_services for reforms (stability), infrastructure/production "
-        "for investments (output). These are the only simulated benefits; do not claim unsupported "
-        "objectives achieved. To continue or cancel use action=continue/cancel and the exact project id and unchanged terms in facts. "
+        "and sector: administration (governance, taxation, justice) or public_services (education, health, welfare) "
+        "for reforms (stability), infrastructure/production for investments (output). These are the only simulated benefits; do not claim unsupported "
+        "objectives achieved. To continue or cancel use action=continue/cancel and the exact project id and unchanged terms in facts (sector=its benefit). "
         "Same target/category/benefit continues existing work regardless of title. Completed work "
         "cannot restart. A domestic project needs no build operation or event_site; project is its authoritative record. Cancellation retains paid work without refund; explicit continuation resumes it. Funding and paid completion are determined by C++; descriptions cannot "
         "complete projects. Repeated acts may only maintain a stance: outcome_effects may be empty "
         "or none/none; consequences are bounded and diminish with repetition. " : "");
-    const auto prompt = instruction + (request.experiment == "compact" ?
+    const auto grounding = request.experiment == "grounding" ?
+        " Intent grounding examples: an explicit offer of a treaty -> add_commitment with its "
+        "parties, kind, duration and terms, still awaiting exact signatures. Merely discussing or "
+        "mentioning a treaty -> no proposal. Military access offer -> add_commitment with grant_access "
+        "terms, not open_conflict. Fund education reform -> project={action:start,id:empty,objective:education,"
+        "target:acting actor ID,sector:public_services}; operations may be empty. Continuing work -> "
+        "the existing project's exact id and terms. If infeasible, record the feasible partial outcome "
+        "or explain the obstacle; never invent consent or successful completion. " : "";
+    const auto prompt = instruction + grounding + (request.experiment == "compact" ?
         " For mechanical operations keep description to a short action label; do not repeat treaty "
         "parties, duration, terms or results already encoded by operations. Keep authored names and "
         "interpretive outcomes. The compiler describes recorded proposals and their signatures." : "");

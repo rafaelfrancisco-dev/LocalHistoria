@@ -181,3 +181,9 @@ were backfilled when opened.
   destroyed city's completion stays major.
 - **Not measured:** the lock hold under real HTTP concurrency, and a real long campaign (none
   exists). Windows was not measured.
+
+Plan 34 benchmark fixtures have a deterministic live-WAL regression:
+`python3 tests/benchmark_fixture_tests.py` (also CTest `benchmark_fixture`). It checks committed
+versus uncommitted data and rejects overwrites. The paired runner and remaining live-model,
+semantic-quality and two-platform acceptance gates are documented in [PLAN_34.md](PLAN_34.md).
+Fixture integrity and deterministic replay do not establish real-model operation reliability.
