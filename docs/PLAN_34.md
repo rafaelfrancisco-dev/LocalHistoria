@@ -121,6 +121,20 @@ Live check on the current build, same fixtures, baseline arm (three 2-month runs
 Remaining observed defects: invented project ids on start/continue, and setback self-ratings that
 block a funded reform.
 
+## Invented project ids (2026-09-25)
+
+Observed ids included `pt-edu-reform-1`, an event id on start, and an event id on continue after a
+setback. Identity is already derived from actor, category, target and benefit, so the compiler
+now resolves an id unknown to the actor by those terms. It continues the matching project, or
+starts one and records `start`, which the delta validator requires for new records. Cancellation
+still needs the exact id; a known id of another category is still rejected. Unit tests cover
+start, never-started continuation, continuation and refused cancellation.
+
+Live check (same fixtures, current build): peace 2/2 and regional 1/1 passed, with correct sectors
+and identical replay. No run produced an invented id, so the fallback is unit-tested only.
+Timings: 82–103 s (peace), 101–114 s (regional). The setback self-rating remains open. It
+is Plan 31 behaviour (a rated stability decline starts no project), not a compiler defect.
+
 ## Evidence and adoption
 
 The probe records submission-to-commit and finished-prose times separately, every request audit,

@@ -49,11 +49,19 @@ void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) 
         return;
     }
     auto id = request["id"].asString();
-    const auto action = request.get("action", id.empty() ? "start" : "continue").asString();
-    if ((action != "start" && action != "continue" && action != "cancel") ||
-        (id.empty() && action != "start")) {
+    auto action = request.get("action", id.empty() ? "start" : "continue").asString();
+    if (action != "start" && action != "continue" && action != "cancel") {
         reject("invalid project action");
         return;
+    }
+    // The 4B invents ids (event ids, made-up slugs). Identity is derived from the terms, so an
+    // id unknown to this actor is resolved by them; cancellation still needs the exact record.
+    if (!projects.isMember(id)) {
+        if (action == "cancel") {
+            reject(id.empty() ? "invalid project action" : "project reference does not belong to this actor and category");
+            return;
+        }
+        id.clear();
     }
     Json::Value p;
     if (!id.empty()) {
@@ -97,6 +105,7 @@ void OperationCompiler::prepareProject(const EventScope &s, Json::Value &event) 
             p["state"] = "active";
             p["completion_condition"] = "paid_months";
             projects[id] = p;
+            action = "start";
         }
     }
     event["project"] = p;

@@ -231,6 +231,24 @@ int main(int argc, char **) {
         distinct["project"]["benefit"] = "public_services";
         check(projects(step(done, list(distinct)).result.state).size() == 3,
               "Different supported purpose has its own identity");
+        // Invented ids resolve by the derived identity; cancellation needs the exact record.
+        auto invented = p1;
+        invented["project"]["id"] = "t1-aa-initiates-a-reform";
+        auto viaInvented = step(w, list(invented));
+        check(projects(viaInvented.result.state).isMember(firstId) &&
+                  viaInvented.delta.events[0]["project_action"] == "start",
+              "Invented id on a start derives the project identity");
+        invented["project"]["action"] = "continue";
+        check(step(w, list(invented)).delta.events[0]["project_action"] == "start",
+              "Continuing work that never started records a start");
+        auto again = step(started.result.state, list(invented));
+        check(projects(again.result.state).size() == 2 &&
+                  projects(again.result.state)[firstId]["started"] == 1 &&
+                  again.delta.events[0]["project_action"] == "continue",
+              "Invented id on a continuation continues the matching project");
+        invented["project"]["action"] = "cancel";
+        check(projects(step(started.result.state, list(invented)).result.state)[firstId]["state"] == "active",
+              "Invented id cannot cancel a project");
         auto sector = p1;
         sector["project"].removeMember("benefit");
         sector["project"]["sector"] = "public_services";
