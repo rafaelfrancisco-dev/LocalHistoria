@@ -1,4 +1,5 @@
 #include "world/compiler/operation_compiler.h"
+#include "localhistoria/domestic.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -99,6 +100,10 @@ void OperationCompiler::buildEvent(EventScope &s) {
     // Only something that happened has consequences.
     if (happened && (!realism() || !failed || s.e.get("outcome_kind", "none") != "none"))
         settleEffects(s, event);
+    const bool onlySites = std::all_of(s.successfulOps.begin(), s.successfulOps.end(),
+        [](const Json::Value &o) { return o["action"] == "build" && o["kind"] == "event_site"; });
+    if (distinctProjects(w) && happened && !s.failedOps && onlySites)
+        prepareProject(s, event);
     if (realism() && failed) {
         // get(): naming a missing member would insert a null "effects" the delta rejects.
         if (!event.get("effects", Json::arrayValue).empty() || event.isMember("effort")) {
@@ -155,16 +160,19 @@ void OperationCompiler::buildEvent(EventScope &s) {
             link["revision"] = c.after["flag_revision"];
             event["identity_changes"].append(link);
         }
+    if (groundedConsequences(w) && happened)
+        boundConsequences(s, event);
     event["major"] = happened && (s.structural || event.isMember("breaches"));
     // A severe or strong effect declares a headline; the model no longer labels significance
     // itself.
     bool strong = false;
     for (auto &x : event.get("effects", Json::arrayValue))
         for (auto k : {"economy", "stability"})
-            strong = strong || x[k] == "severe_decline" || x[k] == "strong_growth";
+            strong = strong || (x.get("weight", 1).asDouble() > 0 &&
+                                (x[k] == "severe_decline" || x[k] == "strong_growth"));
     // A programme the model rated strong is still news when it starts, though its benefit waits
     // for completion.
-    if (event.isMember("effort"))
+    if (event.isMember("effort") || event.get("project_reason", "") == "started")
         for (const auto &x : s.e["effects"])
             if (x.isObject() && actorRef(x["actor"].asString()) == s.ev)
                 strong =
@@ -206,6 +214,7 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     // A consequence without a map change is felt, not decisive.
     auto mild = [](const std::string &x) { return stronger(weaker(x, "growth"), "decline"); };
     auto effortOpen = [&](const std::string &a) {
+        if (distinctProjects(w)) return true;
         return std::as_const(w.actors)[a]["status"]["efforts"].isMember(independent) ||
                efforts.contains(a + ":" + independent);
     };
@@ -218,12 +227,14 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     // Security, policy and talks under version 2 are the act itself: when every operation it
     // proposed failed, its consequence is the failure, not an independent result.
     const bool failedAll = !s.seenOps.empty() && s.failedOps == int(s.seenOps.size());
+    if (groundedConsequences(w) && failedAll) return;
     bool supportedIndependent =
         s.regional.empty() &&
         (independent == "reform" || independent == "investment" || independent == "protest" ||
          background || (independent == "negotiation" && !(consequential() && failedAll)) ||
          (consequential() && !failedAll && (independent == "security" || independent == "policy")));
-    if (!inert && (!realism() || supportedIndependent) && s.e["effects"].isArray())
+    if (!inert && (!groundedConsequences(w) || s.successfulOps.empty()) &&
+        (!realism() || supportedIndependent) && s.e["effects"].isArray())
         for (auto &x : s.e["effects"]) {
             if (effects.size() >= 3 || !x.isObject() || !x["actor"].isString() ||
                 !x["economy"].isString() || !x["stability"].isString())
@@ -362,6 +373,7 @@ void OperationCompiler::settleEffects(const EventScope &s, Json::Value &event) c
     for (auto &f : effects) {
         Json::Value x;
         x["actor"] = f.actor;
+        if (groundedConsequences(w)) x["operation"] = f.forced;
         x["economy"] = soften(f, f.economy);
         x["stability"] = soften(f, f.stability);
         event["effects"].append(x);

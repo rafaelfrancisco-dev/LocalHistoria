@@ -1,11 +1,13 @@
 #include "localhistoria/conflicts.h"
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
+#include "localhistoria/domestic.h"
 #include "world/delta_internal.h"
 #include <utility>
 namespace lh::detail {
 void checkEvents(const WorldDelta &d, const WorldState &w, std::set<std::string> &eventIds) {
     int background = 0;
+    Json::Value projects(Json::objectValue);
     for (auto &e : d.events) {
         require(e.isObject() && e["id"].isString() && e["text"].isString() &&
                     e["actor"].isString() && e["causes"].isArray() && e["regions"].isArray() &&
@@ -18,6 +20,56 @@ void checkEvents(const WorldDelta &d, const WorldState &w, std::set<std::string>
         if (e["background"].asBool())
             ++background;
         require(!e.isMember("major") || e["major"].isBool(), "Invalid event significance");
+        if (distinctProjects(w) && e.isMember("project")) {
+            const auto &p = e["project"];
+            auto action = e.get("project_action", "start").asString();
+            require(action == "start" || action == "continue" || action == "cancel", "Invalid project action");
+            const auto actor = e["actor"].asString();
+            require(p.isObject() && p["id"].isString() && p["category"].isString(), "Invalid project record");
+            auto id = p["id"].asString(), category = p["category"].asString();
+            if (!projects.isMember(actor))
+                projects[actor] = w.actors[actor]["status"].get("projects", Json::Value(Json::objectValue));
+            if (projects[actor].isMember(id))
+                require(p == projects[actor][id], "Project continuation cannot alter its record");
+            else {
+                for (auto key : {"objective", "target", "benefit"})
+                    require(p[key].isString() && !p[key].asString().empty() && p[key].asString().size() <= 120,
+                            "Invalid project terms");
+                auto target = p["target"].asString(), benefit = p["benefit"].asString();
+                const auto &t = w.territories[target];
+                require(action == "start" && projects[actor].size() < projectCapacity && supportedProject(category, benefit) &&
+                    id == domesticProjectId(actor, category, target, benefit) &&
+                    (target == actor || (t["owner"] == actor && t["controller"] == actor)) &&
+                    p["started"] == w.turn && p["origin_event"] == e["id"] &&
+                    p["state"] == "active" && p["completion_condition"] == "paid_months" &&
+                    p.getMemberNames() == std::vector<std::string>{"benefit", "category", "completion_condition",
+                        "id", "objective", "origin_event", "started", "state", "target"},
+                    "Invalid new project");
+                projects[actor][id] = p;
+            }
+            if (p["state"] != "completed") {
+                if (action == "cancel") projects[actor][id]["state"] = "cancelled";
+                else if (action == "continue") projects[actor][id]["state"] = "active";
+            }
+        }
+        if (groundedConsequences(w)) {
+            require(!e.isMember("consequences") || (e["consequences"].isArray() && e["consequences"].size() <= 3),
+                    "Invalid consequence records");
+            for (const auto &c : e["consequences"])
+                require(c.isObject() && c["actor"].isString() && w.hasActor(c["actor"].asString()) &&
+                    c["key"].isString() && c["key"].asString().size() <= 4096 &&
+                    c["kind"].isString() && c["envelope"].isBool() && c["reason"].isString() &&
+                    c["weight"].isNumeric() && c["weight"].asDouble() >= 0 && c["weight"].asDouble() <= 1,
+                    "Invalid consequence accounting");
+            for (const auto &x : e["effects"]) {
+                require(x["weight"].isNumeric() && x["weight"].asDouble() >= 0 && x["weight"].asDouble() <= 1,
+                        "Invalid consequence weight");
+                bool recorded = x["weight"] == 0;
+                for (const auto &c : e["consequences"])
+                    recorded = recorded || (x["actor"] == c["actor"] && x["weight"] == c["weight"]);
+                require(recorded, "Missing consequence accounting");
+            }
+        }
         if (e.isMember("effects")) {
             require(e["effects"].isArray() && e["effects"].size() <= 3, "Invalid event effects");
             // The compiler records a routine act's step at half weight (event text version 2).

@@ -113,15 +113,16 @@ Under the realism lifecycle (Plan 26 B and C), and as corrected by the
 - **Outcomes without a map change.** Effects come from successful operations or from a supported
   independent result. The adjudication schema requires `outcome_kind` on every outcome. It follows
   `operations`, so the model writes its operations first; placed before them, a `negotiation`
-  label talked it out of writing the treaty. An effort starts only from an outcome with no
-  successful operation. A reform or investment starts an effort (see below) unless the model rates
-  it a setback. A protest can only cost stability. A world event keeps its text and its bounded
+  label talked it out of writing the treaty. Under the older project rules an effort starts only from an outcome with no
+  successful operation. Under project version 1, validated project terms start funded work; an
+  accompanying event-site marker does not replace the project. A setback starts no project. A protest can only cost stability. A world event keeps its text and its bounded
   consequence. An outcome whose every operation failed reads "The proposed action could not be
   carried out."
   - **Event text version 2** (plan 28; new turns). Every outcome does something. The kinds are
     `reform`, `investment`, `negotiation`, `protest`, `security` (deployments, policing, martial
     law) and `policy` (laws, decrees, appointments, statements); there is no `none`, and the
-    schema requires at least one effect that moves an axis (an entry may not be `none`/`none`).
+    older schema requires at least one effect that moves an axis. Consequence version 1 also permits
+    an empty rating or `none`/`none`: a continuation need not move a statistic.
     Every outcome keeps its description. Without a map
     change a `security` or `policy` outcome moves stability by at most a step and can cost the
     economy a step but never grow it (growth is what a reform or investment pays for), and a
@@ -353,7 +354,7 @@ and nothing is borrowed. The coefficients live in `src/status/status_internal.h`
   0.6–1.4): army US$50 million, fleet 100 million, base 150 million, port 300 million, city
   500 million. Construction slots still apply. Projects under way when a campaign moves to these
   rules keep their progress and pay only from then on.
-- **Efforts.** A `reform` or `investment` outcome (`outcome_kind`) starts an effort, unless the model
+- **Legacy efforts (project version 0).** A `reform` or `investment` outcome (`outcome_kind`) starts an effort, unless the model
   rates it a setback for its author (`status.efforts`), priced by C++, not the model. An investment costs 0.6% of annual
   output over 12 months and raises output 1% once, on paid completion. A reform costs 0.3% over 18
   months and raises the stability baseline by 3 points, divided by one plus the number of reforms
@@ -619,3 +620,53 @@ Strength labels use quality × (active + aircraft × 200 + ships × 1,500): belo
 Legacy formation defaults are 10,000 personnel / 3 ships. Military backfill preserves current GDP, population, wars and inventories, and proportionally reduces overallocated legacy formations to the available national inventory. Old destroyed units are treated as already accounted for. New actors receive estimated inventories rather than cloning a parent's forces. Frozen military seed references and the historical no-inventory casualty branch preserve replay.
 
 The pinned plan-24 fixture gives India roughly 198,000 against 209,000 (**limited**) and the long-war Russian attack roughly 380,000 against 484,000 (one region if ordered, no autonomous advance). Adding field armies also decreases the uncommitted pool.
+
+
+### Grounded consequences and domestic projects (Plan 31)
+
+Turn references and `engine` independently record `consequence_version: 1` and
+`project_version: 1`. Missing versions select the old rules. The shared lifecycle selector
+migrates on the working copy, so failure/cancellation publishes neither migration nor accounting.
+Historical state **and event** replay remains unchanged.
+
+For unstructured outcomes, the compiler records consequence identity from the author, bounded
+kind, relevant targets and normalized description. Normalization handles casing, spacing and
+punctuation, not arbitrary semantic equivalence. Each affected actor/kind admits at most one
+unstructured rated consequence per month, of either sign. Across active months its multipliers
+are 1, 1/2, 1/4, then zero. Exact repeats get zero immediately. Repeats refresh the window, so
+continuous restatements cannot regenerate confidence. After 24 months with no entry refresh,
+that entry expires. Each actor retains at most 64 ledger entries, including the protected kind
+buckets; oldest exact identities are evicted first, with lexical tie-breaking. No journal scan,
+embedding or additional model call is used. This intentionally groups different unstructured
+stories conservatively; it does not claim to detect all paraphrases. Effects and event records
+retain the applied weight and reason (duplicate, monthly envelope, or diminished consequence).
+
+Accepted operation effects use their validated change identity instead of that prose envelope;
+war casualties, procurement and paid project progress keep their existing deterministic rules.
+Failed operations cannot gain independent rewards by being relabelled. Decorative event sites
+can accompany a domestic project but provide no immediate national-stat reward.
+
+A domestic project has a C++ ID derived from actor, category, target and supported purpose:
+`administration`/`public_services` for reforms, `infrastructure`/`production` for investments.
+The objective is a short display description, not an extra programmable benefit. Projects with
+that same identity continue regardless of title; different targets or supported purposes progress
+separately. This deliberately treats paraphrases and different descriptions of the same supported
+intervention as one project. Targets are the actor itself or a region it owns and controls.
+
+Costs retain the old rates: investment costs 0.6% of target annual output over 12 paid months;
+reform costs 0.3% over 18. They compete with construction and replacement under the existing
+priority order. Regional work pauses when ownership/control is lost. Investment completion raises
+the target's output by 1%; reform completion raises national baseline stability using the existing
+diminishing reform rule, with regional benefits scaled by population share. Those are the only
+supported benefits; completing funded work does not establish arbitrary claims in its objective.
+Starting or continuing a project pays no immediate confidence bonus.
+
+Cancellation stops future funding and retains paid progress/spending. Explicit continuation by ID
+resumes it; a renamed start does not un-cancel it. Completed projects cannot restart or pay twice.
+All records, including cancelled and completed work, count toward a 32-project-per-actor capacity;
+records are never evicted to reopen rewards. At capacity, new projects are reported as unrecorded.
+The inspector, journal and model context show the same authoritative progress and delays.
+
+On upgrade, each category-keyed effort becomes a deterministic legacy project. Its paid work,
+remaining paid months, monthly price and old national completion benefit are preserved. Its label
+explicitly says the objective was not recorded; no objective is inferred from historical prose.

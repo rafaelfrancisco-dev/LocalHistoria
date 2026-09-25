@@ -9,12 +9,12 @@ find_package(SQLite3 REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_library(historia_core src/core/lifecycle.cpp src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
+add_library(historia_core src/core/domestic.cpp src/core/lifecycle.cpp src/core/simulation.cpp src/core/politics.cpp src/store/store.cpp src/store/event_log.cpp
   src/world/delta.cpp src/world/delta_checks.cpp src/world/geometry.cpp src/world/schema.cpp
   src/world/compiler/compiler.cpp src/world/compiler/helpers.cpp src/world/compiler/identity_ops.cpp
   src/world/compiler/treaty_ops.cpp src/world/compiler/treaty_terms.cpp src/world/compiler/proposals.cpp
   src/world/compiler/force_ops.cpp src/world/compiler/territory_ops.cpp
-  src/world/compiler/events.cpp
+  src/world/compiler/events.cpp src/world/compiler/domestic.cpp
   src/status/helpers.cpp src/status/conflicts.cpp src/status/control.cpp src/status/force.cpp src/status/seed.cpp src/status/national.cpp
   src/status/agreements.cpp src/status/regimes.cpp src/status/monthly/monthly_status.cpp
   src/status/monthly/fronts.cpp src/status/monthly/casualties.cpp src/status/monthly/economy.cpp src/status/monthly/recovery.cpp
@@ -96,6 +96,14 @@ add_test(NAME conflicts COMMAND conflict_tests)
 add_executable(access_tests tests/access_tests.cpp)
 target_link_libraries(access_tests PRIVATE historia_core)
 add_test(NAME access COMMAND access_tests)
+add_executable(domestic_benchmark tools/domestic_benchmark.cpp)
+target_link_libraries(domestic_benchmark PRIVATE historia_core)
+add_executable(domestic_tests tests/domestic_tests.cpp)
+target_link_libraries(domestic_tests PRIVATE historia_core)
+add_test(NAME domestic COMMAND domestic_tests)
+set_tests_properties(domestic PROPERTIES FIXTURES_SETUP domestic_replay_fixture)
+add_test(NAME domestic_replay COMMAND replay_verify ${CMAKE_BINARY_DIR}/domestic-replay.json)
+set_tests_properties(domestic_replay PROPERTIES FIXTURES_REQUIRED domestic_replay_fixture)
 # Every suite runs in well under a second; a hang fails instead of running forever.
 get_property(all_tests DIRECTORY PROPERTY TESTS)
 set_tests_properties(${all_tests} PROPERTIES TIMEOUT 60)

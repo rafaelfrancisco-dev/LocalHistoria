@@ -1,5 +1,6 @@
 #include "localhistoria/politics.h"
 #include "localhistoria/status.h"
+#include "localhistoria/domestic.h"
 #include "world/world_internal.h"
 #include <algorithm>
 namespace lh {
@@ -335,6 +336,18 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
             event["required"].append("outcome_effects");
         }
     }
+    if (distinctProjects(w)) {
+        auto project = parse(R"({"type":"object","additionalProperties":false,"required":["id","objective","target","benefit","action"],"properties":{"action":{"type":"string","enum":["start","continue","cancel"]},"id":{"type":"string","maxLength":256},"objective":{"type":"string","maxLength":120},"target":{"type":"string","maxLength":120},"benefit":{"type":"string","enum":["administration","public_services","infrastructure","production","legacy"]}}})");
+        event["properties"]["project"]["anyOf"].append(parse(R"({"type":"null"})"));
+        defs["domestic_project"] = project;
+        event["properties"]["project"]["anyOf"].append(ref("domestic_project"));
+        event["required"].append("project");
+    }
+    if (groundedConsequences(w) && event["properties"].isMember("outcome_effects")) {
+        // A continuation can honestly rate no immediate effect.
+        event["properties"]["outcome_effects"]["items"] = ref("effect");
+        event["properties"]["outcome_effects"]["minItems"] = 0;
+    }
     if (causes.empty())
         event["properties"]["causes"]["maxItems"] = 0;
     else
@@ -452,6 +465,7 @@ Json::Value operationSchema(const WorldState &w, const Json::Value &facts,
     }
     // A development is kept only when it changes something, so it must name at least one effect.
     development["properties"]["effects"]["minItems"] = 1;
+    development["properties"].removeMember("project");
     development["properties"].removeMember("operations");
     development["properties"].removeMember("outcome_kind");
     development["properties"].removeMember("blocked_by");

@@ -189,6 +189,16 @@ Json::Value buildStatus(const WorldState &w, const std::string &a, const Totals 
             text += "; replacing losses";
         s["implementation"] = text;
     }
+    // Bounded authoritative project facts, also used by adjudication and the inspector.
+    if (status["projects"].isObject()) {
+        s["projects"] = Json::objectValue;
+        for (const auto &id : status["projects"].getMemberNames()) {
+            const auto &p = status["projects"][id];
+            for (auto key : {"category", "objective", "target", "benefit", "state", "paid", "months",
+                             "monthly_usd", "delay", "completed_turn"})
+                if (p.isMember(key)) s["projects"][id][key] = p[key];
+        }
+    }
     s["wars"] = Json::arrayValue;
     for (auto &id : w.conflicts.getMemberNames()) {
         auto &c = w.conflicts[id];

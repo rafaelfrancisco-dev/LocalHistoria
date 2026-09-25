@@ -200,3 +200,20 @@ after `operations`, and the provider renames it back to `effects`. It was measur
   effort that pays for it.
 - **Latency:** unchanged (17–25 s for operational scenarios, 4–8 s for talks and reform, on both
   sides).
+
+
+### Plan 31 project and consequence contract
+
+With project version 1, adjudication has a shared `domestic_project` schema definition. Every
+outcome supplies `project: null` or `{action, id, objective, target, benefit}`. `start` uses an
+empty ID; `continue`/`cancel` use an existing actor-owned ID and unchanged terms from context.
+Reform purposes are `administration` and `public_services`; investment purposes are
+`infrastructure` and `production`. `legacy` is only for continuing migrated work. C++ owns IDs,
+prices, funding, progress and benefits. An event-site marker may accompany the project but cannot
+substitute for its funded record. No extra inference request is introduced.
+
+Consequence version 1 allows empty or `none`/`none` ratings. C++ applies conservative per-kind
+monthly limits and diminishing repetition weights, to positive and negative ratings alike.
+Free-text descriptions cannot prove a project complete or grant unsupported benefits. Both
+nation decisions and adjudication see bounded authoritative project summaries, including paid
+months, delays and completion. See `docs/PLAN_31.md` for measured validation and limitations.

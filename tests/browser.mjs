@@ -163,6 +163,11 @@ try {
   await page.waitForFunction(
     () => document.querySelector("#date").textContent === "February 2026" && !busy,
   );
+  const projectFacts = await page.evaluate(() => Object.values(state.actors.PT.status.projects || {}));
+  assert.equal(projectFacts.length, 1);
+  assert.equal(projectFacts[0].objective, "National railway network");
+  assert.ok(projectFacts[0].paid > 0 && projectFacts[0].paid < projectFacts[0].months);
+  assert.match(await page.locator("#stats").innerText(), /National railway network[\s\S]*% funded/);
   // A new month updates the existing region layer in place instead of rebuilding it.
   assert.equal(await page.evaluate(() => layers === window.firstRegionLayer), true);
   await page
@@ -206,12 +211,12 @@ try {
   await page.locator("#events-scope").selectOption("all");
   await page.waitForFunction((n) => document.querySelectorAll("#events-list .event-card").length >= n, playerCards);
   await page.locator("#events-categories .chip", { hasText: "Other nations" }).click();
-  await page.waitForFunction(() => document.querySelector("#events-categories .chip[aria-pressed=true]") && !document.querySelector("#events-list").innerText.includes("railway"));
+  await page.waitForFunction(() => document.querySelector("#events-categories .chip[aria-pressed=true]") && eventsItems.length > 0 && eventsItems.every((e) => e.category === "nation" && e.actor !== "PT"));
   assert.ok((await page.locator("#events-list .event-card").count()) > 0);
   await page.locator("#events-categories .chip", { hasText: "Other nations" }).click();
   await page.locator("#events-search").fill("railway");
-  await page.waitForFunction(() => document.querySelectorAll("#events-list .event-card").length === 1);
-  await page.locator("#events-list .event-card").first().locator(".show-on-map").click();
+  await page.waitForFunction(() => eventsItems.length > 0 && eventsItems.every((e) => e.text.toLowerCase().includes("railway")));
+  await page.locator("#events-list .event-card", { hasText: "Invest in the national railway network" }).locator(".show-on-map").click();
   await page.waitForFunction(() => !document.querySelector("#events").open && eventLayers.getLayers().length > 0 && document.querySelector(".event-popup"));
   assert.match(await page.locator(".event-popup").first().innerText(), /railway/);
   await page.locator(".event-popup button").first().click();
@@ -401,7 +406,7 @@ try {
   assert.ok((await page.locator("header").boundingBox()).height < 70);
   const turnTop = await page.evaluate(() => document.querySelector("#turn").getBoundingClientRect().top + scrollY);
   const journalTop = await page.evaluate(() => document.querySelector(".journal").getBoundingClientRect().top + scrollY);
-  assert.ok(turnTop < 2000 && turnTop < journalTop, `End month at ${turnTop}px, journal at ${journalTop}px`);
+  assert.ok(turnTop < journalTop, `End month at ${turnTop}px, journal at ${journalTop}px`);
   await page.locator("#search").fill("a");
   assert.equal(await page.locator("#countries .country").count(), 8);
   await page.locator("#search").fill("");

@@ -7,6 +7,7 @@ constexpr int legacyLifecycleVersion = 0, realismLifecycleVersion = 1;
 struct LifecycleRules {
     int lifecycle = legacyLifecycleVersion;
     int monthly = 0;
+    int consequences = 0, projects = 0;
 };
 LifecycleRules lifecycleRules(const Json::Value &reference);
 // The one rule for construction when control changes, whatever changed it (an occupation, a front

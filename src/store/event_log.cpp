@@ -34,7 +34,8 @@ Json::Value Store::chronicleEvents(const std::string &actor, int afterTurn) {
         event["turn"] = row["turn"];
         event["actor"] = document["actor"];
         event["description"] = (document.isMember("text") ? document["text"] : document["description"]).asString() + droppedClause(document);
-        if (document.isMember("effects")) event["effects"] = document["effects"];
+        for (auto key : {"effects", "consequences", "project", "project_reason", "project_action"})
+            if (document.isMember(key)) event[key] = document[key];
         candidates.push_back({event, row["turn"].asInt(), unresolved.contains(id) ? 2 : structural ? 1 : 0, row["row"].asInt64()});
     }
     std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
@@ -139,7 +140,7 @@ Json::Value Store::eventLogMonths(const WorldState &w) {
             if (documents.contains(target)) {
                 auto &d = documents[target];
                 for (auto k : {"actors", "regions", "entities", "conflicts", "commitments",
-                               "causes", "effects", "breaches", "blocked_by", "partial", "failed",
+                               "causes", "effects", "consequences", "project", "project_reason", "project_action", "breaches", "blocked_by", "partial", "failed",
                                "regional_actor", "initiative_type", "identity_changes"})
                     if (d.isMember(k))
                         item[k] = d[k];

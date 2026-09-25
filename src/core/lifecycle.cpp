@@ -1,5 +1,6 @@
 #include "localhistoria/lifecycle.h"
 #include "localhistoria/conflicts.h"
+#include "localhistoria/domestic.h"
 #include <algorithm>
 namespace lh {
 Json::Value handOverProject(const Json::Value &e, const std::string &from, const std::string &to,
@@ -74,6 +75,17 @@ LifecycleRules lifecycleRules(const Json::Value &reference) {
         if (rules.monthly < 1 || rules.monthly > statusVersion)
             throw ValidationError("Unsupported status version");
     }
+    for (auto [key, value] : {std::pair{"consequence_version", &rules.consequences},
+                              std::pair{"project_version", &rules.projects}}) {
+        if (reference.isMember(key)) {
+            if (!reference[key].isInt() || reference[key].asInt() < 0 || reference[key].asInt() > 1)
+                throw ValidationError("Unsupported domestic rule version");
+            *value = reference[key].asInt();
+        }
+    }
+    if ((rules.consequences || rules.projects) &&
+        (rules.lifecycle != realismLifecycleVersion || !rules.monthly))
+        throw ValidationError("Domestic rules require monthly realism rules");
     return rules;
 }
 Json::Value lifecycleReference(const WorldState &w) {
@@ -81,6 +93,8 @@ Json::Value lifecycleReference(const WorldState &w) {
     ref["lifecycle_version"] = realismLifecycleVersion;
     ref["status_version"] = statusVersion;
     ref["event_text_version"] = 2;
+    ref["consequence_version"] = consequenceVersion;
+    ref["project_version"] = projectVersion;
     const int prior = w.engine.get("lifecycle_version", legacyLifecycleVersion).asInt();
     if (prior != realismLifecycleVersion) {
         if (prior != legacyLifecycleVersion)
@@ -95,7 +109,8 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
     auto w = source;
     if (reference.isMember("event_text_version")) {
         // 1: factual proposal text. 2: every outcome keeps its description and a consequence.
-        if (!reference["event_text_version"].isInt() || reference["event_text_version"].asInt() < 1 ||
+        if (!reference["event_text_version"].isInt() ||
+            reference["event_text_version"].asInt() < 1 ||
             reference["event_text_version"].asInt() > 2)
             throw ValidationError("Unsupported event text version");
         w.engine["event_text_version"] = reference["event_text_version"];
@@ -127,6 +142,17 @@ Resolution beginTurn(const WorldState &source, const Json::Value &reference) {
         recordControl(w, true);
         recordDisplacement(w);
         recordExhaustion(w);
+    }
+    for (auto [key, selected] : {std::pair{"consequence_version", rules.consequences},
+                                 std::pair{"project_version", rules.projects}}) {
+        int prior = w.engine.get(key, 0).asInt();
+        if (prior < 0 || prior > selected)
+            throw ValidationError("Domestic rule downgrade or unsupported campaign version");
+        if (selected && !prior) {
+            if (std::string(key) == "project_version")
+                migrateDomesticProjects(w);
+            w.engine[key] = selected;
+        }
     }
     return resolve(w, rules.lifecycle);
 }

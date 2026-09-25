@@ -40,7 +40,7 @@ class Mock(http.server.BaseHTTPRequestHandler):
     if proposing and i['actor']!='PT' and not i.get('regional_actor'):
      e['operations']=[{'action':'add_commitment','actors':[i['actor'],'PT'],'kind':'trade_agreement','months':6,'name':'Fixture Accord','terms':[],'text':'Tariffs cut'}];proposing=False
     if 'trade talks' in i['action']:e['outcome_kind']='negotiation'
-    if 'railway' in i['action']:e['outcome_kind']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}]
+    if 'railway' in i['action']:e['outcome_kind']='investment';e['effects']=[{'actor':'PT','economy':'strong_growth','stability':'none'}];e['project']={'id':'','objective':'National railway network','target':'PT','benefit':'infrastructure'}
     if i.get('regional_actor'):
      e['operations']=[{'action':'regional_initiative','region':i['regional_actor'],'agenda':'Local civic representation','relations':'cooperative','demand':'Request a regional assembly'}]
     if 'war-fixture' in i['action']:
@@ -147,7 +147,7 @@ with tempfile.TemporaryDirectory(prefix='localhistoria-tests-') as tmp:
    Mock.mode='valid';j=s.get('turns',order(w,'valid-first-turn',payload['orders']),202)
    assert s.poll(j['id'])['status']=='complete'
    current=s.get('campaign')['state'];assert current['turn']==1
-   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action']!='war_toll'];assert len(events)==5 and events[0].startswith(payload['orders'][0]['text']) and not any('No validated change' in t for t in events) and events[1].startswith(payload['orders'][1]['text']),events
+   journal=s.get('campaign')['journal'][0]['events'];events=[e['text'] for e in journal if e['action'] not in ('war_toll','project_progress')];assert len(events)==5 and events[0].startswith(payload['orders'][0]['text']) and not any('No validated change' in t for t in events) and events[1].startswith(payload['orders'][1]['text']),events
    tolls=[e['text'] for e in journal if e['action']=='war_toll'];assert any(t.startswith('Russo-Ukrainian War (high intensity): about ') for t in tolls),tolls
    assert current['conflicts']['c0-1']['casualties']>0 and current['territories'] != w['territories']
    moved=sorted(c['region'] for c in s.get('campaign')['journal'][0]['territory_changes']);assert moved==sorted(r for r,t in current['territories'].items() if (t.get('owner'),t.get('controller'))!=(w['territories'][r].get('owner'),w['territories'][r].get('controller'))),moved

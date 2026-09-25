@@ -152,6 +152,9 @@ class OperationCompiler {
     void finishRegionalHistory(EventScope &s);
     void buildEvent(EventScope &s);
     void settleEffects(const EventScope &s, Json::Value &event) const;
+    void prepareProject(const EventScope &, Json::Value &);
+    void boundConsequences(const EventScope &, Json::Value &);
+    Json::Value consequenceLedgers{Json::objectValue}, domesticProjects{Json::objectValue};
     WorldDelta delta() const;
 
     const WorldState &w;

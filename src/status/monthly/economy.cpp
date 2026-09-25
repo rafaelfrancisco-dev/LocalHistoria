@@ -1,4 +1,5 @@
 #include "status/monthly/monthly_status.h"
+#include "localhistoria/domestic.h"
 #include <algorithm>
 #include <cmath>
 namespace lh::detail {
@@ -139,9 +140,33 @@ void MonthlyStatus::fund(const std::string &a) {
         for (auto field : {"active", "aircraft", "ships"})
             s["military"]["establishment"][field] = integer(from, field);
     }
+    const bool projects = distinctProjects(w);
+    const char *work = projects ? "projects" : "efforts";
+    if (projects)
+        for (const auto &e : delta.events) {
+            if (e["actor"] != a || !e["project"].isObject()) continue;
+            const auto &p = e["project"];
+            auto id = p["id"].asString();
+            if (s[work].isMember(id)) {
+                if (s[work][id]["state"] != "completed") {
+                    if (e["project_action"] == "cancel") s[work][id]["state"] = "cancelled";
+                    else if (e["project_action"] == "continue") s[work][id]["state"] = "active";
+                }
+                continue;
+            }
+            bool investment = p["category"] == "investment";
+            auto item = p;
+            int months = investment ? rate::investmentMonths : rate::reformMonths;
+            item["months"] = months; item["paid"] = 0; item["paid_usd"] = Json::Int64(0);
+            auto target = p["target"].asString();
+            double output = target == a ? effective[a] : number(cT[target], "gdp_usd");
+            item["monthly_usd"] = Int(std::llround(
+                (investment ? rate::investmentCost : rate::reformCost) * output / months));
+            s[work][id] = item;
+        }
     // Efforts the month's events started. Equivalent requests continue the one already open.
     for (const auto &e : delta.events)
-        if (e["actor"] == a && e["effort"].isString()) {
+        if (!projects && e["actor"] == a && e["effort"].isString()) {
             auto category = e["effort"].asString();
             if (cs["efforts"].isMember(category))
                 continue;
@@ -204,8 +229,9 @@ void MonthlyStatus::fund(const std::string &a) {
         claims.push_back({started < w.turn ? 0 : 1, started, "entity", id,
                           costOf(e["kind"].asString()) * prices});
     }
-    for (const auto &category : cs["efforts"].getMemberNames()) {
-        const auto &effort = cs["efforts"][category];
+    for (const auto &category : cs[work].getMemberNames()) {
+        const auto &effort = cs[work][category];
+        if (projects && effort["state"] != "active") continue;
         int started = effort["started"].asInt();
         claims.push_back(
             {started < w.turn ? 0 : 1, started, "effort", category, number(effort, "monthly_usd")});
@@ -224,7 +250,12 @@ void MonthlyStatus::fund(const std::string &a) {
     for (const auto &c : claims) {
         // What is left pays for as much of the month as it covers; the rest of the month's work
         // waits.
-        double share = c.cost > 0 ? std::clamp(budget[a] / c.cost, 0.0, 1.0) : 1.0;
+        bool eligible = true;
+        if (projects && c.kind == "effort") {
+            auto target = cs[work][c.id]["target"].asString();
+            eligible = target == a || (cT[target]["owner"] == a && cT[target]["controller"] == a);
+        }
+        double share = !eligible ? 0 : c.cost > 0 ? std::clamp(budget[a] / c.cost, 0.0, 1.0) : 1.0;
         budget[a] -= share * c.cost;
         bool full = share >= 1 - 1e-9;
         stalled += !full;
@@ -250,11 +281,21 @@ void MonthlyStatus::fund(const std::string &a) {
             e["unfunded"] = true;
             continue;
         }
-        auto &item = c.kind == "effort" ? s["efforts"][c.id] : s["procurement"][c.id];
+        auto &item = c.kind == "effort" ? s[work][c.id] : s["procurement"][c.id];
         if (full)
             item.removeMember("unfunded");
         else
             item["unfunded"] = true;
+        if (projects && c.kind == "effort") {
+            item["paid_usd"] = integer(item, "paid_usd") + Int(std::llround(share * c.cost));
+            if (!full) item["delay"] = eligible ? "funding" : "target control";
+            else item.removeMember("delay");
+            r.events.push_back({a, "project_progress", c.id,
+                item["objective"].asString() + (full ? ": funded progress " : ": delayed (" +
+                item["delay"].asString() + "), progress ") +
+                std::to_string(int(100 * std::min(item["months"].asDouble(), number(item, "paid") + share) /
+                                   item["months"].asDouble())) + "%."});
+        }
         item["paid"] = round6(number(item, "paid") + share);
         if (number(item, "paid") < item["months"].asDouble() - 1e-6)
             continue;
@@ -284,12 +325,23 @@ void MonthlyStatus::fund(const std::string &a) {
 // A completed effort's benefit, once. An investment raises output; a reform raises the stability
 // baseline, less for each reform completed in the previous five years, and gives a month's
 // confidence on top.
-void MonthlyStatus::complete(const std::string &a, const std::string &category) {
+void MonthlyStatus::complete(const std::string &a, const std::string &projectId) {
     auto &s = w.actors[a]["status"];
+    bool projects = distinctProjects(w);
+    auto p = projects ? s["projects"][projectId] : Json::Value();
+    std::string category = projects ? p["category"].asString() : projectId;
+    auto target = projects ? p["target"].asString() : a;
+    double share = 1;
+    if (projects && target != a) {
+        double total = 0;
+        for (const auto &region : regionIds)
+            if (cT[region]["owner"] == a) total += number(cT[region], "population");
+        share = total > 0 ? number(cT[target], "population") / total : 0;
+    }
     auto name = cActors[a]["name"].asString();
     if (category == "investment") {
         for (auto &id : regionIds)
-            if (cT[id]["owner"] == a && cT[id].isMember("gdp_usd"))
+            if (cT[id]["owner"] == a && cT[id].isMember("gdp_usd") && (target == a || target == id))
                 T[id]["gdp_usd"] = Int(std::llround(double(integer(cT[id], "gdp_usd")) *
                                                     (1 + rate::investmentGain / 100)));
         r.events.push_back({a, "effort_completed", a,
@@ -301,11 +353,11 @@ void MonthlyStatus::complete(const std::string &a, const std::string &category) 
             if (h["category"] == "reform" &&
                 h["completed_turn"].asInt() > w.turn - rate::reformMemoryMonths)
                 ++recent;
-        double gain = rate::reformGain / (1 + recent);
+        double gain = share * rate::reformGain / (1 + recent);
         s["baseline_stability"] =
             round1(std::clamp(number(s, "baseline_stability", 50) + gain, 0.0, 100.0));
         s["stability"] =
-            round1(std::clamp(number(s, "stability", 50) + rate::reformConfidence, 0.0, 100.0));
+            round1(std::clamp(number(s, "stability", 50) + share * rate::reformConfidence, 0.0, 100.0));
         r.events.push_back({a, "effort_completed", a, name + " completed a reform programme."});
     }
     Json::Value done;
@@ -314,7 +366,14 @@ void MonthlyStatus::complete(const std::string &a, const std::string &category) 
     s["effort_history"].append(done);
     if (s["effort_history"].size() > 8)
         s["effort_history"].removeIndex(0, nullptr);
-    s["efforts"].removeMember(category);
+    if (projects) {
+        auto &project = s["projects"][projectId];
+        project["state"] = "completed"; project["completed_turn"] = w.turn;
+        project["paid"] = project["months"];
+        r.events.back().target = projectId;
+        r.events.back().text = "Funded work for “" + project["objective"].asString() + "” completed; " +
+            (category == "investment" ? "output increased in the funded target." : "stability baseline improved.");
+    } else s["efforts"].removeMember(category);
 }
 // A year without fighting anywhere lets excess active personnel go back to the reserve, gradually
 // and never below what the nation's formations hold.

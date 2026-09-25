@@ -1,4 +1,5 @@
 #include "status/monthly/monthly_status.h"
+#include "localhistoria/domestic.h"
 #include <algorithm>
 #include <cmath>
 namespace lh {
@@ -211,6 +212,11 @@ void MonthlyStatus::inheritStatus() {
         // A new actor cannot copy its parent's entire military inventory.
         s.removeMember("military");
         s.removeMember("military_spend_usd");
+        if (distinctProjects(w)) {
+            s.removeMember("projects"); s.removeMember("efforts"); s.removeMember("effort_history");
+            s.removeMember("recent_consequences"); s.removeMember("procurement");
+            s.removeMember("implementation");
+        }
         w.actors[a]["status"] = s;
     }
 }
@@ -236,6 +242,21 @@ void MonthlyStatus::baselineTrend() {
     }
 }
 void MonthlyStatus::modelEffects() {
+    if (groundedConsequences(w)) {
+        for (const auto &a : w.actors.getMemberNames()) {
+            auto &s = w.actors[a]["status"];
+            if (s.isMember("recent_consequences"))
+                expireConsequences(s["recent_consequences"], w.turn);
+        }
+        for (const auto &e : delta.events)
+            for (const auto &c : e["consequences"]) {
+                auto a = c["actor"].asString();
+                auto recorded = recordConsequence(w.actors[a]["status"]["recent_consequences"], w.turn,
+                    c["key"].asString(), c["kind"].asString(), c["envelope"].asBool());
+                recorded["actor"] = a;
+                if (recorded != c) throw ValidationError("Consequence accounting mismatch");
+            }
+    }
     for (const auto &e : delta.events)
         for (const auto &x : e["effects"]) {
             static const std::map<std::string, std::pair<double, double>> scale{
@@ -248,9 +269,11 @@ void MonthlyStatus::modelEffects() {
                 {"strong_growth", {0.5, 3}}};
             auto a = x["actor"].asString();
             if (scale.contains(x["economy"].asString()))
-                effectGdp[a] += scale.at(x["economy"].asString()).first;
+                effectGdp[a] += scale.at(x["economy"].asString()).first *
+                    (groundedConsequences(w) ? x.get("weight", 1).asDouble() : 1);
             if (scale.contains(x["stability"].asString()))
-                effectStability[a] += scale.at(x["stability"].asString()).second;
+                effectStability[a] += scale.at(x["stability"].asString()).second *
+                    (groundedConsequences(w) ? x.get("weight", 1).asDouble() : 1);
         }
     for (auto &[a, pct] : effectGdp) {
         pct = std::clamp(pct, -rate::maxEffectGdp, rate::maxEffectGdp);

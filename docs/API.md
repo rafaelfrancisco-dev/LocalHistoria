@@ -36,7 +36,7 @@ National status:
 
 - Territories carry `population`, `gdp_usd` and `displaced` (people currently displaced from there), plus `occupation_gdp` while occupied, and `unrest` (0–100) with `unrest_months` once a region has begun to stir. Under the realism lifecycle a region held by force also carries `control`: `claimant`, `holder`, `since` (absent for occupations older than the history), `cause` (`hostile` or `recorded`) and `integration` (0–100). All are engine-owned: `checkTerritoryChange` lets a model delta alter only `owner` and `controller`, and `control` never reaches a model prompt. Under the realism lifecycle a region people have fled also carries `displacement`: `hosts` (host region → people still sheltering there) and `unknown` (a count carried from before the ledger, with no recorded host); `displaced` is their sum. It is engine-owned and kept out of prompts.
 - Actors carry `status`: `stability`, `baseline_stability`, `seeded_stability` (the January figure, frozen), `government`, `government_since` (a year, 0 when unknown), `gdp_growth`, `pop_growth` (annual %), `currency`, `symbol`, `usd_rate`, `estimated`, `last_gdp_change`, `last_population_change` and `collapse_months`. A rebel actor also carries `rebellion` with `against`, `origin`, `conflict`, `since_turn`, `held_since` and `state`.
-- Under the realism lifecycle an actor's status also carries `implementation` (`allowance_usd` and `committed_usd` this month, and `stalled`, the claims it could not fully pay), `efforts` (`reform`/`investment`: `started`, `months`, `paid`, `monthly_usd`), `effort_history`, `procurement` (`personnel`/`aircraft`/`ships` orders: `count`, `started`, `months`, `paid`, `monthly_usd`), `trade_reference` (partners at the first realism month) and `trade_weight` (the change since). Its `military` gains `establishment` and `peace_months`. An under-construction entity may carry `arrears` and `unfunded`. All are engine-owned and kept out of prompts.
+- Under the realism lifecycle an actor's status also carries `implementation` (`allowance_usd` and `committed_usd` this month, and `stalled`, the claims it could not fully pay), `efforts` (`reform`/`investment`: `started`, `months`, `paid`, `monthly_usd`), `effort_history`, `procurement` (`personnel`/`aircraft`/`ships` orders: `count`, `started`, `months`, `paid`, `monthly_usd`), `trade_reference` (partners at the first realism month) and `trade_weight` (the change since). Its `military` gains `establishment` and `peace_months`. An under-construction entity may carry `arrears` and `unfunded`. All are engine-owned; project summaries are exposed to prompts under project version 1.
 - Under the realism lifecycle an actor's `status.attrition` (`personnel`, `aircraft`, `ships`) carries fractional losses below one unit into the next month. It is engine-owned and never reaches a prompt.
 - `national_status[actor]` is derived from owned regions: `population`, `population_text`, `gdp` (e.g. `"€306.8 billion (US$346.6 billion)"`), `gdp_usd`, `gdp_per_capita`, `stability` (label and score), `stability_score`, `economic_trend`, `government` (readable, e.g. `"Semi-presidential republic"`), `government_id`, `government_since`, `wars`, `treaties`, `occupied_regions`, `occupying_regions`, `displaced` and `estimated`. Each war lists `against`, up to four enemy names; under the realism lifecycle only the parties this nation is actually fighting, with parties at a covered ceasefire under `ceasefire_with`. Under the realism lifecycle it also carries `implementation` (one line: the monthly allowance, what is committed, anything underfunded, efforts under way, losses being replaced) and, once exhaustion reaches 0.25, `forces` ("strained", "worn down" or "exhausted by sustained fighting"); the raw `military` object omits `establishment`, `peace_months` and `exhaustion`. A nation's decision facts list annexed land still held by force under `conquests` ("taken from …, N% integrated"). When any region it controls is at 35 unrest or more it also carries `unrest` (label, region and score), `unrest_score` and `unrest_region`; a calm nation carries none of the three.
 
@@ -67,3 +67,30 @@ State additionally contains `regional_politics` keyed by permanent territory ID 
 `GET /flag?campaign=<campaign_id>&actor=<actor_id>&revision=<revision>` serves SVG with immutable caching and restrictive content security policy. `revision=fallback` provides a deterministic legacy fictional flag. Existing countries retain their static `/flags/<code>.svg` until a qualifying identity event. `/countries` and `/country` return current campaign names.
 
 Reference preparation starts automatically on creation/resume and anticipates upcoming actors on a separate bounded worker. Submission freezes only material already cached and never waits for reference downloads. Failed refreshes preserve valid cached material. Missing optional political fields in older saves/replays decode as empty collections.
+
+
+### Plan 31 domestic records
+
+New turn references and campaign `engine` include `consequence_version: 1` and
+`project_version: 1`, independently of `event_text_version`. Missing fields replay legacy rules.
+
+`actors[id].status.projects` replaces `efforts` on first upgrade. It is an object keyed by C++
+project ID, bounded to 32 records per actor. Each record has `id`, `category`, `objective`,
+`target`, `benefit`, `origin_event`, `started`, `completion_condition: "paid_months"`, `months`,
+`paid` (fractional funded months), `monthly_usd`, and `state` (`active`, `cancelled`, `completed`).
+New projects also track `paid_usd`; legacy migrations do not invent historical spending totals.
+Underfunding/control loss sets `unfunded` and `delay` (`funding` or `target control`). Completion
+sets `completed_turn`. Records persist after cancellation/completion to prevent reward resets.
+`national_status` and decision/adjudication facts include bounded summaries of these records.
+
+Compiler events can carry a validated `project` snapshot, `project_action` (`start`, `continue`,
+`cancel`) and `project_reason`. Monthly journal events include `project_progress` and
+`effort_completed`; their target is the project ID. The model cannot set progress, prices or
+completion. Creation requires a supported category/purpose and an owned, controlled target;
+continuation/cancellation requires the actor's unchanged project terms. Old category efforts
+migrate transactionally to `benefit: "legacy"` records, retaining their old benefit and payment.
+
+`status.recent_consequences` is the engine's bounded 64-entry, 24-month ledger. Recorded events
+carry `consequences` (actor, key, kind, envelope, weight, reason), and each rated effect has its
+applied `weight` (0, 0.25, 0.5 or 1). Replay rechecks ledger updates before applying the weight.
+A zero-weight event remains in history; it does not apply its rated statistical change.

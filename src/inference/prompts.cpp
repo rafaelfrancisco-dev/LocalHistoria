@@ -331,7 +331,17 @@ WorldDelta LocalProvider::adjudicate(const WorldState &w, const Json::Value &inp
                 !(request.experiment == "reasoning" && clearlyDomestic(w, actor, text)));
     unsigned budget = weighed ? std::clamp<unsigned>(256 + 128 * weighed, 384, 768) : 0;
     const auto instruction =
-        head + (w.engine.get("event_text_version", 0).asInt() >= 2 ? consequences : outcomes) + tail;
+        head + (w.engine.get("event_text_version", 0).asInt() >= 2 ? consequences : outcomes) + tail +
+        (w.engine.get("project_version", 0) == 1 ?
+        " Domestic projects: set project=null except for funded reform/investment. For a new project "
+        "supply action=start, id=empty string, a short objective, target=your actor ID or a region you own and control, "
+        "and benefit: administration/public_services for reforms (stability), infrastructure/production "
+        "for investments (output). These are the only simulated benefits; do not claim unsupported "
+        "objectives achieved. To continue or cancel use action=continue/cancel and the exact project id and unchanged terms in facts. "
+        "Same target/category/benefit continues existing work regardless of title. Completed work "
+        "cannot restart. A domestic project needs no build operation or event_site; project is its authoritative record. Cancellation retains paid work without refund; explicit continuation resumes it. Funding and paid completion are determined by C++; descriptions cannot "
+        "complete projects. Repeated acts may only maintain a stance: outcome_effects may be empty "
+        "or none/none; consequences are bounded and diminish with repetition. " : "");
     const auto prompt = instruction + (request.experiment == "compact" ?
         " For mechanical operations keep description to a short action label; do not repeat treaty "
         "parties, duration, terms or results already encoded by operations. Keep authored names and "

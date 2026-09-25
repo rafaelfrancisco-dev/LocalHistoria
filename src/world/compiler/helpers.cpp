@@ -67,6 +67,7 @@ int effectWeight(const Json::Value &effects) {
     if (!effects.isArray())
         return 0;
     for (auto &x : effects)
+        if (x.get("weight", 1).asDouble() > 0)
         for (auto k : {"economy", "stability"}) {
             auto v = x[k].isString() ? x[k].asString() : "";
             score += v == "severe_decline" || v == "strong_growth" ? 2
